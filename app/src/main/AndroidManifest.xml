@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".SignalLabApplication"
         android:allowBackup="false"
         android:label="Signal Lab"
         android:supportsRtl="true"

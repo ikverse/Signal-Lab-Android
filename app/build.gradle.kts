@@ -95,6 +95,18 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    testOptions {
+        // Robolectric reads the merged manifest and resources to stand up a context; without this
+        // it starts with neither and every test that needs one fails on the same complaint.
+        unitTests.isIncludeAndroidResources = true
+        // The default test heap ran out partway through a run of database tests.
+        unitTests.all { it.maxHeapSize = "2g" }
+    }
+
+    // The engine's golden files (real candles and what the research version produced) are read by
+    // the pipeline test here too, without copying them.
+    sourceSets.getByName("test").resources.directories.add("../engine/src/test/resources")
 }
 
 dependencies {
@@ -108,8 +120,18 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
+    // Plain-JVM tests (the Binance client) need a real org.json; Android's own is a stub there.
+    // Robolectric tests bring Android's, and the two coexist.
+    testImplementation(libs.json)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

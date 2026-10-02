@@ -10,14 +10,20 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.ikverse.signallab.ui.DebugPanel
 
-/** Placeholder until the screens arrive in M5; it only proves the project builds and installs. */
+/** The real screens arrive in M5. Until then a debug build shows the data layer working, and a release build shows its name. */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val app = application as SignalLabApplication
         setContent {
-            Box(Modifier.fillMaxSize().background(Color(0xFF050505)), contentAlignment = Alignment.Center) {
-                Text("Signal Lab ${BuildConfig.VERSION_NAME}", color = Color(0xFFD1D4DC))
+            if (BuildConfig.DEBUG) {
+                DebugPanel(app.debugState)
+            } else {
+                Box(Modifier.fillMaxSize().background(Color(0xFF050505)), contentAlignment = Alignment.Center) {
+                    Text("Signal Lab ${BuildConfig.VERSION_NAME}", color = Color(0xFFD1D4DC))
+                }
             }
         }
     }
