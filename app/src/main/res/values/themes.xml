@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Near-black rather than pure black: pure black smears when OLED pixels switch on while scrolling. -->
+    <style name="Theme.SignalLab" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#050505</item>
+        <item name="android:statusBarColor">#050505</item>
+        <item name="android:navigationBarColor">#050505</item>
+    </style>
+</resources>

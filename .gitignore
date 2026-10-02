@@ -1,0 +1,12 @@
+.gradle/
+build/
+*.iml
+.idea/
+local.properties
+*.keystore
+*.jks
+*.apk
+captures/
+.externalNativeBuild/
+.cxx/
+__pycache__/
