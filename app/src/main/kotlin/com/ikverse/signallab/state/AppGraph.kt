@@ -8,10 +8,19 @@ import com.ikverse.signallab.data.HistoryManager
 import com.ikverse.signallab.data.RecordDatabase
 import com.ikverse.signallab.data.SettingsStore
 import com.ikverse.signallab.data.TradeLog
+import com.ikverse.signallab.data.TradeStatus
 import com.ikverse.signallab.data.UniverseRepository
 import com.ikverse.signallab.data.WatchlistRepository
 import com.ikverse.signallab.data.binance.BinanceClient
 import com.ikverse.signallab.engine.WatchlistRules
+import com.ikverse.signallab.scan.AndroidAlarms
+import com.ikverse.signallab.scan.Notifier
+import com.ikverse.signallab.scan.PermissionFlow
+import com.ikverse.signallab.scan.PriceFeed
+import com.ikverse.signallab.scan.ScanService
+import com.ikverse.signallab.scan.ScanController
+import com.ikverse.signallab.scan.ScanHealth
+import com.ikverse.signallab.scan.Scanner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,7 +35,7 @@ import kotlinx.coroutines.launch
  * Everything the data layer is made of, built once by the application. It is the only place that
  * knows how the pieces fit; screens get what they need through interfaces in the `ui` package.
  */
-class AppGraph(context: Context) {
+class AppGraph(context: Context, scope: CoroutineScope) {
     val recordDb = RecordDatabase(context)
     val candles = CandleStore(context)
     val settings = SettingsStore(recordDb)
@@ -41,12 +50,51 @@ class AppGraph(context: Context) {
     val sync = CandleSync(market, candles)
     val history = HistoryManager(sync, candles, market)
 
+    // Background scanning: the notifier is where alerts go, the controller decides when to scan, and the
+    // alarm wakes it. None of them depends on a screen being open.
+    val notifier = Notifier(context)
+    val health = ScanHealth()
+    val alarms = AndroidAlarms(context) { server -> server - (market.nowMs() - System.currentTimeMillis()) }
+    val scanner = Scanner(market, sync, candles, tradeLog, settings, { watchlists.lists.value }, notifier)
+    val controller = ScanController(
+        scanner, market, alarms, tradeLog, notifier, health,
+        hasWork = ::scanWanted, skewMs = { market.clockSkewMs },
+    )
+
+    /** Live prices, only while a screen is showing them. */
+    val priceFeed = PriceFeed(BinanceClient.defaultHttp(), { DataConfig.streamFor(host) }, scope)
+
+    /** Asks for alerts, exact alarms and a battery exemption, once each, after the first list is switched on. */
+    val permissions = PermissionFlow(context, settings, { watchlists.load(); watchlists.activeCoins().isNotEmpty() }, scope)
+
     private val problem = MutableStateFlow<String?>(null)
+
+    /** Starts the background service when there is something to watch, and stops it and its alarm when there is not. */
+    suspend fun syncService(context: Context) {
+        if (scanWanted()) {
+            ScanService.start(context)
+        } else {
+            ScanService.stop(context)
+            alarms.cancel()
+            health.armed(null)
+        }
+    }
+
+    /**
+     * Whether there is any reason to run in the background: the user has not switched it off, and a
+     * list is active or a paper trade is still open (a trade keeps being followed after its list is switched off).
+     */
+    suspend fun scanWanted(): Boolean {
+        watchlists.load()
+        if (!settings.getBoolean(SettingsStore.SCAN_IN_BACKGROUND, true)) return false
+        return watchlists.activeCoins().isNotEmpty() || tradeLog.trades(TradeStatus.OPEN, limit = 1).isNotEmpty()
+    }
 
     /** The last thing that went wrong in the background, for the health readout. */
     val lastProblem: StateFlow<String?> = problem
 
     fun start(scope: CoroutineScope) {
+        notifier.createChannels()
         scope.launch {
             try {
                 settings.get(SettingsStore.DATA_HOST)?.let { host = it }

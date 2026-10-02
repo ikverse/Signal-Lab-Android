@@ -91,6 +91,76 @@ object Scorecard {
 
     private fun share(a: DoubleArray): Double = if (a.isEmpty()) Double.NaN else a.count { it > 0 }.toDouble() / a.size
 
+    /** What the matched random entries came to for each of a batch of signals on one coin. NaN where none could be drawn. */
+    class MatchedRandom(val mean: DoubleArray, val horizons: Map<Int, DoubleArray>)
+
+    /**
+     * The random entries a signal is judged against: the same coin, within [EngineConfig.RANDOM_WINDOW_DAYS]
+     * either side of the signal, in the same BTC regime, with the same exits (and the same fixed holding
+     * periods). Only entries whose own exit window lies inside [c] are drawn, so a baseline can only use
+     * candles that exist; asked at the moment a live trade closes, it sees the past and the days since.
+     *
+     * The backtest and the live scan both draw through here. Each draw is a pure function of the
+     * variant, the coin, the signal's position in [c] and the draw number, never of what came before.
+     * [onExit] and [onHorizon] receive every individual random result, for the pooled hit rates.
+     */
+    fun matchedRandom(
+        name: String,
+        symbol: String,
+        c: Candles,
+        atr: DoubleArray,
+        regime: IntArray,
+        signals: IntArray,
+        tf: Timeframe,
+        cost: Double,
+        hold: Int?,
+        horizons: IntArray,
+        onExit: (Double) -> Unit = {},
+        onHorizon: (Int, Double) -> Unit = { _, _ -> },
+    ): MatchedRandom {
+        val windowBars = EngineConfig.RANDOM_WINDOW_DAYS * 24 / tf.hours
+        val draws = EngineConfig.RANDOM_DRAWS_PER_TRADE
+        val limit = hold ?: EngineConfig.timeLimitBars(tf)
+        val usable = BooleanArray(c.size) { it + limit < c.size && !atr[it].isNaN() }
+        val randMean = DoubleArray(signals.size) { Double.NaN }
+        val randH = horizons.associateWith { DoubleArray(signals.size) { Double.NaN } }
+        val seed = Rng.seedOf(name, symbol)
+        val pools = HashMap<Int, IntArray>()
+        for (jj in signals.indices) {
+            val r = regime[signals[jj]]
+            val pool = pools.getOrPut(r) { (0 until c.size).filter { usable[it] && regime[it] == r }.toIntArray() }
+            val lo = lowerBound(pool, signals[jj] - windowBars)
+            val hi = upperBound(pool, signals[jj] + windowBars)
+            if (hi <= lo) continue
+            val picked = IntArray(draws) { d -> pool[Rng.intIn(seed, signals[jj].toLong(), d.toLong(), lo, hi)] }
+            val rx = PaperTrading.simulateExits(c, picked, tf, atr, hold)
+            var total = 0.0
+            var count = 0
+            for (d in picked.indices) {
+                if (rx.valid[d]) {
+                    val net = rx.gross[d] - cost
+                    total += net
+                    count++
+                    onExit(net)
+                }
+            }
+            if (count > 0) randMean[jj] = total / count
+            for ((h, values) in PaperTrading.horizonReturns(c, picked, horizons, cost)) {
+                var ht = 0.0
+                var hc = 0
+                for (v in values) {
+                    if (!v.isNaN()) {
+                        ht += v
+                        hc++
+                        onHorizon(h, v)
+                    }
+                }
+                if (hc > 0) randH.getValue(h)[jj] = ht / hc
+            }
+        }
+        return MatchedRandom(randMean, randH)
+    }
+
     /**
      * Turns signal flags into independent paper trades (one open per coin at a time) with matched
      * random baselines. [regimes] holds each coin's BTC-regime series (see [PaperTrading.regimeSeries]).
@@ -104,9 +174,6 @@ object Scorecard {
     ): VariantRun {
         val hold = key.holdBars
         val horizons = if (hold != null) intArrayOf(hold) else EngineConfig.horizonBars(tf)
-        val windowBars = EngineConfig.RANDOM_WINDOW_DAYS * 24 / tf.hours
-        val draws = EngineConfig.RANDOM_DRAWS_PER_TRADE
-        val limit = hold ?: EngineConfig.timeLimitBars(tf)
         val trades = ArrayList<Trade>()
         val randomExit = DoubleBuffer()
         val randomH = horizons.associateWith { DoubleBuffer() }
@@ -134,43 +201,10 @@ object Scorecard {
 
             // Matched random entries: same coin, +/- window, same regime, same exits and horizons.
             val reg = regimes.getValue(sym)
-            val usable = BooleanArray(c.size) { it + limit < c.size && !atr[it].isNaN() }
-            val randMean = DoubleArray(sig.size) { Double.NaN }
-            val randH = horizons.associateWith { DoubleArray(sig.size) { Double.NaN } }
-            val seed = Rng.seedOf(key.name, sym)
-            val pools = HashMap<Int, IntArray>()
-            for (jj in sig.indices) {
-                val r = reg[sig[jj]]
-                val pool = pools.getOrPut(r) { (0 until c.size).filter { usable[it] && reg[it] == r }.toIntArray() }
-                val lo = lowerBound(pool, sig[jj] - windowBars)
-                val hi = upperBound(pool, sig[jj] + windowBars)
-                if (hi <= lo) continue
-                val picked = IntArray(draws) { d -> pool[Rng.intIn(seed, sig[jj].toLong(), d.toLong(), lo, hi)] }
-                val rx = PaperTrading.simulateExits(c, picked, tf, atr, hold)
-                var total = 0.0
-                var count = 0
-                for (d in picked.indices) {
-                    if (rx.valid[d]) {
-                        val net = rx.gross[d] - cost
-                        total += net
-                        count++
-                        randomExit.add(net)
-                    }
-                }
-                if (count > 0) randMean[jj] = total / count
-                for ((h, values) in PaperTrading.horizonReturns(c, picked, horizons, cost)) {
-                    var ht = 0.0
-                    var hc = 0
-                    for (v in values) {
-                        if (!v.isNaN()) {
-                            ht += v
-                            hc++
-                            randomH.getValue(h).add(v)
-                        }
-                    }
-                    if (hc > 0) randH.getValue(h)[jj] = ht / hc
-                }
-            }
+            val matched = matchedRandom(key.name, sym, c, atr, reg, sig, tf, cost, hold, horizons,
+                onExit = randomExit::add, onHorizon = { h, v -> randomH.getValue(h).add(v) })
+            val randMean = matched.mean
+            val randH = matched.horizons
 
             for (jj in sig.indices) {
                 val j = keep[jj]

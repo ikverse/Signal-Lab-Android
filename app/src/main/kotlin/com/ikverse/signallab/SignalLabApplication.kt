@@ -18,7 +18,7 @@ class SignalLabApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        graph = AppGraph(this)
+        graph = AppGraph(this, appScope)
         debugState = LiveDebugState(graph, appScope)
         graph.start(appScope)
     }

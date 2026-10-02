@@ -2,6 +2,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Alerts. Asked for at run time from Android 13, after the first list is switched on. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The service that keeps scanning alive between candle closes (type "special use"; see ScanService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Wake exactly when a candle closes. USE_EXACT_ALARM is left out on purpose: it is reserved for alarm and calendar apps. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Start scanning again after a restart. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Keep the CPU on for the length of a scan. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Offer to be exempted from battery optimisation, so overnight scans are not cut short. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".SignalLabApplication"
@@ -19,5 +32,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".scan.ScanService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Wakes at each candle close to scan the coins the user watches and record paper trades" />
+        </service>
+
+        <receiver
+            android:name=".scan.ScanAlarmReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".scan.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -33,5 +33,9 @@ fun DebugPanel(state: DebugState) {
             TextButton(onClick = state::refreshPairList) { Text("Refresh pair list", color = Color(0xFF2962FF)) }
             TextButton(onClick = state::createTestList) { Text("Create test list: top 30", color = Color(0xFF2962FF)) }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = state::scanNow) { Text("Scan now", color = Color(0xFF2962FF)) }
+            TextButton(onClick = state::sendTestAlert) { Text("Send test alert", color = Color(0xFF2962FF)) }
+        }
     }
 }
