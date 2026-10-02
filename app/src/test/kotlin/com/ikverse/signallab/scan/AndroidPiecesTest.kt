@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.ikverse.signallab.data.Alert
 import com.ikverse.signallab.data.RecordDatabase
 import com.ikverse.signallab.data.SettingsStore
+import com.ikverse.signallab.engine.ExitMode
 import com.ikverse.signallab.engine.ExitReason
 import com.ikverse.signallab.engine.LiveScan
 import com.ikverse.signallab.engine.Timeframe
@@ -33,9 +34,10 @@ private fun alert(id: Long, kind: String, symbol: String?, tf: String?, title: S
 
 @RunWith(RobolectricTestRunner::class)
 class AlertTextTest {
-    private fun plan(target: Double? = 145.9, stop: Double? = 140.6, limit: Int = 24) = LiveScan.Plan(
-        "donchian20_1h", "donchian", "SOLUSDT", Timeframe.H1, 0, 0, 0, 1, 0, 142.35, target, stop, limit, 0,
-    )
+    private fun plan(
+        target: Double? = 145.9, stop: Double? = 140.6, limit: Int = 24, mode: ExitMode = if (target != null) ExitMode.CLASSIC else ExitMode.HELD,
+        variant: String = "donchian20_1h",
+    ) = LiveScan.Plan(variant, "donchian", "SOLUSDT", Timeframe.H1, 0, 0, 0, 1, 0, 142.35, mode, target, stop, 1.5, limit, 0, 0.002)
 
     @Test
     fun anOpenedTradeSaysPaperTradeAndGivesEntryTargetAndStop() {
@@ -50,6 +52,47 @@ class AlertTextTest {
         val t = AlertText.opened(plan(target = null, stop = null, limit = 24))
         assertTrue(t.body.endsWith("Entry 142.35, held 24 candles."), t.body)
         assertTrue(AlertText.opened(plan(null, null, 1)).body.endsWith("held 1 candle."))
+    }
+
+    @Test
+    fun aTrendTradeSaysItHasASafetyStopAndAStopThatFollowsThePriceUp() {
+        val t = AlertText.opened(plan(target = null, stop = 140.6, limit = 72, mode = ExitMode.TRAIL, variant = "trend_ma20_1h"))
+        assertEquals("Trend: close crossed above its 20-candle average. Entry 142.35, safety stop 140.60, then a stop that follows the price up.", t.body)
+    }
+
+    @Test
+    fun anEndOfDayTradeSaysSo() {
+        val t = AlertText.opened(plan(target = null, stop = 140.6, limit = 3, mode = ExitMode.TRAIL, variant = "intraday_breakout_1h"))
+        assertTrue(t.body.endsWith("Closed by the end of the UTC day at the latest."), t.body)
+    }
+
+    @Test
+    fun aLearnedTradeSaysWhereItsTargetCameFromAndAFallbackSaysItHadNothingToLearnFrom() {
+        val learned = AlertText.opened(plan(target = 148.0, stop = 137.0, limit = 4, mode = ExitMode.LEARNED, variant = "bullish_harami_1h"))
+        assertEquals("Bullish harami: a small candle inside the body of a big red one. Entry 142.35, target 148.00 (+3.97%, from this pattern's earlier signals), stop 137.00, within 4 candles.", learned.body)
+        val fallback = AlertText.opened(plan(target = null, stop = null, limit = 6, mode = ExitMode.LEARNED, variant = "bullish_hikkake_1h"))
+        assertTrue(fallback.body.endsWith("Entry 142.35, held 6 candles: too few earlier signals to learn a target from."), fallback.body)
+    }
+
+    @Test
+    fun aNewCoinsAlertsCarryTheLine() {
+        val t = AlertText.opened(plan(), newCoin = true)
+        assertTrue(t.body.endsWith("SOL was listed on Binance less than 30 days ago. New coins fell on average in their first month."), t.body)
+        assertFalse(AlertText.opened(plan()).body.contains("listed on Binance"))
+    }
+
+    @Test
+    fun theWarningsSayTheyAreNotTradesAndNeverTellAnyoneToBuyOrSell() {
+        val pump = AlertText.pump("PMPUSDT", Timeframe.M1, com.ikverse.signallab.engine.Warnings.Pump(0.062, 14.4, 5), newCoin = false)
+        val spike = AlertText.volumeSpike("VOLUSDT", 4.1, newCoin = true)
+        assertEquals("Pump warning: PMP", pump.title)
+        assertEquals("PMP rose 6.2% in 5 minutes on 14 times its usual volume. Pumps like this usually peak within about a minute, and late buyers lose. No paper trade is opened.", pump.body)
+        assertEquals("Volume spike: VOL", spike.title)
+        assertTrue(spike.body.startsWith("VOL traded 4.1 times its usual daily volume.") && spike.body.contains("listed on Binance"))
+        for (t in listOf(pump, spike)) {
+            val words = (t.title + " " + t.body).lowercase().split(Regex("[^a-z]+"))
+            assertTrue("buy" !in words && "sell" !in words && "advice" !in words, t.body)
+        }
     }
 
     @Test
@@ -90,6 +133,20 @@ class AlertTextTest {
 class NotifierTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
     private val manager get() = context.getSystemService(NotificationManager::class.java)
+
+    @Test
+    fun warningsHaveTheirOwnChannelAndAreNeverFoldedTogetherOrGrouped() = runTest {
+        val n = Notifier(context).also { it.createChannels() }
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, assertNotNull(manager.getNotificationChannel(Notifier.CH_WARNINGS)).importance)
+        val composed = Notifier.compose(listOf(
+            alert(1, AlertText.KIND_WARNING, "PMPUSDT", "1m"), alert(2, AlertText.KIND_WARNING, "PMPUSDT", "1m"), alert(3, AlertText.KIND_WARNING, "XYZUSDT", "1m"),
+        ))
+        assertEquals(listOf(Notifier.CH_WARNINGS, Notifier.CH_WARNINGS, Notifier.CH_WARNINGS), composed.map { it.channel })
+        n.deliver(listOf(alert(11, AlertText.KIND_WARNING, "PMPUSDT", "1m"), alert(12, AlertText.KIND_WARNING, "XYZUSDT", "1m")))
+        val all = shadowOf(manager).allNotifications
+        assertEquals(2, all.size, "one each, and no summary")
+        assertTrue(all.all { it.channelId == Notifier.CH_WARNINGS })
+    }
 
     @Test
     fun theFourChannelsExistWithTheImportanceTheirJobCallsFor() {

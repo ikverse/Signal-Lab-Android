@@ -15,6 +15,9 @@ interface DebugState {
     /** Makes a list from the 30 biggest coins by volume and switches it on, so history starts downloading. */
     fun createTestList()
 
+    /** Makes a list of the 10 biggest coins watched on 1m, 5m and 15m charts and switches it on, to try the fast scanning. */
+    fun createFastTestList()
+
     /** Scans every timeframe's newest closed candle now: a real scan, exactly what the alarm runs. */
     fun scanNow()
 

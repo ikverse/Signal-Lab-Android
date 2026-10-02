@@ -3,6 +3,7 @@ package com.ikverse.signallab.scan
 import com.ikverse.signallab.data.Alert
 import com.ikverse.signallab.data.CandleStore
 import com.ikverse.signallab.data.CandleSync
+import com.ikverse.signallab.data.CostModel
 import com.ikverse.signallab.data.DataConfig
 import com.ikverse.signallab.data.LiveTrade
 import com.ikverse.signallab.data.NewTrade
@@ -16,10 +17,12 @@ import com.ikverse.signallab.data.binance.MarketData
 import com.ikverse.signallab.engine.Candles
 import com.ikverse.signallab.engine.CandleClock
 import com.ikverse.signallab.engine.EngineConfig
+import com.ikverse.signallab.engine.ExitMode
 import com.ikverse.signallab.engine.Indicators
 import com.ikverse.signallab.engine.LiveScan
 import com.ikverse.signallab.engine.PaperTrading
 import com.ikverse.signallab.engine.Timeframe
+import com.ikverse.signallab.engine.Warnings
 import com.ikverse.signallab.engine.Watchlist
 import com.ikverse.signallab.engine.WatchlistRules
 import kotlinx.coroutines.CancellationException
@@ -47,8 +50,11 @@ class ScanResult(
     val blocked: Boolean,
     /** Set when there was nothing to scan. */
     val note: String? = null,
+    /** Market warnings raised (a pump, a volume spike). */
+    val warnings: Int = 0,
 ) {
-    val completed: Boolean get() = !waiting && failures.isEmpty() && note == null
+    /** Nothing to scan counts as done: there was nothing to do. */
+    val completed: Boolean get() = !waiting && failures.isEmpty()
 }
 
 /**
@@ -60,6 +66,9 @@ class ScanResult(
  * Running it twice for the same candle changes nothing: a trade is unique by variant, coin, candle
  * and list, and a closed trade cannot close again. A cursor remembers the last candle handled, so a
  * signal on a candle the phone slept through is reported as missed, once, instead of traded late.
+ *
+ * Different timeframes scan at the same time, each under its own lock, so a long hourly scan never
+ * makes a signal on a minute chart late.
  */
 class Scanner(
     private val market: MarketData,
@@ -69,9 +78,8 @@ class Scanner(
     private val settings: SettingsStore,
     private val lists: () -> List<Watchlist>,
     private val sink: AlertSink,
-    private val windowDays: Int = DataConfig.LIVE_HISTORY_DAYS,
 ) {
-    private val lock = Mutex()
+    private val locks = Timeframe.entries.associateWith { Mutex() }
 
     private fun cursorKey(tf: Timeframe) = "scan_cursor_${tf.label}"
 
@@ -81,36 +89,47 @@ class Scanner(
     /** True when the newest closed candle of [tf] has been handled completely. */
     suspend fun isUpToDate(tf: Timeframe): Boolean = cursor(tf) == CandleClock.lastClose(tf, market.nowMs()) - 1
 
+    /** The charts that have a reason to be scanned: one an active list is watched on, or one with a paper trade still open. */
+    suspend fun timeframesInUse(): Set<Timeframe> {
+        val out = LinkedHashSet<Timeframe>()
+        for (l in lists()) if (l.active) out.addAll(l.timeframes)
+        for (t in log.trades(TradeStatus.OPEN, limit = Int.MAX_VALUE)) out.add(t.trade.tf)
+        return Timeframe.entries.filterTo(LinkedHashSet()) { it in out }
+    }
+
     /**
      * Scans [tf]. [only] limits which coins are downloaded again (a retry's failures); everything
      * else is read from what is stored.
      */
-    suspend fun scan(tf: Timeframe, only: Set<String>? = null): ScanResult = lock.withLock { scanLocked(tf, only) }
+    suspend fun scan(tf: Timeframe, only: Set<String>? = null): ScanResult = locks.getValue(tf).withLock { scanLocked(tf, only) }
 
     private suspend fun scanLocked(tf: Timeframe, only: Set<String>?): ScanResult {
         // Everything is judged at the moment the scan begins: the candles it needs were closed by then,
         // and the sync below can only be later than that.
         val now = market.nowMs()
-        val active = lists().filter { it.active }
-        val watched = candles.analysable(WatchlistRules.activeCoins(active)).toList()
+        val allLists = lists()
+        val active = allLists.filter { it.active && tf in it.timeframes }
+        val watched = candles.analysable(WatchlistRules.activeCoinsOn(allLists, tf)).toList()
         val open = log.trades(TradeStatus.OPEN, limit = Int.MAX_VALUE).filter { it.trade.tf == tf }.sortedBy { it.id }
         if (watched.isEmpty() && open.isEmpty()) {
-            // Nothing is being watched. Forget the cursor, so switching a list on later is not
+            // Nothing is being watched on this chart. Forget the cursor, so switching a list on later is not
             // mistaken for a phone that slept through the time in between.
             settings.set(cursorKey(tf), "")
             return ScanResult(tf, now, 0, 0, 0, 0, 0, emptyMap(), false, emptySet(), false, note = "nothing to scan")
         }
 
-        val since = now - windowDays * DAY_MS
+        val costs = CostModel.load(settings)
+        val since = now - DataConfig.historyDays(tf) * DAY_MS
+        val regimeSince = now - DataConfig.historyDays(Timeframe.D1) * DAY_MS
         val failures = LinkedHashMap<String, String>()
         var blocked = false
         val coins = (watched + open.map { it.trade.symbol }).distinct()
         val forming = HashMap<String, Kline>()
 
-        suspend fun download(symbol: String, timeframe: Timeframe): Kline? {
+        suspend fun download(symbol: String, timeframe: Timeframe, from: Long): Kline? {
             if (blocked) return null
             return try {
-                sync.syncCoin(symbol, timeframe, since).forming
+                sync.syncCoin(symbol, timeframe, from).forming
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BinanceException.Blocked) {
@@ -123,16 +142,16 @@ class Scanner(
             }
         }
 
-        download(DataConfig.REGIME_COIN, Timeframe.D1)
+        download(DataConfig.REGIME_COIN, Timeframe.D1, regimeSince)
         for (symbol in coins) {
             if (only != null && symbol !in only) continue
-            download(symbol, tf)?.let { forming[symbol] = it }
+            download(symbol, tf, since)?.let { forming[symbol] = it }
         }
         if (blocked) for (symbol in coins) failures.putIfAbsent(symbol, "blocked")
 
         val windows = HashMap<String, Candles>()
         for (symbol in coins) candles.window(symbol, tf, since)?.let { windows[symbol] = it }
-        val btc = candles.window(DataConfig.REGIME_COIN, Timeframe.D1, since)
+        val btc = candles.window(DataConfig.REGIME_COIN, Timeframe.D1, regimeSince)
         val regimeOk = LiveScan.regimeIsCurrent(btc, now)
 
         val regimes = HashMap<String, IntArray>()
@@ -148,6 +167,7 @@ class Scanner(
         var opened = 0
         var closed = 0
         var missed = 0
+        var warned = 0
 
         // 1. Trades that have ended. They need the regime for their random baseline, so they wait for a current one.
         if (regimeOk) {
@@ -158,6 +178,7 @@ class Scanner(
                     exitTime = result.exitTime, exitPrice = result.exitPrice, reason = result.reason, barsHeld = result.barsHeld,
                     gross = result.gross, net = result.net,
                     randomMean = result.randomMean.takeUnless { it.isNaN() }, excess = result.excess.takeUnless { it.isNaN() },
+                    maxUp = result.maxUp, maxDown = result.maxDown, barsToPeak = result.barsToPeak,
                 )
                 if (!log.close(lt.id, exit)) continue
                 closed++
@@ -190,16 +211,33 @@ class Scanner(
                 pending.add(f.symbol)
                 continue
             }
-            val plan = LiveScan.plan(f, c, atrOf(c), regimeOf(c), entryOpen) ?: continue
+            val plan = LiveScan.plan(f, c, atrOf(c), regimeOf(c), entryOpen, costs.costFor(f.symbol), scan.ruleFor(f, panel)) ?: continue
             val trade = NewTrade(
                 variant = plan.variant, family = plan.family, symbol = plan.symbol, tf = plan.tf, listId = plan.listId,
                 barTime = plan.barTime, detectedAt = plan.detectedAt, regime = plan.regime, entryTime = plan.entryTime,
                 entryPrice = plan.entryPrice, target = plan.target, stop = plan.stop, holdBars = plan.limit, exitDue = plan.exitDue,
+                cost = plan.cost, exitMode = plan.mode.label, atr = plan.atr,
             )
             if (log.open(trade) == null) continue
             opened++
-            val text = AlertText.opened(plan)
+            val text = AlertText.opened(plan, isNewCoin(plan.symbol, now))
             log.record(AlertText.KIND_SIGNAL, text.title, text.body, plan.symbol, tf.label, text.link).also { alerts.add(it); notify.add(it) }
+        }
+
+        // 3. Warnings: shown, never traded. Only for the candle that just closed, and not again within a cooldown.
+        val newest = LiveScan.newestClosedOpen(tf, now)
+        for (symbol in watched) {
+            val c = windows[symbol] ?: continue
+            if (c.size == 0 || c.t[c.size - 1] != newest) continue
+            val text = when {
+                tf == Timeframe.M1 || tf == Timeframe.M5 -> Warnings.pump(c)?.let { AlertText.pump(symbol, tf, it, isNewCoin(symbol, now)) }
+                tf == Timeframe.D1 -> Warnings.volumeSpike(c)?.let { AlertText.volumeSpike(symbol, it, isNewCoin(symbol, now)) }
+                else -> null
+            } ?: continue
+            val cooldown = if (tf == Timeframe.D1) DataConfig.VOLUME_SPIKE_COOLDOWN_MS else DataConfig.PUMP_COOLDOWN_MS
+            if (log.now() - log.lastAlertTimeTitled(AlertText.KIND_WARNING, text.title) < cooldown) continue
+            warned++
+            log.record(AlertText.KIND_WARNING, text.title, text.body, symbol, tf.label, text.link).also { alerts.add(it); notify.add(it) }
         }
 
         val retryCoins = LinkedHashSet<String>().apply { addAll(failures.keys); addAll(pending) }
@@ -211,7 +249,13 @@ class Scanner(
         settings.set(cursorKey(tf), (if (waiting) newestClose - tf.ms else newestClose).toString())
 
         if (notify.isNotEmpty()) sink.deliver(notify)
-        return ScanResult(tf, now, coins.size, found.size, opened, closed, missed, failures, waiting, retryCoins, blocked)
+        return ScanResult(tf, now, coins.size, found.size, opened, closed, missed, failures, waiting, retryCoins, blocked, warnings = warned)
+    }
+
+    /** True when Binance listed [symbol] less than a month ago, as far as is known. */
+    private suspend fun isNewCoin(symbol: String, now: Long): Boolean {
+        val listed = candles.listedAt(symbol) ?: return false
+        return now - listed < DataConfig.NEW_COIN_DAYS * DAY_MS
     }
 
     /** The price a trade entering at [entryTime] gets: that candle's open, from the store if it has closed, else as Binance served it while forming. */
@@ -221,9 +265,16 @@ class Scanner(
         return forming?.takeIf { it.openTime == entryTime }?.open
     }
 
-    private fun openTradeOf(t: LiveTrade) = LiveScan.OpenTrade(
-        t.trade.variant, t.trade.symbol, t.trade.tf, t.trade.entryTime, t.trade.entryPrice, t.trade.target, t.trade.stop, t.trade.holdBars,
-    )
+    private fun openTradeOf(t: LiveTrade): LiveScan.OpenTrade {
+        val tr = t.trade
+        return LiveScan.OpenTrade(
+            variant = tr.variant, symbol = tr.symbol, tf = tr.tf, entryTime = tr.entryTime, entryPrice = tr.entryPrice,
+            mode = ExitMode.fromStored(tr.exitMode, hasTarget = tr.target != null),
+            target = tr.target, stop = tr.stop, atr = tr.atr ?: Double.NaN, limit = tr.holdBars,
+            // A trade from before the cost was kept was charged the research's costs, and still is.
+            cost = tr.cost ?: EngineConfig.costFor(tr.symbol),
+        )
+    }
 
     companion object {
         private const val DAY_MS = 86_400_000L

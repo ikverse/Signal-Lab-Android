@@ -46,9 +46,14 @@ class GoldenTest {
         for (tf in tfs) {
             val expected = Golden.expected.getJSONObject("signals").getJSONObject(tf.label)
             val got = signals(tf).entries.associate { it.key.name to it }
-            assertEquals(expected.keyList().toSet(), got.keys, "${tf.label}: variants differ")
+            // The app now also runs patterns the research never had, and no longer runs 1-4 week momentum on 1h charts.
+            val gone = expected.keyList().toSet() - got.keys
+            assertEquals(if (tf == Timeframe.H1) expected.keyList().filter { it.startsWith("tsmom") }.toSet() else emptySet(), gone, "${tf.label}: research variants missing")
+            val added = got.keys - expected.keyList().toSet()
+            assertTrue(added.isNotEmpty() && added.all { it.startsWith("bullish_") || it.startsWith("intraday_breakout_") }, "${tf.label}: unexpected new variants $added")
             var totalFlags = 0
             for (name in expected.keyList()) {
+                if (name in gone) continue
                 val e = expected.getJSONObject(name)
                 val (key, bySymbol) = got.getValue(name).let { it.key to it.value }
                 assertEquals(e.getString("family"), key.family, "$name family")
@@ -77,6 +82,7 @@ class GoldenTest {
             val expTrades = Golden.expected.getJSONObject("trades").getJSONObject(tf.label)
             val expStats = Golden.expected.getJSONObject("stats").getJSONObject(tf.label)
             for ((key, flags) in signals(tf)) {
+                if (!expTrades.has(key.name)) continue // a pattern the research did not have
                 val run = Scorecard.runVariant(key, flags, panel, tf, regimes)
                 val rows = expTrades.getJSONArray(key.name)
                 assertEquals(rows.length(), run.trades.size, "${tf.label} ${key.name}: trade count")
@@ -196,7 +202,7 @@ class GoldenTest {
             EngineConfig.VERDICT_TIERS)
         val limits = c.getJSONObject("TIME_LIMIT_BARS")
         val horizons = c.getJSONObject("HORIZON_BARS")
-        for (tf in Timeframe.entries) {
+        for (tf in tfs) {
             assertEquals(limits.getInt(tf.label), EngineConfig.timeLimitBars(tf), "time limit ${tf.label}")
             assertTrue(horizons.getJSONArray(tf.label).ints().contentEquals(EngineConfig.horizonBars(tf)), "horizons ${tf.label}")
         }

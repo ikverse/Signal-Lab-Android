@@ -16,8 +16,19 @@ object DataConfig {
 
     const val QUOTE = "USDT"
 
-    /** Candles kept per coin and timeframe: a year of momentum history plus margin, as in the research. */
-    const val LIVE_HISTORY_DAYS = 420
+    /**
+     * How many days of candles are kept for each chart. Enough for the patterns that run on it to warm up and for the
+     * random comparison to look around a trade, and no more: a minute chart has 1,440 candles a day. The 4-hour and
+     * daily charts keep a year plus four weeks, which is what 1-4 week momentum needs to give the same answer as it does
+     * on all of history.
+     */
+    fun historyDays(tf: com.ikverse.signallab.engine.Timeframe): Int = when (tf) {
+        com.ikverse.signallab.engine.Timeframe.M1 -> 7
+        com.ikverse.signallab.engine.Timeframe.M5 -> 30
+        com.ikverse.signallab.engine.Timeframe.M15, com.ikverse.signallab.engine.Timeframe.M30 -> 60
+        com.ikverse.signallab.engine.Timeframe.H1 -> 100
+        com.ikverse.signallab.engine.Timeframe.H4, com.ikverse.signallab.engine.Timeframe.D1 -> 400
+    }
 
     /** Binance serves at most this many candles per request. */
     const val KLINE_PAGE = 1000
@@ -50,4 +61,13 @@ object DataConfig {
     /** The price stream closes this long after the last app screen leaves, and Binance cuts a connection at 24 hours. */
     const val PRICE_FEED_GRACE_MS = 30_000L
     const val PRICE_FEED_MAX_AGE_MS = 23 * 3_600_000L
+
+    // --- Market warnings: alerts only, never paper trades ---
+
+    const val PUMP_COOLDOWN_MS = 30 * 60_000L
+
+    const val VOLUME_SPIKE_COOLDOWN_MS = 20 * 3_600_000L
+
+    /** A coin listed on Binance less than this long ago is "new": new coins fell, on average, in their first month. */
+    const val NEW_COIN_DAYS = 30
 }

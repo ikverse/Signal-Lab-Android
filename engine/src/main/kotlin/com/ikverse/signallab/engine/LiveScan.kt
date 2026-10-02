@@ -29,7 +29,23 @@ object LiveScan {
         val found: List<Found>,
         /** Every variant that ran, whether or not it fired. The count of these is the multiple-testing divisor. */
         val variants: List<SignalKey>,
-    )
+        private val flags: Map<SignalKey, Map<String, BooleanArray>>,
+    ) {
+        private val outcomes = HashMap<String, Map<String, List<LearnedExit.Outcome>>>()
+
+        /**
+         * The exit a [found] signal gets: trailing or held as its pattern says, or for a fast pattern the target and time
+         * limit learned from that pattern's earlier finished signals on this coin, or on the whole list if it has too few.
+         */
+        fun ruleFor(f: Found, panel: Map<String, Candles>): ExitRule {
+            val tf = panel.getValue(f.symbol).tf
+            if (ExitPolicy.modeOf(f.key) != ExitMode.LEARNED) return ExitPolicy.baseRule(f.key, tf)
+            val byCoin = outcomes.getOrPut(f.key.name) {
+                flags.getValue(f.key).mapValues { (symbol, flagged) -> LearnedExit.outcomes(panel.getValue(symbol), flagged) }
+            }
+            return LearnedExit.rule(tf, f.barTime, byCoin[f.symbol].orEmpty(), byCoin.values)
+        }
+    }
 
     /** The open time of the candle that closed most recently, by the clock [now]. */
     fun newestClosedOpen(tf: Timeframe, now: Long): Long = CandleClock.lastClose(tf, now) - tf.ms
@@ -50,27 +66,31 @@ object LiveScan {
         val newest = newestClosedOpen(tf, now)
         val found = ArrayList<Found>()
         val variants = LinkedHashMap<String, SignalKey>()
+        val flags = LinkedHashMap<SignalKey, MutableMap<String, BooleanArray>>()
 
-        fun collect(key: SignalKey, symbol: String, listId: Long, c: Candles, flags: BooleanArray) {
+        fun collect(key: SignalKey, symbol: String, listId: Long, c: Candles, flagged: BooleanArray) {
             variants.putIfAbsent(key.name, key)
             val from = if (after == null) lowerBound(c.t, newest) else maxOf(upperBound(c.closeTime, after), c.size - MAX_LOOKBACK_BARS)
             for (i in from until c.size) {
                 if (c.t[i] > newest) break
-                if (flags[i]) found.add(Found(key, symbol, listId, i, c.t[i], tradeable = c.t[i] == newest))
+                if (flagged[i]) found.add(Found(key, symbol, listId, i, c.t[i], tradeable = c.t[i] == newest))
             }
         }
 
         for ((symbol, c) in panel) {
-            for ((key, flags) in Signals.perCoin(c)) collect(key, symbol, 0, c, flags)
+            for ((key, flagged) in Signals.perCoin(c)) {
+                flags.getOrPut(key) { LinkedHashMap() }[symbol] = flagged
+                collect(key, symbol, 0, c, flagged)
+            }
         }
         for ((listId, coins) in lists) {
             val members = panel.filterKeys { it in coins }
             for ((key, bySymbol) in Signals.xsMomentum(members)) {
                 variants.putIfAbsent(key.name, key)
-                for ((symbol, flags) in bySymbol) collect(key, symbol, listId, members.getValue(symbol), flags)
+                for ((symbol, flagged) in bySymbol) collect(key, symbol, listId, members.getValue(symbol), flagged)
             }
         }
-        return Scan(found, variants.values.toList())
+        return Scan(found, variants.values.toList(), flags)
     }
 
     /** A paper trade ready to be logged. Everything the exit will need is in it, so the trade can be judged later from the log alone. */
@@ -85,32 +105,35 @@ object LiveScan {
         val regime: Int,
         val entryTime: Long,
         val entryPrice: Double,
+        val mode: ExitMode,
         val target: Double?,
         val stop: Double?,
-        /** Candles the trade may last: the time limit, or the fixed holding period of a variant that has no target and stop. */
+        /** The candle size at the signal, which a trailing stop is measured in. */
+        val atr: Double,
+        /** Candles the trade may last: its time cap or limit, or the fixed holding period of a variant that has no target and stop. */
         val limit: Int,
         /** The close time of the last candle the trade may use. */
         val exitDue: Long,
+        /** What the trade costs, round trip, as a fraction; kept with the trade so changing the setting never rewrites it. */
+        val cost: Double,
     )
 
     /**
-     * The trade a [found] signal becomes, entering at [entryOpen], the open of the candle after the
-     * signal's. Null where the backtest would not trade it either: the coin has too little history
-     * for an average true range yet.
+     * The trade a [found] signal becomes under [rule], entering at [entryOpen], the open of the candle after the
+     * signal's. Null where the backtest would not trade it either: the coin has too little history for a candle size
+     * yet, or an end-of-day pattern fired on the last candle of its day.
      */
-    fun plan(found: Found, c: Candles, atr: DoubleArray, regime: IntArray, entryOpen: Double): Plan? {
+    fun plan(found: Found, c: Candles, atr: DoubleArray, regime: IntArray, entryOpen: Double, cost: Double, rule: ExitRule): Plan? {
         val a = atr[found.barIdx]
-        if (a.isNaN()) return null
-        val hold = found.key.holdBars
-        val limit = hold ?: EngineConfig.timeLimitBars(c.tf)
+        if (a.isNaN() || !rule.allowsSignalAt(c.t[found.barIdx], c.tf)) return null
         val entryTime = c.t[found.barIdx] + c.tf.ms
+        val limit = rule.limitAt(entryTime, c.tf)
+        val spec = rule.spec(entryOpen, a, limit)
         return Plan(
             variant = found.key.name, family = found.key.family, symbol = found.symbol, tf = c.tf, listId = found.listId,
             barTime = c.t[found.barIdx], detectedAt = c.closeTime[found.barIdx], regime = regime[found.barIdx],
-            entryTime = entryTime, entryPrice = entryOpen,
-            target = if (hold == null) PaperTrading.targetPrice(entryOpen, a) else null,
-            stop = if (hold == null) PaperTrading.stopPrice(entryOpen, a) else null,
-            limit = limit, exitDue = entryTime + limit * c.tf.ms - 1,
+            entryTime = entryTime, entryPrice = entryOpen, mode = rule.mode, target = spec.target, stop = spec.stop,
+            atr = a, limit = limit, exitDue = entryTime + limit * c.tf.ms - 1, cost = cost,
         )
     }
 
@@ -121,9 +144,13 @@ object LiveScan {
         val tf: Timeframe,
         val entryTime: Long,
         val entryPrice: Double,
+        val mode: ExitMode,
         val target: Double?,
         val stop: Double?,
+        /** NaN for a trade opened before the candle size was kept; only a trailing trade needs it. */
+        val atr: Double,
         val limit: Int,
+        val cost: Double,
     )
 
     /** How a trade ended. [randomMean] and [excess] are NaN when no random entries could be drawn. */
@@ -136,6 +163,10 @@ object LiveScan {
         val net: Double,
         val randomMean: Double,
         val excess: Double,
+        /** The best the trade ever showed, the worst dip it sat through, and how many candles its high took. */
+        val maxUp: Double,
+        val maxDown: Double,
+        val barsToPeak: Int,
     )
 
     /**
@@ -146,19 +177,20 @@ object LiveScan {
     fun close(t: OpenTrade, c: Candles, atr: DoubleArray, regime: IntArray): Closed? {
         val e = lowerBound(c.t, t.entryTime)
         if (e >= c.size || c.t[e] != t.entryTime) return null
-        val res = PaperTrading.resolve(c, e, t.target, t.stop, t.limit) ?: return null
+        val res = PaperTrading.resolve(c, e, ExitSpec(t.mode, t.entryPrice, t.atr, t.target, t.stop, t.limit)) ?: return null
         val s = e - 1
         val gross = res.exitPrice / t.entryPrice - 1
-        val cost = EngineConfig.costFor(t.symbol)
-        val net = gross - cost
+        val net = gross - t.cost
         val mean = if (s < 0) Double.NaN else Scorecard.matchedRandom(
-            t.variant, t.symbol, c, atr, regime, intArrayOf(s), c.tf, cost,
-            hold = if (t.target == null) t.limit else null, horizons = IntArray(0),
+            t.variant, t.symbol, c, atr, regime, intArrayOf(s), c.tf, t.cost,
+            ExitRule.of(t.mode, t.limit, t.entryPrice, t.target, t.variant, c.tf), horizons = IntArray(0),
         ).mean[0]
+        val run = PaperTrading.excursion(c, e, res.exitIdx, t.entryPrice)
         return Closed(
             exitTime = c.closeTime[res.exitIdx], exitPrice = res.exitPrice, reason = res.reason,
             barsHeld = res.exitIdx - s, gross = gross, net = net,
             randomMean = mean, excess = if (mean.isNaN()) Double.NaN else net - mean,
+            maxUp = run.maxUp, maxDown = run.maxDown, barsToPeak = run.barsToPeak,
         )
     }
 

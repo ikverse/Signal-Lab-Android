@@ -37,25 +37,97 @@ object PaperTrading {
      * Where a trade that entered at the open of candle [entryIdx] stands, judged on the candles in [c],
      * which are all closed. Returns its exit if it has one, and null while it is still open.
      *
-     * The rules are [simulateExits]'s, applied one candle at a time: the first candle to touch the
-     * [stop] or the [target] ends the trade (the stop wins when one candle touches both, and a gap
-     * fills at the open), and otherwise it ends at the close of the [limit]th candle. With no target
-     * and stop (a fixed holding period) only the time limit applies. [simulateExits] only counts a
-     * trade once its whole window exists, even if it stopped out early; this reports the same exit as
-     * soon as it has happened, so a live trade closes when its candle does, not days later.
+     * Classic and learned trades end at the first candle to touch the stop or the target (the stop wins when one
+     * candle touches both, and a gap fills at the open). A trailing trade has a stop that moves: after each candle
+     * closes, once the highest close has risen [EngineConfig.TRAIL_ACTIVATE_ATR] candle sizes above the entry, the
+     * stop follows it at [EngineConfig.TRAIL_DISTANCE_ATR] below, and never moves down. Every trade ends at the
+     * close of its [ExitSpec.limit]th candle at the latest, and a held trade has only that.
+     *
+     * [simulateExits] only counts a trade once its whole window exists, even if it stopped out early; this reports
+     * the same exit as soon as it has happened, so a live trade closes when its candle does, not days later.
      */
-    fun resolve(c: Candles, entryIdx: Int, target: Double?, stop: Double?, limit: Int): Resolution? {
+    fun resolve(c: Candles, entryIdx: Int, spec: ExitSpec): Resolution? {
         val n = c.size
         if (entryIdx < 0 || entryIdx >= n) return null
-        if (target != null && stop != null) {
-            for (q in 0 until minOf(limit, n - entryIdx)) {
+        val span = minOf(spec.limit, n - entryIdx)
+        if (spec.mode == ExitMode.TRAIL && spec.stop != null) {
+            var stop: Double = spec.stop
+            var highest = Double.NEGATIVE_INFINITY
+            for (q in 0 until span) {
+                val k = entryIdx + q
+                if (c.low[k] <= stop) return Resolution(k, minOf(stop, c.open[k]), ExitReason.STOP)
+                highest = maxOf(highest, c.close[k])
+                if (highest >= spec.entry + EngineConfig.TRAIL_ACTIVATE_ATR * spec.atr) {
+                    stop = maxOf(stop, highest - EngineConfig.TRAIL_DISTANCE_ATR * spec.atr)
+                }
+            }
+        } else if (spec.target != null && spec.stop != null) {
+            val target: Double = spec.target
+            val stop: Double = spec.stop
+            for (q in 0 until span) {
                 val k = entryIdx + q
                 if (c.low[k] <= stop) return Resolution(k, minOf(stop, c.open[k]), ExitReason.STOP)
                 if (c.high[k] >= target) return Resolution(k, maxOf(target, c.open[k]), ExitReason.TARGET)
             }
         }
-        val last = entryIdx + limit - 1
+        val last = entryIdx + spec.limit - 1
         return if (last < n) Resolution(last, c.close[last], ExitReason.TIME) else null
+    }
+
+    /** The classic rule's form of [resolve]: a target and stop together, or neither (a plain hold). */
+    fun resolve(c: Candles, entryIdx: Int, target: Double?, stop: Double?, limit: Int): Resolution? =
+        resolve(c, entryIdx, ExitSpec(if (target != null && stop != null) ExitMode.CLASSIC else ExitMode.HELD,
+            if (entryIdx in 0 until c.size) c.open[entryIdx] else Double.NaN, Double.NaN, target, stop, limit))
+
+    /**
+     * Paper trades for a batch of signals under any exit rule, ending each the way [resolve] does, so a backtest and a
+     * live scan cannot disagree about an exit. The classic and held rules go through [simulateExits] unchanged.
+     */
+    fun simulate(c: Candles, signalIdx: IntArray, tf: Timeframe, atr: DoubleArray, rule: ExitRule): Exits {
+        if (rule.mode == ExitMode.CLASSIC) return simulateExits(c, signalIdx, tf, atr, null)
+        if (rule.mode == ExitMode.HELD && !rule.endOfDay) return simulateExits(c, signalIdx, tf, atr, rule.limit)
+        val n = c.size
+        val m = signalIdx.size
+        val valid = BooleanArray(m)
+        val entryPrice = DoubleArray(m) { Double.NaN }
+        val exitPrice = DoubleArray(m) { Double.NaN }
+        val gross = DoubleArray(m) { Double.NaN }
+        val exitIdx = IntArray(m) { -1 }
+        val reason = arrayOfNulls<ExitReason>(m)
+        for (j in 0 until m) {
+            val s = signalIdx[j]
+            val e = s + 1
+            val a = atr[minOf(s, n - 1)]
+            if (a.isNaN() || !rule.allows(c, s)) continue
+            val limit = rule.limitAt(c.t[s] + c.tf.ms, c.tf)
+            if (e + limit - 1 >= n) continue
+            val spec = rule.spec(c.open[e], a, limit)
+            val r = resolve(c, e, spec) ?: continue
+            valid[j] = true
+            entryPrice[j] = c.open[e]
+            exitPrice[j] = r.exitPrice
+            gross[j] = r.exitPrice / c.open[e] - 1
+            exitIdx[j] = r.exitIdx
+            reason[j] = r.reason
+        }
+        return Exits(valid, entryPrice, exitPrice, gross, exitIdx, reason)
+    }
+
+    /** How far a trade that entered at candle [entryIdx] and left on [exitIdx] ran up and down, and how many candles the high took. */
+    class Excursion(val maxUp: Double, val maxDown: Double, val barsToPeak: Int)
+
+    fun excursion(c: Candles, entryIdx: Int, exitIdx: Int, entry: Double): Excursion {
+        var high = Double.NEGATIVE_INFINITY
+        var low = Double.POSITIVE_INFINITY
+        var at = 0
+        for (k in entryIdx..exitIdx) {
+            if (c.high[k] > high) {
+                high = c.high[k]
+                at = k - entryIdx + 1
+            }
+            if (c.low[k] < low) low = c.low[k]
+        }
+        return Excursion(high / entry - 1, low / entry - 1, at)
     }
 
     /**

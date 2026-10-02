@@ -10,7 +10,7 @@ object CandleClock {
     fun nextClose(tf: Timeframe, now: Long): Long = (Math.floorDiv(now, tf.ms) + 1) * tf.ms
 
     /** The next instant after [now] at which a candle of any timeframe closes. */
-    fun nextClose(now: Long): Long = Timeframe.entries.minOf { nextClose(it, now) }
+    fun nextClose(now: Long, among: Collection<Timeframe> = Timeframe.entries): Long = among.minOf { nextClose(it, now) }
 
     /** The latest instant at or before [now] at which a [tf] candle closed. */
     fun lastClose(tf: Timeframe, now: Long): Long = Math.floorDiv(now, tf.ms) * tf.ms

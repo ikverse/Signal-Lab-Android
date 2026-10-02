@@ -28,6 +28,12 @@ class NewTrade(
     val stop: Double?,
     val holdBars: Int,
     val exitDue: Long,
+    /** Round-trip cost the trade was charged, as a fraction; null on a trade from before it was kept (the old costs apply). */
+    val cost: Double? = null,
+    /** How the trade exits ("trail", "learned", "held", "classic"); null on a trade from before exits were chosen per pattern. */
+    val exitMode: String? = null,
+    /** The candle size at the signal; a trailing trade is measured in it. */
+    val atr: Double? = null,
 )
 
 class TradeExit(
@@ -39,6 +45,10 @@ class TradeExit(
     val net: Double,
     val randomMean: Double?,
     val excess: Double?,
+    /** The best the trade ever showed, the worst dip it sat through, and how many candles its high took. */
+    val maxUp: Double? = null,
+    val maxDown: Double? = null,
+    val barsToPeak: Int? = null,
 )
 
 class LiveTrade(val id: Long, val trade: NewTrade, val openedAt: Long, val exit: TradeExit?, val closedAt: Long?)
@@ -75,6 +85,7 @@ class TradeLog(
             put("regime", t.regime); put("entry_time", t.entryTime); put("entry_price", t.entryPrice)
             put("target", t.target); put("stop", t.stop); put("hold_bars", t.holdBars)
             put("exit_due", t.exitDue); put("opened_at", clock())
+            put("cost", t.cost); put("exit_mode", t.exitMode); put("atr", t.atr)
         }
         val id = d.insertWithOnConflict("live_trades", null, cv, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE)
         if (id == -1L) null else id
@@ -86,6 +97,7 @@ class TradeLog(
             put("trade_id", tradeId); put("exit_time", x.exitTime); put("exit_price", x.exitPrice)
             put("exit_reason", x.reason.label); put("bars_held", x.barsHeld); put("gross", x.gross)
             put("net", x.net); put("random_mean", x.randomMean); put("excess", x.excess); put("closed_at", clock())
+            put("max_up", x.maxUp); put("max_down", x.maxDown); put("bars_to_peak", x.barsToPeak)
         }
         d.insertWithOnConflict("live_exits", null, cv, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
@@ -108,7 +120,8 @@ class TradeLog(
         if (symbol != null) { where.add("t.symbol=?"); args.add(symbol) }
         val sql = "SELECT t.id, t.variant, t.family, t.symbol, t.tf, t.list_id, t.bar_time, t.detected_at, t.regime, t.entry_time, " +
             "t.entry_price, t.target, t.stop, t.hold_bars, t.exit_due, t.opened_at, " +
-            "x.exit_time, x.exit_price, x.exit_reason, x.bars_held, x.gross, x.net, x.random_mean, x.excess, x.closed_at " +
+            "x.exit_time, x.exit_price, x.exit_reason, x.bars_held, x.gross, x.net, x.random_mean, x.excess, x.closed_at, " +
+            "t.cost, t.exit_mode, t.atr, x.max_up, x.max_down, x.bars_to_peak " +
             "FROM live_trades t LEFT JOIN live_exits x ON x.trade_id=t.id" +
             (if (where.isEmpty()) "" else " WHERE " + where.joinToString(" AND ")) +
             " ORDER BY t.detected_at DESC, t.id DESC LIMIT ?"
@@ -123,11 +136,13 @@ class TradeLog(
             listId = c.getLong(5), barTime = c.getLong(6), detectedAt = c.getLong(7), regime = c.getInt(8),
             entryTime = c.getLong(9), entryPrice = c.getDouble(10), target = c.doubleOrNull(11), stop = c.doubleOrNull(12),
             holdBars = c.getInt(13), exitDue = c.getLong(14),
+            cost = c.doubleOrNull(25), exitMode = if (c.isNull(26)) null else c.getString(26), atr = c.doubleOrNull(27),
         )
         val exit = if (c.isNull(16)) null else TradeExit(
             exitTime = c.getLong(16), exitPrice = c.getDouble(17), reason = ExitReason.of(c.getString(18)),
             barsHeld = c.getInt(19), gross = c.getDouble(20), net = c.getDouble(21),
             randomMean = c.doubleOrNull(22), excess = c.doubleOrNull(23),
+            maxUp = c.doubleOrNull(28), maxDown = c.doubleOrNull(29), barsToPeak = if (c.isNull(30)) null else c.getInt(30),
         )
         return LiveTrade(c.getLong(0), trade, c.getLong(15), exit, if (c.isNull(24)) null else c.getLong(24))
     }
