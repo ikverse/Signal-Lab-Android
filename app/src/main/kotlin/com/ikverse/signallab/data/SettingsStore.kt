@@ -34,5 +34,11 @@ class SettingsStore(
     companion object {
         /** `https://api.binance.com` or `https://api.binance.us`. */
         const val DATA_HOST = "data_host"
+
+        /** Keep a foreground service and an alarm so candles are scanned with the app closed. On unless the user turns it off. */
+        const val SCAN_IN_BACKGROUND = "scan_in_background"
+
+        /** Which permission prompts have already been shown, so none is asked twice. */
+        const val ASKED_PREFIX = "asked_"
     }
 }

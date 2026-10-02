@@ -14,4 +14,10 @@ interface DebugState {
 
     /** Makes a list from the 30 biggest coins by volume and switches it on, so history starts downloading. */
     fun createTestList()
+
+    /** Scans every timeframe's newest closed candle now: a real scan, exactly what the alarm runs. */
+    fun scanNow()
+
+    /** Posts a notification through the real channel and permission checks, to see that alerts reach the phone. */
+    fun sendTestAlert()
 }

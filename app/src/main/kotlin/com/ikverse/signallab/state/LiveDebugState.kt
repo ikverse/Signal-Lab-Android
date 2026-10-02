@@ -1,7 +1,9 @@
 package com.ikverse.signallab.state
 
 import com.ikverse.signallab.BuildConfig
+import com.ikverse.signallab.data.TradeStatus
 import com.ikverse.signallab.engine.Timeframe
+import com.ikverse.signallab.scan.ScanService
 import com.ikverse.signallab.ui.DebugState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -45,7 +47,7 @@ class LiveDebugState(private val graph: AppGraph, private val scope: CoroutineSc
         val progress = graph.history.progress.value
         val rows = graph.candles.rowsByTimeframe()
         return buildList {
-            add("Signal Lab ${BuildConfig.VERSION_NAME}  (debug readout, M3)")
+            add("Signal Lab ${BuildConfig.VERSION_NAME}  (debug readout, M4)")
             add("Binance clock: phone is ${"%+d".format(graph.market.clockSkewMs)} ms behind  ·  SQLite $sqliteVersion  ·  Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
             add("Pair list: $coins pairs, $offered offered" + (refreshed?.let { ", refreshed ${(now - it) / 60_000} min ago" } ?: ", not downloaded yet"))
             if (lists.isEmpty()) add("Lists: none yet") else for (l in lists) add("List \"${l.name}\": ${if (l.active) "active" else "off"}, ${l.symbols.size} coins")
@@ -56,9 +58,50 @@ class LiveDebugState(private val graph: AppGraph, private val scope: CoroutineSc
             )
             add("Candles stored: " + Timeframe.entries.joinToString("  ") { "${it.label} ${"%,d".format(rows[it] ?: 0L)}" } + "  (total ${"%,d".format(rows.values.sum())})")
             progress.failures.entries.take(3).forEach { add("failed ${it.key}: ${it.value}") }
+            val health = graph.health.snapshot.value
+            val clock = java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM)
+            add(
+                "Scanning: service ${if (ScanService.running) "running" else "stopped"}  ·  alarms ${if (graph.alarms.exact) "exact" else "approximate"}  ·  " +
+                    (health.nextScanAt?.let { "next scan ${clock.format(java.util.Date(it))}" } ?: "no scan armed") +
+                    (health.scanning?.let { "  ·  scanning ${it.label}" } ?: ""),
+            )
+            for (tf in Timeframe.entries) {
+                val r = health.last[tf] ?: continue
+                add(
+                    "Last ${tf.label} scan ${clock.format(java.util.Date(r.at))}: ${r.coins} coins, ${r.signals} signals, ${r.opened} opened, " +
+                        "${r.closed} closed, ${r.missed} missed" + (if (r.failures.isNotEmpty()) ", ${r.failures.size} failed" else "") +
+                        (if (r.waiting) ", waiting" else "") + (r.note?.let { ", $it" } ?: ""),
+                )
+            }
+            val open = graph.tradeLog.trades(TradeStatus.OPEN, limit = Int.MAX_VALUE)
+            add("Paper trades: ${open.size} open, ${graph.tradeLog.trades(TradeStatus.CLOSED, limit = Int.MAX_VALUE).size} closed")
+            add("Prices: ${graph.priceFeed.state.value.name.lowercase()}, ${graph.priceFeed.prices.value.size} coins quoted")
+            val grants = graph.permissions.grants()
+            add("Allowed: alerts ${yesNo(grants.notifications)}  ·  exact alarms ${yesNo(grants.exactAlarms)}  ·  battery exemption ${yesNo(grants.batteryExempt)}")
+            health.lastProblem?.let { add("scan problem: $it") }
             graph.lastProblem.value?.let { add("problem: $it") }
             note?.let { add(it) }
         }
+    }
+
+    private fun yesNo(v: Boolean) = if (v) "yes" else "no"
+
+    override fun scanNow() {
+        scope.launch {
+            note = "scanning..."
+            note = try {
+                graph.controller.scanAll()
+                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                "scan failed: ${e.message}"
+            }
+        }
+    }
+
+    override fun sendTestAlert() {
+        note = if (graph.notifier.postTest()) null else "test alert not shown: notifications are off for Signal Lab"
     }
 
     override fun refreshPairList() {

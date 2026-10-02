@@ -18,12 +18,46 @@ class Exits(
     val reason: Array<ExitReason?>,
 )
 
+/** Where an open trade ended, found in candles that have closed. */
+class Resolution(val exitIdx: Int, val exitPrice: Double, val reason: ExitReason)
+
 /**
  * The paper-trading rules. A signal on bar s enters at the open of bar s+1 and exits at the first of
  * a target (2x ATR above), a stop (1x ATR below) or a time limit. If one candle touches both, the
  * stop is assumed to have come first. A gap through a level fills at the open, not at the level.
  */
 object PaperTrading {
+    /** The target for an entry at [entry] when the coin's average true range is [atr]. */
+    fun targetPrice(entry: Double, atr: Double): Double = entry + EngineConfig.TARGET_ATR * atr
+
+    /** The stop for an entry at [entry] when the coin's average true range is [atr]. */
+    fun stopPrice(entry: Double, atr: Double): Double = entry - EngineConfig.STOP_ATR * atr
+
+    /**
+     * Where a trade that entered at the open of candle [entryIdx] stands, judged on the candles in [c],
+     * which are all closed. Returns its exit if it has one, and null while it is still open.
+     *
+     * The rules are [simulateExits]'s, applied one candle at a time: the first candle to touch the
+     * [stop] or the [target] ends the trade (the stop wins when one candle touches both, and a gap
+     * fills at the open), and otherwise it ends at the close of the [limit]th candle. With no target
+     * and stop (a fixed holding period) only the time limit applies. [simulateExits] only counts a
+     * trade once its whole window exists, even if it stopped out early; this reports the same exit as
+     * soon as it has happened, so a live trade closes when its candle does, not days later.
+     */
+    fun resolve(c: Candles, entryIdx: Int, target: Double?, stop: Double?, limit: Int): Resolution? {
+        val n = c.size
+        if (entryIdx < 0 || entryIdx >= n) return null
+        if (target != null && stop != null) {
+            for (q in 0 until minOf(limit, n - entryIdx)) {
+                val k = entryIdx + q
+                if (c.low[k] <= stop) return Resolution(k, minOf(stop, c.open[k]), ExitReason.STOP)
+                if (c.high[k] >= target) return Resolution(k, maxOf(target, c.open[k]), ExitReason.TARGET)
+            }
+        }
+        val last = entryIdx + limit - 1
+        return if (last < n) Resolution(last, c.close[last], ExitReason.TIME) else null
+    }
+
     /**
      * @param holdBars when set, the trade has no target or stop and is held that many candles.
      */
@@ -52,8 +86,8 @@ object PaperTrading {
                 price = c.close[e + limit - 1]
                 why = ExitReason.TIME
             } else {
-                val target = entry + EngineConfig.TARGET_ATR * a
-                val stop = entry - EngineConfig.STOP_ATR * a
+                val target = targetPrice(entry, a)
+                val stop = stopPrice(entry, a)
                 var firstStop = limit
                 var firstTarget = limit
                 for (q in 0 until limit) {

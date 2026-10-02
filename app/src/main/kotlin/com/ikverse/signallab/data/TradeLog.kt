@@ -61,6 +61,9 @@ class TradeLog(
 ) {
     private val lock = Mutex()
 
+    /** The log's own clock, which stamps every alert; cooldowns are measured against it. */
+    fun now(): Long = clock()
+
     private suspend fun <T> access(block: (android.database.sqlite.SQLiteDatabase) -> T): T =
         lock.withLock { withContext(io) { block(db.writableDatabase) } }
 
@@ -139,6 +142,24 @@ class TradeLog(
             }
             d.insert("alerts", null, cv)
         }
+
+    /** Writes the alert and returns it as stored, so the notification can carry its id and time. */
+    suspend fun record(kind: String, title: String, body: String, symbol: String? = null, tf: String? = null, link: String? = null): Alert {
+        val ts = clock()
+        val id = access { d ->
+            val cv = android.content.ContentValues().apply {
+                put("ts", ts); put("kind", kind); put("symbol", symbol); put("tf", tf)
+                put("title", title); put("body", body); put("link", link)
+            }
+            d.insert("alerts", null, cv)
+        }
+        return Alert(id, ts, kind, symbol, tf, title, body, link)
+    }
+
+    /** When an alert of this kind and exact title was last raised; 0 if never. Used so a standing problem is not repeated. */
+    suspend fun lastAlertTimeTitled(kind: String, title: String): Long = access { d ->
+        d.rawQuery("SELECT COALESCE(MAX(ts), 0) FROM alerts WHERE kind=? AND title=?", arrayOf(kind, title)).use { it.moveToFirst(); it.getLong(0) }
+    }
 
     suspend fun alerts(limit: Int = 100): List<Alert> = access { d ->
         d.rawQuery("SELECT id, ts, kind, symbol, tf, title, body, link FROM alerts ORDER BY id DESC LIMIT ?", arrayOf(limit.toString())).use { c ->

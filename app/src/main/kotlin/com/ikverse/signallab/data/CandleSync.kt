@@ -1,5 +1,6 @@
 package com.ikverse.signallab.data
 
+import com.ikverse.signallab.data.binance.Kline
 import com.ikverse.signallab.data.binance.MarketData
 import com.ikverse.signallab.engine.Timeframe
 
@@ -10,6 +11,11 @@ class SyncResult(
     val healedHoles: Int,
     /** The coin has less history than the window, because it listed more recently. */
     val youngerThanWindow: Boolean,
+    /**
+     * The candle that was still forming, as Binance served it, or null if the fetch did not reach it.
+     * It is never stored; its open is the price a paper trade enters at the moment the candle begins.
+     */
+    val forming: Kline? = null,
 )
 
 /**
@@ -27,10 +33,11 @@ class CandleSync(private val market: MarketData, private val store: CandleStore)
         var inserted = 0
         var healed = 0
         val now = market.nowMs()
+        val forming = Forming()
 
         // 1. Forward from the newest stored candle (or the start of the window, the first time).
         val last = store.lastOpen(symbol, tf)
-        inserted += fetchRange(symbol, tf, if (last == null) since else last + tf.ms, null, now)
+        inserted += fetchRange(symbol, tf, if (last == null) since else last + tf.ms, null, now, forming)
 
         // 2. Holes inside what is stored, including any in the candles just fetched.
         val known = store.knownGaps(symbol, tf)
@@ -52,19 +59,23 @@ class CandleSync(private val market: MarketData, private val store: CandleStore)
         }
 
         val firstNow = store.firstOpen(symbol, tf)
-        return SyncResult(inserted, healed, youngerThanWindow = firstNow != null && firstNow > since + tf.ms)
+        return SyncResult(inserted, healed, youngerThanWindow = firstNow != null && firstNow > since + tf.ms, forming = forming.kline)
     }
+
+    /** Remembers the forming candle seen while paging, which is the last one of the last page. */
+    private class Forming(var kline: Kline? = null)
 
     /**
      * Fetches pages from [from] until a short page, or past [untilInclusive] when given. Stores only
      * candles that had closed by [now]. Returns how many were new.
      */
-    private suspend fun fetchRange(symbol: String, tf: Timeframe, from: Long, untilInclusive: Long?, now: Long): Int {
+    private suspend fun fetchRange(symbol: String, tf: Timeframe, from: Long, untilInclusive: Long?, now: Long, forming: Forming? = null): Int {
         var next = from
         var total = 0
         while (true) {
             val page = market.klines(symbol, tf, next, DataConfig.KLINE_PAGE)
             if (page.isEmpty()) break
+            if (forming != null) page.lastOrNull { it.closeTime >= now }?.let { forming.kline = it }
             val closed = page.filter { it.closeTime < now && (untilInclusive == null || it.openTime <= untilInclusive) }
             if (closed.isNotEmpty()) total += store.insertKlines(symbol, tf, closed)
             val lastOpen = page.last().openTime
