@@ -42,6 +42,9 @@ class SettingsStore(
         /** Keep a foreground service and an alarm so candles are scanned with the app closed. On unless the user turns it off. */
         const val SCAN_IN_BACKGROUND = "scan_in_background"
 
+        /** Follow charts under an hour with the service awake. On unless the user turns it off; it costs battery. */
+        const val FOLLOW_FAST_CHARTS = "follow_fast_charts"
+
         /** The exchange fee one way, as a fraction. Binance's entry tier is 0.001; BNB and VIP rates are lower. */
         const val FEE_PER_SIDE = "fee_per_side"
 

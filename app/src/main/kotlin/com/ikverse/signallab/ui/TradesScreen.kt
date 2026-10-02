@@ -1,0 +1,111 @@
+package com.ikverse.signallab.ui
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+enum class TradeFilter(val label: String) { All("All"), Open("Open"), Closed("Closed") }
+
+/** Which trades pass the filters: the status, and a search over the coin, the pattern and the chart. Pure, so a test can hold it to its word. */
+fun filterTrades(trades: List<TradeUi>, status: TradeFilter, query: String): List<TradeUi> {
+    val q = query.trim().lowercase()
+    return trades.filter { t ->
+        when (status) {
+            TradeFilter.All -> true
+            TradeFilter.Open -> t.closed == null
+            TradeFilter.Closed -> t.closed != null
+        } && (q.isEmpty() || q in t.symbol.lowercase() || q in t.label.lowercase() || q in t.variant.lowercase() || q == t.timeframe.lowercase())
+    }
+}
+
+/** One line over a set of trades: how many, and the average result of the closed ones. */
+fun tradesSummary(trades: List<TradeUi>): String {
+    val closed = trades.mapNotNull { it.closed }
+    val open = trades.size - closed.size
+    val mean = if (closed.isEmpty()) null else closed.sumOf { it.net } / closed.size
+    return "$open open · ${closed.size} closed" + (mean?.let { " · average ${Fmt.signedPercent(it)} after costs" } ?: "")
+}
+
+/** Every paper trade, newest first, with what each one did. */
+@Composable
+fun TradesScreen(model: TradesModel, onOpenCoin: (String, String) -> Unit, onOpenLearn: (String) -> Unit, modifier: Modifier = Modifier) {
+    val all by model.trades.collectAsStateWithLifecycle()
+    var status by rememberSaveable { mutableStateOf(TradeFilter.All) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var expanded by rememberSaveable { mutableStateOf<Long?>(null) }
+    val shown = filterTrades(all, status, query)
+    Column(modifier.fillMaxSize().testTag("trades")) {
+        ScreenTitle("Paper trades")
+        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
+            for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { status = f })
+        }
+        PlainField(query, { query = it }, "Filter by coin, pattern or chart")
+        Text(tradesSummary(shown), style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("trades-summary"))
+        HRule()
+        when {
+            all.isEmpty() -> EmptyState("No paper trades yet", "When a pattern appears on a coin you are watching, a pretend trade is recorded here. No real money is used.")
+            shown.isEmpty() -> EmptyState("Nothing matches", "Change the filter or the search.")
+            else -> LazyColumn(Modifier.weight(1f)) {
+                items(shown, key = { it.id }) { t ->
+                    TradeRow(t, expanded == t.id, { expanded = if (expanded == t.id) null else t.id }, onOpenCoin, onOpenLearn)
+                    HRule()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TradeRow(t: TradeUi, open: Boolean, onToggle: () -> Unit, onOpenCoin: (String, String) -> Unit, onOpenLearn: (String) -> Unit) {
+    TouchRow(onToggle, modifier = Modifier.testTag("trade-${t.id}")) {
+        Column(Modifier.weight(1f)) {
+            Text(t.label, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${t.symbol.removeSuffix("USDT")} · ${t.timeframe} · ${Fmt.dateTime(t.openedAt)}", style = Type.Small)
+        }
+        val c = t.closed
+        if (c == null) Text("open", style = Type.Small) else Text(Fmt.signedPercent(c.net), style = Type.NumberStrong.copy(color = Fmt.changeColor(c.net)))
+    }
+    if (open) {
+        Column(Modifier.padding(bottom = 8.dp)) {
+            LabelValue("Entry", Fmt.price(t.entryPrice))
+            val c = t.closed
+            if (c == null) {
+                LabelValue("How it ends", exitText(t))
+            } else {
+                LabelValue("Exit", "${Fmt.price(c.exitPrice)} (${exitWords(c.reason)}, ${Fmt.dateTime(c.exitTime)})")
+                LabelValue("Result after costs", Fmt.signedPercent(c.net), valueColor = Fmt.changeColor(c.net))
+                LabelValue("Random entries averaged", Fmt.signedPercent(c.randomMean))
+                LabelValue("Best it reached", Fmt.signedPercent(c.maxUp))
+                LabelValue("Worst dip on the way", Fmt.signedPercent(c.maxDown))
+                LabelValue("Held for", "${c.barsHeld} ${if (c.barsHeld == 1) "candle" else "candles"}")
+            }
+            Row {
+                TextAction("Show on chart", { onOpenCoin(t.symbol, t.timeframe) })
+                TextAction("What is this pattern?", { onOpenLearn(t.variant) }, color = Palette.Muted)
+            }
+        }
+    }
+}
+
+fun exitWords(reason: String) = when (reason) {
+    "target" -> "target hit"
+    "stop" -> "stopped out"
+    "time" -> "time limit"
+    else -> reason
+}

@@ -60,7 +60,16 @@ class AppGraph(context: Context, scope: CoroutineScope) {
     val controller = ScanController(
         scanner, market, alarms, tradeLog, notifier, health,
         hasWork = ::scanWanted, skewMs = { market.clockSkewMs }, housekeeping = ::tidyIfDue,
+        followFast = { settings.getBoolean(SettingsStore.FOLLOW_FAST_CHARTS, true) },
     )
+
+    /** Which exchange host the app talks to: Binance.com, or Binance.US for networks that cannot reach it. */
+    suspend fun useHost(url: String) {
+        settings.set(SettingsStore.DATA_HOST, url)
+        host = url
+    }
+
+    fun currentHost(): String = host
 
     /** Live prices, only while a screen is showing them. */
     val priceFeed = PriceFeed(BinanceClient.defaultHttp(), { DataConfig.streamFor(host) }, scope)

@@ -1,33 +1,28 @@
 package com.ikverse.signallab
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.ikverse.signallab.ui.DebugPanel
-import com.ikverse.signallab.ui.PermissionDialogs
+import com.ikverse.signallab.scan.Notifier
 import com.ikverse.signallab.ui.PermissionPrompt
+import com.ikverse.signallab.ui.SignalLabApp
 import kotlinx.coroutines.launch
 
-/** The real screens arrive in M5. Until then a debug build shows the data layer working, and a release build shows its name. */
+/** The one screen. It holds the app's frame and the system hand-offs the frame cannot do itself: permissions, and opening a coin from a notification. */
 class MainActivity : ComponentActivity() {
     private val app get() = application as SignalLabApplication
-    private var prices: AutoCloseable? = null
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         lifecycleScope.launch { app.graph.permissions.evaluate() }
@@ -35,55 +30,85 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            PermissionDialogs(app.graph.permissions)
-            if (BuildConfig.DEBUG) {
-                DebugPanel(app.debugState)
-            } else {
-                Box(Modifier.fillMaxSize().background(Color(0xFF050505)), contentAlignment = Alignment.Center) {
-                    Text("Signal Lab ${BuildConfig.VERSION_NAME}", color = Color(0xFFD1D4DC))
-                }
-            }
-        }
+        val dark = SystemBarStyle.dark(0xFF050505.toInt())
+        enableEdgeToEdge(statusBarStyle = dark, navigationBarStyle = dark)
+        // A notification tap that starts the app opens its coin. Not again after the system restores the screen.
+        if (savedInstanceState == null) app.model.open(intent.getStringExtra(Notifier.EXTRA_LINK))
+        setContent { SignalLabApp(app.model, debug = BuildConfig.DEBUG) }
         lifecycleScope.launch {
             app.graph.permissions.accepted.collect { openSystemPrompt(it) }
         }
         lifecycleScope.launch {
-            // While the app is on screen: follow the active lists, keep the background service in step with
-            // them, ask for what scanning needs once there is something to scan, and stream prices for them.
+            app.model.openSystemScreen.collect { openSettingsScreen(it) }
+        }
+        lifecycleScope.launch {
+            // While the app is on screen: keep the background service in step with the active lists, and ask for what
+            // scanning needs once there is something to scan.
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                app.graph.watchlists.lists.collect { lists ->
+                app.graph.watchlists.lists.collect {
                     app.graph.syncService(applicationContext)
                     app.graph.permissions.evaluate()
-                    prices?.close()
-                    prices = app.graph.priceFeed.watch(lists.filter { it.active }.flatMap { it.symbols }.toSet())
                 }
             }
         }
+    }
+
+    /** A notification tapped while the app is already open. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        app.model.open(intent.getStringExtra(Notifier.EXTRA_LINK))
     }
 
     override fun onResume() {
         super.onResume()
         // Returning from a system settings screen: the answer may have changed, so ask again what is next.
-        lifecycleScope.launch { app.graph.permissions.evaluate() }
+        lifecycleScope.launch {
+            app.graph.permissions.evaluate()
+            app.model.refreshSettings()
+        }
     }
 
-    override fun onStop() {
-        prices?.close()
-        prices = null
-        super.onStop()
+    private fun launch(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            // Some phones have no such screen: the app's own page in Settings is always there.
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        }
     }
 
+    /** The first-run ask: the user said yes to the explanation, so show Android's own prompt. */
     private fun openSystemPrompt(prompt: PermissionPrompt) {
         when (prompt) {
             PermissionPrompt.NOTIFICATIONS ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
             PermissionPrompt.EXACT_ALARMS ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+                    launch(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
                 }
             PermissionPrompt.BATTERY ->
-                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                launch(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        }
+    }
+
+    /**
+     * Settings asked for one of Android's own screens. Alerts go to the app's notification settings (Android only shows its prompt
+     * once, so it cannot be asked again), alarms to their page, and battery to the exemption prompt, or the list if already exempt.
+     */
+    private fun openSettingsScreen(prompt: PermissionPrompt) {
+        when (prompt) {
+            PermissionPrompt.NOTIFICATIONS ->
+                launch(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+            PermissionPrompt.EXACT_ALARMS ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    launch(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+                } else {
+                    launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                }
+            PermissionPrompt.BATTERY ->
+                if (app.graph.permissions.grants().batteryExempt) launch(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                else launch(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
         }
     }
 }

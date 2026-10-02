@@ -110,7 +110,37 @@ class CandleStore(
         } finally {
             db.endTransaction()
         }
+        if (added > 0) changes.value = changes.value + 1
         added
+    }
+
+    private val changes = kotlinx.coroutines.flow.MutableStateFlow(0L)
+
+    /** Goes up whenever new candles are stored, so a chart on screen knows to read again. */
+    val version: kotlinx.coroutines.flow.StateFlow<Long> = changes
+
+    /** The close of the newest candle opening at or before [time], or null if there is none. */
+    suspend fun closeAt(symbol: String, tf: Timeframe, time: Long): Double? = access { db ->
+        db.rawQuery("SELECT close FROM candles WHERE symbol=? AND tf=? AND open_time<=? ORDER BY open_time DESC LIMIT 1",
+            arrayOf(symbol, tf.label, time.toString())).use { if (it.moveToFirst()) it.getDouble(0) else null }
+    }
+
+    /** The newest [n] stored candles, oldest first. */
+    suspend fun latest(symbol: String, tf: Timeframe, n: Int): Candles? = access { db ->
+        db.rawQuery("SELECT open_time, open, high, low, close, volume, close_time FROM (SELECT * FROM candles WHERE symbol=? AND tf=? " +
+            "ORDER BY open_time DESC LIMIT ?) ORDER BY open_time", arrayOf(symbol, tf.label, n.toString())).use { c ->
+            val count = c.count
+            if (count == 0) return@use null
+            val t = LongArray(count); val o = DoubleArray(count); val h = DoubleArray(count); val l = DoubleArray(count)
+            val cl = DoubleArray(count); val v = DoubleArray(count); val ct = LongArray(count)
+            var i = 0
+            while (c.moveToNext()) {
+                t[i] = c.getLong(0); o[i] = c.getDouble(1); h[i] = c.getDouble(2); l[i] = c.getDouble(3)
+                cl[i] = c.getDouble(4); v[i] = c.getDouble(5); ct[i] = c.getLong(6)
+                i++
+            }
+            Candles(symbol, tf, t, o, h, l, cl, v, ct)
+        }
     }
 
     suspend fun firstOpen(symbol: String, tf: Timeframe): Long? = scalar("MIN(open_time)", symbol, tf)

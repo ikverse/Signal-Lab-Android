@@ -97,6 +97,7 @@ class ScanService : Service() {
     private fun ensureFastLoop() {
         if (fastJob?.isActive == true) return
         fastJob = scope.launch {
+            if (!graph.settings.getBoolean(com.ikverse.signallab.data.SettingsStore.FOLLOW_FAST_CHARTS, true)) return@launch
             if (graph.scanner.timeframesInUse().none { it.isFast }) return@launch
             val lock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "signallab:fast")
             val renew = launch {
