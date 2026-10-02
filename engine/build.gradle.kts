@@ -21,6 +21,9 @@ kotlin {
 
 dependencies {
     testImplementation(libs.junit)
+    testImplementation(kotlin("test"))
+    // Reads the golden files exported from the research version.
+    testImplementation(libs.json)
 }
 
 tasks.test {
