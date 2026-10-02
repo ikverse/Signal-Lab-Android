@@ -1,15 +1,36 @@
 package com.ikverse.signallab.engine
 
-/** The three candle sizes the app watches. */
-enum class Timeframe(val label: String, val hours: Int) {
-    H1("1h", 1),
-    H4("4h", 4),
-    D1("1d", 24);
+/** The candle sizes the app can watch, shortest first. Every one is aligned to the Unix epoch, as Binance serves it. */
+enum class Timeframe(val label: String, val minutes: Int) {
+    M1("1m", 1),
+    M5("5m", 5),
+    M15("15m", 15),
+    M30("30m", 30),
+    H1("1h", 60),
+    H4("4h", 240),
+    D1("1d", 1440);
 
-    val ms: Long get() = hours * 3_600_000L
+    val ms: Long get() = minutes * 60_000L
+
+    val barsPerDay: Int get() = 1440 / minutes
+
+    /** Shorter than an hour: scanned by a service that stays awake, not by an alarm. */
+    val isFast: Boolean get() = minutes < 60
 
     companion object {
         fun of(label: String): Timeframe = entries.first { it.label == label }
+
+        /** What a new list starts with. */
+        val NEW_LIST_DEFAULT: Set<Timeframe> = setOf(M15, H1, H4)
+
+        /** What lists that existed before timeframes could be chosen keep. */
+        val LEGACY_DEFAULT: Set<Timeframe> = setOf(H1, H4, D1)
+
+        /** Parses "15m,1h" into a set; unknown labels are ignored. */
+        fun parseSet(text: String): Set<Timeframe> =
+            text.split(',').mapNotNull { l -> entries.firstOrNull { it.label == l.trim() } }.toCollection(LinkedHashSet())
+
+        fun formatSet(set: Collection<Timeframe>): String = entries.filter { it in set }.joinToString(",") { it.label }
     }
 }
 

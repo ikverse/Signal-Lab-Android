@@ -79,4 +79,74 @@ class WatchlistRulesTest {
         val oldDepeg = DoubleArray(40) { 1.0 }.also { it[3] = 0.9 } // outside the last 30
         assertTrue(CoinFilter.looksStable(oldDepeg))
     }
+
+    // --- charts per list ------------------------------------------------------------------------------------------
+
+    private fun on(id: Long, symbols: List<String>, active: Boolean, vararg tfs: Timeframe) = Watchlist(id, "List $id", symbols, active, tfs.toSet())
+
+    @Test
+    fun aNewListIsWatchedOnFifteenMinutesOneHourAndFourHours() {
+        assertEquals(setOf(Timeframe.M15, Timeframe.H1, Timeframe.H4), Watchlist(1, "x", emptyList(), false).timeframes)
+        assertEquals(setOf(Timeframe.H1, Timeframe.H4, Timeframe.D1), Timeframe.LEGACY_DEFAULT)
+    }
+
+    @Test
+    fun oneMinuteChartsAreCappedAtTenCoinsAcrossAllActiveLists() {
+        val a = on(1, coins("A", 10), true, Timeframe.M1)
+        assertEquals(Refusal.OVER_FAST_CAP, WatchlistRules.checkAdd(listOf(a), a, "NEWUSDT"))
+        val b = on(2, coins("B", 3), false, Timeframe.M1, Timeframe.H1)
+        assertEquals(Refusal.OVER_FAST_CAP, WatchlistRules.checkActivate(listOf(a, b), b))
+        val sameCoins = on(3, coins("A", 3), false, Timeframe.M1)
+        assertNull(WatchlistRules.checkActivate(listOf(a, sameCoins), sameCoins), "coins already watched cost nothing more")
+        val slow = on(4, coins("S", 20), false, Timeframe.H1)
+        assertNull(WatchlistRules.checkActivate(listOf(a, slow), slow), "slower charts have their own cap")
+    }
+
+    @Test
+    fun fiveMinuteChartsAreCappedAtThirtyCoins() {
+        val a = on(1, coins("A", 30), true, Timeframe.M5)
+        val b = on(2, coins("B", 1), false, Timeframe.M5)
+        assertEquals(Refusal.OVER_FAST_CAP, WatchlistRules.checkActivate(listOf(a, b), b))
+        val c = on(3, coins("A", 5), false, Timeframe.M5)
+        assertNull(WatchlistRules.checkActivate(listOf(a, c), c))
+    }
+
+    @Test
+    fun theOverallCapOfOneHundredFiftyStillHoldsOnTheSlowerCharts() {
+        val lists = (1..5).map { on(it.toLong(), coins("L$it", 30), true, Timeframe.H1) }
+        val extra = on(9, coins("Z", 1), false, Timeframe.D1)
+        assertEquals(Refusal.OVER_ACTIVE_CAP, WatchlistRules.checkActivate(lists + extra, extra))
+    }
+
+    @Test
+    fun changingTheChartsOfAnActiveListIsCheckedAgainstTheCaps() {
+        val l = on(1, coins("A", 11), true, Timeframe.H1)
+        assertEquals(Refusal.NO_TIMEFRAME, WatchlistRules.checkTimeframes(listOf(l), l, emptySet()))
+        assertEquals(Refusal.OVER_FAST_CAP, WatchlistRules.checkTimeframes(listOf(l), l, setOf(Timeframe.H1, Timeframe.M1)))
+        assertNull(WatchlistRules.checkTimeframes(listOf(l), l, setOf(Timeframe.M5, Timeframe.H4)))
+        val off = on(2, coins("B", 30), false, Timeframe.H1)
+        assertNull(WatchlistRules.checkTimeframes(listOf(off), off, setOf(Timeframe.M1)), "a list that is off costs nothing, so it can be set up first")
+        assertEquals(Refusal.OVER_FAST_CAP, WatchlistRules.checkActivate(listOf(off.copy(timeframes = setOf(Timeframe.M1))), off.copy(timeframes = setOf(Timeframe.M1))))
+    }
+
+    @Test
+    fun eachCoinKnowsEveryChartItIsWatchedOn() {
+        val a = on(1, listOf("BTCUSDT", "ETHUSDT"), true, Timeframe.M15)
+        val b = on(2, listOf("ETHUSDT"), true, Timeframe.H1, Timeframe.D1)
+        val off = on(3, listOf("DOGEUSDT"), false, Timeframe.M1)
+        val by = WatchlistRules.timeframesByCoin(listOf(a, b, off))
+        assertEquals(setOf(Timeframe.M15), by["BTCUSDT"])
+        assertEquals(setOf(Timeframe.M15, Timeframe.H1, Timeframe.D1), by["ETHUSDT"])
+        assertNull(by["DOGEUSDT"])
+        assertEquals(listOf("BTCUSDT", "ETHUSDT"), WatchlistRules.activeCoinsOn(listOf(a, b, off), Timeframe.M15).toList())
+        assertEquals(listOf("ETHUSDT"), WatchlistRules.activeCoinsOn(listOf(a, b, off), Timeframe.D1).toList())
+    }
+
+    @Test
+    fun timeframesRoundTripThroughTheirStoredText() {
+        val set = setOf(Timeframe.H4, Timeframe.M5, Timeframe.D1)
+        assertEquals("5m,4h,1d", Timeframe.formatSet(set))
+        assertEquals(set, Timeframe.parseSet("5m,4h,1d"))
+        assertEquals(setOf(Timeframe.H1), Timeframe.parseSet("1h, 9x"))
+    }
 }

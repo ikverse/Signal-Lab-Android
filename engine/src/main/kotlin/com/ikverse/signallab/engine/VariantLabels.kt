@@ -11,6 +11,7 @@ object VariantLabels {
     private val tsMomentum = Regex("""tsmom(\d+)w_\w+""")
     private val xsMomentum = Regex("""xsmom(\d+)w_\w+""")
     private val fade = Regex("""fade(\d+)h_\w+""")
+    private val intradayMomentum = Regex("""intraday_mom_(\w+)""")
 
     /** A short description of what fired, e.g. "Breakout: close above the 20-candle high". Falls back to the name. */
     fun describe(variant: String): String {
@@ -20,7 +21,13 @@ object VariantLabels {
         xsMomentum.matchEntire(variant)?.let { return "Ranking: top fifth of the list by ${it.groupValues[1]}-week return" }
         if (variant.startsWith("fade1h_hold24_")) return "Drop fade: 1h fall beyond 2.5 deviations, held 24 candles"
         fade.matchEntire(variant)?.let { return "Drop fade: ${it.groupValues[1]}h fall beyond 2.5 deviations" }
-        if (variant == "intraday_mom_1h") return "Intraday momentum: strong first hour of the UTC day, held the last hour"
+        intradayMomentum.matchEntire(variant)?.let {
+            val first = if (it.groupValues[1] == "30m") "half-hour" else "hour"
+            return "Intraday momentum: strong first $first of the UTC day, held the last $first"
+        }
+        if (variant.startsWith("bullish_harami_")) return "Bullish harami: a small candle inside the body of a big red one"
+        if (variant.startsWith("bullish_hikkake_")) return "Bullish hikkake: a false break down out of an inside candle"
+        if (variant.startsWith("intraday_breakout_")) return "Intraday breakout: closed above the usual range around the day's open"
         return variant
     }
 }

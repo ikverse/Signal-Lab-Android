@@ -27,6 +27,10 @@ class SettingsStore(
         }
     }
 
+    suspend fun getDouble(key: String, default: Double): Double = get(key)?.toDoubleOrNull() ?: default
+
+    suspend fun setDouble(key: String, value: Double) = set(key, value.toString())
+
     suspend fun getBoolean(key: String, default: Boolean): Boolean = get(key)?.let { it == "true" } ?: default
 
     suspend fun setBoolean(key: String, value: Boolean) = set(key, value.toString())
@@ -37,6 +41,13 @@ class SettingsStore(
 
         /** Keep a foreground service and an alarm so candles are scanned with the app closed. On unless the user turns it off. */
         const val SCAN_IN_BACKGROUND = "scan_in_background"
+
+        /** The exchange fee one way, as a fraction. Binance's entry tier is 0.001; BNB and VIP rates are lower. */
+        const val FEE_PER_SIDE = "fee_per_side"
+
+        /** Extra cost per round trip for thin coins, as a fraction. Off (0) unless the user turns it on. */
+        const val EXTRA_COST_MAJORS = "extra_cost_majors"
+        const val EXTRA_COST_OTHERS = "extra_cost_others"
 
         /** Which permission prompts have already been shown, so none is asked twice. */
         const val ASKED_PREFIX = "asked_"

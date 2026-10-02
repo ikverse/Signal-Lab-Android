@@ -37,5 +37,8 @@ fun DebugPanel(state: DebugState) {
             TextButton(onClick = state::scanNow) { Text("Scan now", color = Color(0xFF2962FF)) }
             TextButton(onClick = state::sendTestAlert) { Text("Send test alert", color = Color(0xFF2962FF)) }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = state::createFastTestList) { Text("Create fast test list: 10 coins on 1m, 5m, 15m", color = Color(0xFF2962FF)) }
+        }
     }
 }

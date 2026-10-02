@@ -2,6 +2,7 @@ package com.ikverse.signallab.data
 
 import android.content.ContentValues
 import com.ikverse.signallab.engine.Refusal
+import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.Watchlist
 import com.ikverse.signallab.engine.WatchlistRules
 import kotlinx.coroutines.CoroutineDispatcher
@@ -48,8 +49,13 @@ class WatchlistRepository(
             d.rawQuery("SELECT list_id, symbol FROM watchlist_coins ORDER BY added_at, symbol", null).use { c ->
                 while (c.moveToNext()) coins.getOrPut(c.getLong(0)) { ArrayList() }.add(c.getString(1))
             }
-            d.rawQuery("SELECT id, name, active FROM watchlists ORDER BY position, id", null).use { c ->
-                buildList { while (c.moveToNext()) add(Watchlist(c.getLong(0), c.getString(1), coins[c.getLong(0)] ?: emptyList(), c.getInt(2) == 1)) }
+            d.rawQuery("SELECT id, name, active, timeframes FROM watchlists ORDER BY position, id", null).use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        add(Watchlist(c.getLong(0), c.getString(1), coins[c.getLong(0)] ?: emptyList(), c.getInt(2) == 1,
+                            Timeframe.parseSet(c.getString(3)).ifEmpty { Timeframe.LEGACY_DEFAULT }))
+                    }
+                }
             }
         }
     }
@@ -64,6 +70,7 @@ class WatchlistRepository(
             val next = d.rawQuery("SELECT COALESCE(MAX(position), 0) + 1 FROM watchlists", null).use { it.moveToFirst(); it.getInt(0) }
             d.insert("watchlists", null, ContentValues().apply {
                 put("name", clean); put("name_key", clean.lowercase()); put("active", 0); put("created_at", clock()); put("position", next)
+                put("timeframes", Timeframe.formatSet(Timeframe.NEW_LIST_DEFAULT))
             })
         }
         reload()
@@ -104,6 +111,17 @@ class WatchlistRepository(
         if (find(id) == null) return@withLock WatchlistResult.Refused(Refusal.LIST_NOT_FOUND)
         withContext(io) {
             db.writableDatabase.execSQL("DELETE FROM watchlist_coins WHERE list_id=? AND symbol=?", arrayOf<Any?>(id, symbol))
+        }
+        reload()
+        WatchlistResult.Ok(Unit)
+    }
+
+    /** The chart sizes a list is watched on. At least one; and on an active list the caps for 1-minute and 5-minute charts still hold. */
+    suspend fun setTimeframes(id: Long, timeframes: Set<Timeframe>): WatchlistResult<Unit> = lock.withLock {
+        val list = find(id) ?: return@withLock WatchlistResult.Refused(Refusal.LIST_NOT_FOUND)
+        WatchlistRules.checkTimeframes(state.value, list, timeframes)?.let { return@withLock WatchlistResult.Refused(it) }
+        withContext(io) {
+            db.writableDatabase.execSQL("UPDATE watchlists SET timeframes=? WHERE id=?", arrayOf<Any?>(Timeframe.formatSet(timeframes), id))
         }
         reload()
         WatchlistResult.Ok(Unit)

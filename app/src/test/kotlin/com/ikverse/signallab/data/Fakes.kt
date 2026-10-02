@@ -15,6 +15,9 @@ class FakeMarket(var now: Long) : MarketData {
     val klineCalls = ArrayList<Triple<String, Timeframe, Long>>()
     var symbolCalls = 0
 
+    /** Called at the start of every kline request, before it is answered: tests use it to hold a request or to act while it is in flight. */
+    var onKlines: (suspend (String, Timeframe) -> Unit)? = null
+
     /** When set, the Nth kline request and every one after it fails. */
     var failKlinesFrom: Int? = null
     var failWith: BinanceException = BinanceException.Network(null)
@@ -32,6 +35,7 @@ class FakeMarket(var now: Long) : MarketData {
 
     override suspend fun klines(symbol: String, tf: Timeframe, startTime: Long, limit: Int): List<Kline> {
         klineCalls.add(Triple(symbol, tf, startTime))
+        onKlines?.invoke(symbol, tf)
         if (failKlinesFrom != null && klineCalls.size >= failKlinesFrom!!) throw failWith
         val all = series[symbol to tf] ?: return emptyList()
         return all.filter { it.openTime >= startTime }.take(limit)

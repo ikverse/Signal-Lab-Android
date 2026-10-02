@@ -66,8 +66,28 @@ class InvarianceTest {
     }
 
     @Test
+    fun syntheticShortCharts() {
+        for ((tf, n, cuts) in listOf(Triple(Timeframe.M1, 3000, 6), Triple(Timeframe.M5, 3000, 5), Triple(Timeframe.M15, 3200, 5), Triple(Timeframe.M30, 2500, 5))) {
+            val panel = Synth.panel(2, n, tf)
+            assertTrue(hasSignals(panel), "${tf.label}: test data produced no signals")
+            assertEquals(emptyList(), repaintMismatches(Signals::compute, panel, cuts), tf.label)
+        }
+    }
+
+    @Test
+    fun theIntradayBreakoutAndTheCandlePatternsFireOnTheSyntheticCharts() {
+        val m15 = Signals.compute(Synth.panel(2, 3200, Timeframe.M15))
+        for (name in listOf("intraday_breakout_15m", "bullish_harami_15m", "bullish_hikkake_15m", "trend_ma20_15m", "donchian20_15m")) {
+            val key = m15.keys.firstOrNull { it.name == name } ?: error("$name missing")
+            assertTrue(m15.getValue(key).values.any { f -> f.any { it } }, "$name never fired")
+        }
+        val m30 = Signals.compute(Synth.panel(2, 2500, Timeframe.M30))
+        assertTrue(m30.keys.any { it.name == "intraday_mom_30m" })
+    }
+
+    @Test
     fun realCandlesOnEveryTimeframe() {
-        for ((tf, cuts) in listOf(Timeframe.D1 to 10, Timeframe.H4 to 6, Timeframe.H1 to 4)) {
+        for ((tf, cuts) in listOf(Timeframe.D1 to 10, Timeframe.H4 to 6, Timeframe.H1 to 4, Timeframe.M15 to 4, Timeframe.M1 to 3)) {
             assertEquals(emptyList(), repaintMismatches(Signals::compute, Golden.panel(tf), cuts), tf.label)
         }
     }

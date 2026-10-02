@@ -21,7 +21,9 @@ class RandomFingerprintTest {
         val tf = Timeframe.D1
         val panel = Golden.panel(tf)
         val regimes = Golden.regimes(tf)
+        val research = Golden.expected.getJSONObject("signals").getJSONObject(tf.label)
         for ((key, flags) in Signals.compute(panel)) {
+            if (!research.has(key.name)) continue // only what the research had: the fingerprint was taken before new patterns existed
             val run = Scorecard.runVariant(key, flags, panel, tf, regimes)
             for (t in run.trades) {
                 trades++

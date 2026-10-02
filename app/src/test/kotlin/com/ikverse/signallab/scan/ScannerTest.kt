@@ -6,6 +6,8 @@ import com.ikverse.signallab.data.binance.BinanceException
 import com.ikverse.signallab.engine.CandleClock
 import com.ikverse.signallab.engine.Candles
 import com.ikverse.signallab.engine.EngineConfig
+import com.ikverse.signallab.engine.ExitMode
+import com.ikverse.signallab.engine.ExitRule
 import com.ikverse.signallab.engine.Indicators
 import com.ikverse.signallab.engine.PaperTrading
 import com.ikverse.signallab.engine.Signals
@@ -61,9 +63,13 @@ class ScannerTest {
         assertEquals(eth.t[bar + 1], t.entryTime)
         assertEquals(eth.open[bar + 1], t.entryPrice, "entry is the open of the candle after the signal's, which was still forming")
         val atr = Indicators.atr(eth.high, eth.low, eth.close, EngineConfig.ATR_WINDOW)[bar]
-        assertTrue(near(PaperTrading.targetPrice(t.entryPrice, atr), t.target!!), "target ${t.target}")
-        assertTrue(near(PaperTrading.stopPrice(t.entryPrice, atr), t.stop!!), "stop ${t.stop}")
-        assertEquals(EngineConfig.timeLimitBars(tf), t.holdBars)
+        // A trend pattern trails: no target, a safety stop two candle sizes down, and the cap for the chart.
+        assertEquals("trail", t.exitMode)
+        assertNull(t.target)
+        assertTrue(near(t.entryPrice - EngineConfig.TRAIL_STOP_ATR * atr, t.stop!!), "stop ${t.stop}")
+        assertTrue(near(atr, t.atr!!), "the candle size is kept for the trailing stop")
+        assertEquals(EngineConfig.trailCapBars(tf), t.holdBars)
+        assertEquals(0.002, t.cost, "Binance's fee both ways and nothing else")
         assertEquals(t.entryTime + t.holdBars * tf.ms - 1, t.exitDue)
         assertEquals(PaperTrading.regimeSeries(btc, eth.closeTime)[bar], t.regime)
         assertTrue(e.openTrades().all { it.trade.barTime == eth.t[bar] }, "every trade belongs to the candle that just closed")
@@ -97,7 +103,7 @@ class ScannerTest {
         e.at(closeOf(eth, bar))
         e.scanner.scan(tf)
         val t = e.theTrade().trade
-        val want = assertNotNull(PaperTrading.resolve(eth, bar + 1, t.target, t.stop, t.holdBars))
+        val want = assertNotNull(PaperTrading.resolve(eth, bar + 1, ExitRule(ExitMode.TRAIL, t.holdBars).spec(t.entryPrice, t.atr!!, t.holdBars)))
         for (j in bar + 1..want.exitIdx) {
             assertNull(e.theTrade().exit, "closed before its exit candle ($j of ${want.exitIdx})")
             e.at(closeOf(eth, j))
@@ -109,7 +115,8 @@ class ScannerTest {
         assertEquals(want.reason, x.reason)
         assertEquals(want.exitIdx - bar, x.barsHeld)
         assertTrue(near(x.exitPrice / t.entryPrice - 1, x.gross))
-        assertTrue(near(x.gross - EngineConfig.costFor("ETHUSDT"), x.net))
+        assertTrue(near(x.gross - 0.002, x.net), "net is gross less the cost the trade opened with")
+        assertTrue(x.maxUp!! >= 0 && x.maxDown!! <= 0 && x.barsToPeak!! >= 1, "what the trade did on the way is kept")
         val baseline = assertNotNull(x.randomMean, "the baseline is drawn when the trade closes")
         assertTrue(near(x.net - baseline, x.excess!!))
         val alert = e.sink.delivered.single { it.kind == AlertText.KIND_EXIT && it.symbol == "ETHUSDT" && it.body.contains(phrase) }
@@ -122,7 +129,7 @@ class ScannerTest {
         e.at(closeOf(eth, bar))
         e.scanner.scan(tf)
         val t = e.theTrade().trade
-        val want = assertNotNull(PaperTrading.resolve(eth, bar + 1, t.target, t.stop, t.holdBars))
+        val want = assertNotNull(PaperTrading.resolve(eth, bar + 1, ExitRule(ExitMode.TRAIL, t.holdBars).spec(t.entryPrice, t.atr!!, t.holdBars)))
         e.lists = emptyList()
         for (j in bar + 1..want.exitIdx) {
             e.at(closeOf(eth, j))

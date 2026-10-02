@@ -98,8 +98,11 @@ class GoldenPipelineTest {
             // 2. The engine, fed from the database, fires on exactly the bars the research version did.
             val want = expected.getJSONObject("signals").getJSONObject(tf.label)
             val got = Signals.compute(panel).entries.associate { it.key.name to it.value }
-            assertEquals(want.keys().asSequence().toSet(), got.keys, "${tf.label}: variants differ")
+            // The app also runs patterns the research did not have, and no longer runs 1-4 week momentum on 1h charts.
+            val gone = want.keys().asSequence().toSet() - got.keys
+            assertEquals(if (tf == Timeframe.H1) want.keys().asSequence().filter { it.startsWith("tsmom") }.toSet() else emptySet(), gone, "${tf.label}: research variants missing")
             for (name in want.keys()) {
+                if (name in gone) continue
                 val flags = want.getJSONObject(name).getJSONObject("flags")
                 for (sym in flags.keys()) {
                     val arr = flags.getJSONArray(sym)

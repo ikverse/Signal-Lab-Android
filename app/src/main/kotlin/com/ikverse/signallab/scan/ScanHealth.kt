@@ -13,27 +13,32 @@ data class ScanSnapshot(
     val lastSuccess: Map<Timeframe, Long> = emptyMap(),
     /** The next time a scan is due, by Binance's clock; null when nothing is armed. */
     val nextScanAt: Long? = null,
-    val scanning: Timeframe? = null,
+    /** The timeframes being scanned right now; several can be at once. */
+    val scanning: Set<Timeframe> = emptySet(),
     val lastProblem: String? = null,
+    /** True while the service is staying awake to scan 1-minute to 30-minute charts as they close. */
+    val fastScanning: Boolean = false,
 )
 
 class ScanHealth {
     private val state = MutableStateFlow(ScanSnapshot())
     val snapshot: StateFlow<ScanSnapshot> = state.asStateFlow()
 
-    fun started(tf: Timeframe) = state.update { it.copy(scanning = tf) }
+    fun started(tf: Timeframe) = state.update { it.copy(scanning = it.scanning + tf) }
 
     fun finished(r: ScanResult) = state.update {
         it.copy(
             last = it.last + (r.tf to r),
             lastSuccess = if (r.completed) it.lastSuccess + (r.tf to r.at) else it.lastSuccess,
-            scanning = null,
+            scanning = it.scanning - r.tf,
         )
     }
 
-    fun failed(tf: Timeframe, why: String) = state.update { it.copy(scanning = null, lastProblem = why) }
+    fun failed(tf: Timeframe, why: String) = state.update { it.copy(scanning = it.scanning - tf, lastProblem = why) }
 
     fun armed(at: Long?) = state.update { it.copy(nextScanAt = at) }
+
+    fun fast(on: Boolean) = state.update { it.copy(fastScanning = on) }
 
     fun problem(text: String?) = state.update { it.copy(lastProblem = text) }
 

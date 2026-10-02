@@ -23,6 +23,8 @@ class Trade(
     val randomMean: Double,
     val excess: Double,
     val horizons: Map<Int, HorizonResult>,
+    /** The exit the trade (and each random entry it is compared with) used. */
+    val rule: ExitRule,
 )
 
 /** Every net result of every random entry drawn for a variant, for hit rates and means. */
@@ -95,9 +97,9 @@ object Scorecard {
     class MatchedRandom(val mean: DoubleArray, val horizons: Map<Int, DoubleArray>)
 
     /**
-     * The random entries a signal is judged against: the same coin, within [EngineConfig.RANDOM_WINDOW_DAYS]
-     * either side of the signal, in the same BTC regime, with the same exits (and the same fixed holding
-     * periods). Only entries whose own exit window lies inside [c] are drawn, so a baseline can only use
+     * The random entries a signal is judged against: the same coin, within [EngineConfig.randomWindowDays] of the
+     * signal either side (fewer days on shorter charts, which keep less history), in the same BTC regime, with the same
+     * [rule] for their exits (and the same fixed holding periods). Only entries whose own exit window lies inside [c] are drawn, so a baseline can only use
      * candles that exist; asked at the moment a live trade closes, it sees the past and the days since.
      *
      * The backtest and the live scan both draw through here. Each draw is a pure function of the
@@ -113,15 +115,14 @@ object Scorecard {
         signals: IntArray,
         tf: Timeframe,
         cost: Double,
-        hold: Int?,
+        rule: ExitRule,
         horizons: IntArray,
         onExit: (Double) -> Unit = {},
         onHorizon: (Int, Double) -> Unit = { _, _ -> },
     ): MatchedRandom {
-        val windowBars = EngineConfig.RANDOM_WINDOW_DAYS * 24 / tf.hours
+        val windowBars = EngineConfig.randomWindowDays(tf) * tf.barsPerDay
         val draws = EngineConfig.RANDOM_DRAWS_PER_TRADE
-        val limit = hold ?: EngineConfig.timeLimitBars(tf)
-        val usable = BooleanArray(c.size) { it + limit < c.size && !atr[it].isNaN() }
+        val usable = BooleanArray(c.size) { it + rule.limit < c.size && !atr[it].isNaN() && rule.allows(c, it) }
         val randMean = DoubleArray(signals.size) { Double.NaN }
         val randH = horizons.associateWith { DoubleArray(signals.size) { Double.NaN } }
         val seed = Rng.seedOf(name, symbol)
@@ -133,7 +134,7 @@ object Scorecard {
             val hi = upperBound(pool, signals[jj] + windowBars)
             if (hi <= lo) continue
             val picked = IntArray(draws) { d -> pool[Rng.intIn(seed, signals[jj].toLong(), d.toLong(), lo, hi)] }
-            val rx = PaperTrading.simulateExits(c, picked, tf, atr, hold)
+            val rx = PaperTrading.simulate(c, picked, tf, atr, rule)
             var total = 0.0
             var count = 0
             for (d in picked.indices) {
@@ -164,6 +165,10 @@ object Scorecard {
     /**
      * Turns signal flags into independent paper trades (one open per coin at a time) with matched
      * random baselines. [regimes] holds each coin's BTC-regime series (see [PaperTrading.regimeSeries]).
+     *
+     * By default every trade exits by the research's classic rule (or is held, for a pattern with a fixed holding
+     * period) and costs [EngineConfig.costFor], which is what the golden tests compare with the research. With
+     * [perPatternExits] each pattern exits as the live scan does ([ExitPolicy]), and [costFor] is what the live scan charges.
      */
     fun runVariant(
         key: SignalKey,
@@ -171,20 +176,29 @@ object Scorecard {
         panel: Map<String, Candles>,
         tf: Timeframe,
         regimes: Map<String, IntArray>,
+        costFor: (String) -> Double = EngineConfig::costFor,
+        perPatternExits: Boolean = false,
     ): VariantRun {
         val hold = key.holdBars
         val horizons = if (hold != null) intArrayOf(hold) else EngineConfig.horizonBars(tf)
         val trades = ArrayList<Trade>()
         val randomExit = DoubleBuffer()
         val randomH = horizons.associateWith { DoubleBuffer() }
+        val baseRule = if (perPatternExits) ExitPolicy.baseRule(key, tf) else hold?.let { ExitRule.held(it) } ?: ExitRule.classic(tf)
+        val learns = perPatternExits && ExitPolicy.modeOf(key) == ExitMode.LEARNED
+        val outcomes: Map<String, List<LearnedExit.Outcome>> =
+            if (learns) flagsBySymbol.mapValues { (sym, f) -> LearnedExit.outcomes(panel.getValue(sym), f) } else emptyMap()
 
         for ((sym, flags) in flagsBySymbol) {
             val c = panel.getValue(sym)
             val idx = flags.indices.filter { flags[it] }.toIntArray()
             if (idx.isEmpty()) continue
             val atr = Indicators.atr(c.high, c.low, c.close, EngineConfig.ATR_WINDOW)
-            val ex = PaperTrading.simulateExits(c, idx, tf, atr, hold)
-            val cost = EngineConfig.costFor(sym)
+            val rules = List(idx.size) { j ->
+                if (learns) LearnedExit.rule(tf, c.t[idx[j]], outcomes.getValue(sym), outcomes.values) else baseRule
+            }
+            val ex = if (!learns) PaperTrading.simulate(c, idx, tf, atr, baseRule) else simulateEach(c, idx, tf, atr, rules)
+            val cost = costFor(sym)
 
             // Only trades that start after the previous one on this coin has closed.
             val keep = ArrayList<Int>()
@@ -201,10 +215,22 @@ object Scorecard {
 
             // Matched random entries: same coin, +/- window, same regime, same exits and horizons.
             val reg = regimes.getValue(sym)
-            val matched = matchedRandom(key.name, sym, c, atr, reg, sig, tf, cost, hold, horizons,
-                onExit = randomExit::add, onHorizon = { h, v -> randomH.getValue(h).add(v) })
-            val randMean = matched.mean
-            val randH = matched.horizons
+            val onExit: (Double) -> Unit = randomExit::add
+            val onHorizon: (Int, Double) -> Unit = { h, v -> randomH.getValue(h).add(v) }
+            val randMean = DoubleArray(sig.size) { Double.NaN }
+            val randH = horizons.associateWith { DoubleArray(sig.size) { Double.NaN } }
+            if (!learns) {
+                val m = matchedRandom(key.name, sym, c, atr, reg, sig, tf, cost, baseRule, horizons, onExit, onHorizon)
+                m.mean.copyInto(randMean)
+                for ((h, v) in m.horizons) v.copyInto(randH.getValue(h))
+            } else {
+                // Each signal has learned its own exit, and its random entries use that one.
+                for (jj in sig.indices) {
+                    val m = matchedRandom(key.name, sym, c, atr, reg, intArrayOf(sig[jj]), tf, cost, rules[keep[jj]], horizons, onExit, onHorizon)
+                    randMean[jj] = m.mean[0]
+                    for ((h, v) in m.horizons) randH.getValue(h)[jj] = v[0]
+                }
+            }
 
             for (jj in sig.indices) {
                 val j = keep[jj]
@@ -218,10 +244,32 @@ object Scorecard {
                     exitReason = ex.reason[j]!!, barsHeld = ex.exitIdx[j] - s, gross = ex.gross[j], net = net,
                     randomMean = rm, excess = if (rm.isNaN()) Double.NaN else net - rm,
                     horizons = horizons.associateWith { h -> HorizonResult(hz.getValue(h)[jj], randH.getValue(h)[jj]) },
+                    rule = rules[j],
                 ))
             }
         }
         return VariantRun(trades, PooledRandom(randomExit.toArray(), randomH.mapValues { it.value.toArray() }))
+    }
+
+    /** Exits for signals that each have their own rule: one at a time, put back together in order. */
+    private fun simulateEach(c: Candles, idx: IntArray, tf: Timeframe, atr: DoubleArray, rules: List<ExitRule>): Exits {
+        val m = idx.size
+        val valid = BooleanArray(m)
+        val entry = DoubleArray(m) { Double.NaN }
+        val price = DoubleArray(m) { Double.NaN }
+        val gross = DoubleArray(m) { Double.NaN }
+        val exitIdx = IntArray(m) { -1 }
+        val reason = arrayOfNulls<ExitReason>(m)
+        for (j in 0 until m) {
+            val one = PaperTrading.simulate(c, intArrayOf(idx[j]), tf, atr, rules[j])
+            valid[j] = one.valid[0]
+            entry[j] = one.entryPrice[0]
+            price[j] = one.exitPrice[0]
+            gross[j] = one.gross[0]
+            exitIdx[j] = one.exitIdx[0]
+            reason[j] = one.reason[0]
+        }
+        return Exits(valid, entry, price, gross, exitIdx, reason)
     }
 
     /** One variant's scorecard line from its trades and the random entries pooled with them. */

@@ -12,6 +12,7 @@ import com.ikverse.signallab.data.TradeStatus
 import com.ikverse.signallab.data.UniverseRepository
 import com.ikverse.signallab.data.WatchlistRepository
 import com.ikverse.signallab.data.binance.BinanceClient
+import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.WatchlistRules
 import com.ikverse.signallab.scan.AndroidAlarms
 import com.ikverse.signallab.scan.Notifier
@@ -58,7 +59,7 @@ class AppGraph(context: Context, scope: CoroutineScope) {
     val scanner = Scanner(market, sync, candles, tradeLog, settings, { watchlists.lists.value }, notifier)
     val controller = ScanController(
         scanner, market, alarms, tradeLog, notifier, health,
-        hasWork = ::scanWanted, skewMs = { market.clockSkewMs },
+        hasWork = ::scanWanted, skewMs = { market.clockSkewMs }, housekeeping = ::tidyIfDue,
     )
 
     /** Live prices, only while a screen is showing them. */
@@ -68,6 +69,18 @@ class AppGraph(context: Context, scope: CoroutineScope) {
     val permissions = PermissionFlow(context, settings, { watchlists.load(); watchlists.activeCoins().isNotEmpty() }, scope)
 
     private val problem = MutableStateFlow<String?>(null)
+
+    /**
+     * Once a day, deletes candles that are no longer needed: older than each chart keeps, and every candle of a chart no
+     * list is watched on (BTC's daily chart stays, for the market regime). Trades and scores are never touched.
+     */
+    private suspend fun tidyIfDue() {
+        val now = market.nowMs()
+        val last = settings.get(LAST_TIDY)?.toLongOrNull() ?: 0L
+        if (now - last < DAY_MS) return
+        candles.trim(now, DataConfig::historyDays, scanner.timeframesInUse(), DataConfig.REGIME_COIN to Timeframe.D1)
+        settings.set(LAST_TIDY, now.toString())
+    }
 
     /** Starts the background service when there is something to watch, and stops it and its alarm when there is not. */
     suspend fun syncService(context: Context) {
@@ -108,12 +121,17 @@ class AppGraph(context: Context, scope: CoroutineScope) {
                 problem.value = e.message ?: e.javaClass.simpleName
             }
         }
-        // Whenever the set of coins in active lists changes, bring their history up to date. A change
-        // cancels the run in progress and starts again; what was already downloaded is kept.
+        // Whenever the coins in active lists, or the charts they are watched on, change, bring their history up to date.
+        // A change cancels the run in progress and starts again; what was already downloaded is kept.
         scope.launch {
-            watchlists.lists.map { WatchlistRules.activeCoins(it).toSet() }.distinctUntilChanged().collectLatest { coins ->
-                if (coins.isNotEmpty()) history.ensureHistory(coins)
+            watchlists.lists.map { WatchlistRules.timeframesByCoin(it) }.distinctUntilChanged().collectLatest { needs ->
+                if (needs.isNotEmpty()) history.ensureHistory(needs)
             }
         }
+    }
+
+    companion object {
+        private const val LAST_TIDY = "last_tidy"
+        private const val DAY_MS = 86_400_000L
     }
 }

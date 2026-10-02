@@ -47,10 +47,15 @@ class LiveDebugState(private val graph: AppGraph, private val scope: CoroutineSc
         val progress = graph.history.progress.value
         val rows = graph.candles.rowsByTimeframe()
         return buildList {
-            add("Signal Lab ${BuildConfig.VERSION_NAME}  (debug readout, M4)")
+            add("Signal Lab ${BuildConfig.VERSION_NAME}  (debug readout, M4b)")
             add("Binance clock: phone is ${"%+d".format(graph.market.clockSkewMs)} ms behind  ·  SQLite $sqliteVersion  ·  Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
             add("Pair list: $coins pairs, $offered offered" + (refreshed?.let { ", refreshed ${(now - it) / 60_000} min ago" } ?: ", not downloaded yet"))
-            if (lists.isEmpty()) add("Lists: none yet") else for (l in lists) add("List \"${l.name}\": ${if (l.active) "active" else "off"}, ${l.symbols.size} coins")
+            if (lists.isEmpty()) add("Lists: none yet") else for (l in lists) {
+                add("List \"${l.name}\": ${if (l.active) "active" else "off"}, ${l.symbols.size} coins, charts ${Timeframe.formatSet(l.timeframes)}")
+            }
+            val costs = com.ikverse.signallab.data.CostModel.load(graph.settings)
+            add("Cost per paper trade: exchange fee ${"%.3f".format(costs.feePerSide * 100)}% each way" +
+                (if (costs.includesExtra) ", plus an extra cost for thin coins" else ", no extra cost for thin coins"))
             add(
                 if (progress.running) "History: ${progress.ready} of ${progress.total} coins ready, downloading ${progress.current ?: "..."}"
                 else if (progress.total > 0) "History: ${progress.ready} of ${progress.total} coins ready, idle"
@@ -63,7 +68,8 @@ class LiveDebugState(private val graph: AppGraph, private val scope: CoroutineSc
             add(
                 "Scanning: service ${if (ScanService.running) "running" else "stopped"}  ·  alarms ${if (graph.alarms.exact) "exact" else "approximate"}  ·  " +
                     (health.nextScanAt?.let { "next scan ${clock.format(java.util.Date(it))}" } ?: "no scan armed") +
-                    (health.scanning?.let { "  ·  scanning ${it.label}" } ?: ""),
+                    (if (health.scanning.isNotEmpty()) "  ·  scanning ${health.scanning.joinToString { it.label }}" else "") +
+                    "  ·  fast scanning ${if (health.fastScanning) "on" else "off"}",
             )
             for (tf in Timeframe.entries) {
                 val r = health.last[tf] ?: continue
@@ -85,6 +91,27 @@ class LiveDebugState(private val graph: AppGraph, private val scope: CoroutineSc
     }
 
     private fun yesNo(v: Boolean) = if (v) "yes" else "no"
+
+    override fun createFastTestList() {
+        scope.launch {
+            try {
+                note = "creating fast test list..."
+                graph.universe.refreshIfStale()
+                val top = graph.universe.top(10)
+                val created = graph.watchlists.create("Fast test (10 coins)")
+                val list = (created as? com.ikverse.signallab.data.WatchlistResult.Ok)?.value
+                    ?: graph.watchlists.lists.value.first { it.name.startsWith("Fast test") }
+                for (c in top) graph.watchlists.add(list.id, c.symbol)
+                graph.watchlists.setTimeframes(list.id, setOf(Timeframe.M1, Timeframe.M5, Timeframe.M15))
+                val result = graph.watchlists.setActive(list.id, true)
+                note = (result as? com.ikverse.signallab.data.WatchlistResult.Refused)?.let { "could not switch it on: ${it.reason}" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                note = "could not create the fast list: ${e.message}"
+            }
+        }
+    }
 
     override fun scanNow() {
         scope.launch {

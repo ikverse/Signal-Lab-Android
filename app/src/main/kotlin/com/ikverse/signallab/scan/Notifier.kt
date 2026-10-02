@@ -37,6 +37,9 @@ class Notifier(private val context: Context) : AlertSink {
             description = "The quiet notification that shows Signal Lab is watching your coins."
             setShowBadge(false)
         })
+        system.createNotificationChannel(NotificationChannel(CH_WARNINGS, "Market warnings", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "A pump in progress, or a day of unusually heavy volume. Never a paper trade."
+        })
         system.createNotificationChannel(NotificationChannel(CH_PROBLEMS, "Problems", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Scanning cannot work: Binance is unreachable or blocked, the clock is off, or scans stopped."
         })
@@ -63,7 +66,7 @@ class Notifier(private val context: Context) : AlertSink {
             posted.merge(c.channel, 1, Int::plus)
         }
         for ((channel, count) in posted) {
-            if (channel == CH_PROBLEMS || count < 2) continue
+            if (channel == CH_PROBLEMS || channel == CH_WARNINGS || count < 2) continue
             val id = if (channel == CH_SIGNALS) SUMMARY_SIGNALS else SUMMARY_RESULTS
             val n = NotificationCompat.Builder(context, channel)
                 .setSmallIcon(R.drawable.ic_stat_signal)
@@ -140,6 +143,7 @@ class Notifier(private val context: Context) : AlertSink {
         const val CH_RESULTS = "results"
         const val CH_STATUS = "status"
         const val CH_PROBLEMS = "problems"
+        const val CH_WARNINGS = "warnings"
         const val EXTRA_LINK = "link"
         const val STATUS_ID = 1
         const val TEST_ID = 2
@@ -151,6 +155,7 @@ class Notifier(private val context: Context) : AlertSink {
             AlertText.KIND_SIGNAL -> CH_SIGNALS
             AlertText.KIND_EXIT -> CH_RESULTS
             AlertText.KIND_PROBLEM -> CH_PROBLEMS
+            AlertText.KIND_WARNING -> CH_WARNINGS
             else -> null
         }
 
@@ -163,7 +168,7 @@ class Notifier(private val context: Context) : AlertSink {
             for (a in alerts) {
                 val channel = channelOf(a.kind) ?: continue
                 // A problem is a single message; the others fold per coin and timeframe.
-                val key = if (channel == CH_PROBLEMS) "problem:${a.id}" else "$channel:${a.symbol}:${a.tf}"
+                val key = if (channel == CH_PROBLEMS || channel == CH_WARNINGS) "$channel:${a.id}" else "$channel:${a.symbol}:${a.tf}"
                 groups.getOrPut(key) { ArrayList() }.add(a)
             }
             return groups.map { (key, list) ->

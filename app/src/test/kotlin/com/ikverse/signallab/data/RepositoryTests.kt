@@ -306,7 +306,7 @@ class HistoryManagerTest {
         return m
     }
 
-    private fun manager(m: FakeMarket) = HistoryManager(CandleSync(m, s), s, m, windowDays = 365)
+    private fun manager(m: FakeMarket) = HistoryManager(CandleSync(m, s), s, m)
 
     @Test
     fun everyCoinGetsAllThreeTimeframesAndProgressCountsThemOff() = runTest {
@@ -314,7 +314,8 @@ class HistoryManagerTest {
         val h = manager(m)
         assertFalse(h.isReady("AUSDT"))
         h.ensureHistory(listOf("AUSDT", "BUSDT"))
-        for (c in listOf("AUSDT", "BUSDT")) for (tf in Timeframe.entries) assertEquals(30, s.count(c, tf), "$c ${tf.label}")
+        for (c in listOf("AUSDT", "BUSDT")) for (tf in Timeframe.LEGACY_DEFAULT) assertEquals(30, s.count(c, tf), "$c ${tf.label}")
+        for (c in listOf("AUSDT", "BUSDT")) assertEquals(0, s.count(c, Timeframe.M1), "a chart nobody asked for is not downloaded")
         assertTrue(h.isReady("AUSDT"))
         val p = h.progress.value
         assertEquals(2, p.total); assertEquals(2, p.ready); assertFalse(p.running); assertNull(p.current); assertTrue(p.failures.isEmpty())

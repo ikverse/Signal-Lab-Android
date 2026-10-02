@@ -27,6 +27,8 @@ data class CoinRow(
     val high24: Double,
     val low24: Double,
     val seenAt: Long,
+    /** When Binance first listed it (its first daily candle); null until it has been asked once. */
+    val listedAt: Long? = null,
 )
 
 /**
@@ -62,7 +64,7 @@ class CandleStore(
                 symbol TEXT PRIMARY KEY, base TEXT NOT NULL, status TEXT NOT NULL,
                 offered INTEGER NOT NULL, stable INTEGER NOT NULL DEFAULT 0, delisted INTEGER NOT NULL DEFAULT 0,
                 quote_volume REAL NOT NULL DEFAULT 0, high24 REAL NOT NULL DEFAULT 0, low24 REAL NOT NULL DEFAULT 0,
-                seen_at INTEGER NOT NULL
+                seen_at INTEGER NOT NULL, listed_at INTEGER
             )
         """.trimIndent())
         // A stretch Binance has no candles for (maintenance, a halt). Remembered so it is not asked for again forever.
@@ -75,8 +77,9 @@ class CandleStore(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Nothing to upgrade yet. This file only holds what can be downloaded again, so a future
-        // incompatible change may drop and rebuild it rather than migrate it.
+        // This file only holds what can be downloaded again, so an incompatible change may drop and rebuild it
+        // rather than migrate it. Version 2 only adds when each coin was listed.
+        if (oldVersion < 2) db.execSQL("ALTER TABLE coins ADD COLUMN listed_at INTEGER")
     }
 
     private suspend fun <T> access(block: (SQLiteDatabase) -> T): T =
@@ -245,6 +248,41 @@ class CandleStore(
         symbols.filterTo(LinkedHashSet()) { it !in bad }
     }
 
+    /** When Binance listed [symbol], or null if it has not been looked up. */
+    suspend fun listedAt(symbol: String): Long? = access { db ->
+        db.rawQuery("SELECT listed_at FROM coins WHERE symbol=?", arrayOf(symbol)).use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
+    }
+
+    /** Remembers when [symbol] was listed. A coin with no row yet gets a minimal one, which the next pair-list refresh fills in. */
+    suspend fun setListedAt(symbol: String, time: Long) {
+        access { db ->
+            db.execSQL("INSERT OR IGNORE INTO coins (symbol, base, status, offered, stable, delisted, seen_at) VALUES (?,?,'UNKNOWN',0,0,0,0)",
+                arrayOf<Any?>(symbol, symbol.removeSuffix("USDT")))
+            db.execSQL("UPDATE coins SET listed_at=? WHERE symbol=?", arrayOf<Any?>(time, symbol))
+        }
+    }
+
+    /**
+     * Deletes what is no longer needed: candles older than [keepDays] allows for each chart, and every candle of a chart
+     * no list uses ([inUse]), except [keep], the one series that is always kept (BTC's daily chart, for the market regime).
+     * Trades and scores live in the record database and are never touched. Returns how many candles went.
+     */
+    suspend fun trim(now: Long, keepDays: (Timeframe) -> Int, inUse: Set<Timeframe>, keep: Pair<String, Timeframe>): Int = access { db ->
+        var removed = 0
+        for (tf in Timeframe.entries) {
+            val cutoff = now - keepDays(tf) * 86_400_000L
+            if (tf in inUse) {
+                removed += db.delete("candles", "tf=? AND open_time<?", arrayOf(tf.label, cutoff.toString()))
+            } else if (tf == keep.second) {
+                removed += db.delete("candles", "tf=? AND (symbol<>? OR open_time<?)", arrayOf(tf.label, keep.first, cutoff.toString()))
+            } else {
+                removed += db.delete("candles", "tf=?", arrayOf(tf.label))
+            }
+            db.delete("known_gaps", "tf=? AND to_time<?", arrayOf(tf.label, cutoff.toString()))
+        }
+        removed
+    }
+
     suspend fun lastPairListRefresh(): Long? = access { db ->
         db.rawQuery("SELECT MAX(seen_at) FROM coins", null).use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
     }
@@ -258,11 +296,11 @@ class CandleStore(
 
     private fun coinOf(c: android.database.Cursor) = CoinRow(
         c.getString(0), c.getString(1), c.getString(2), c.getInt(3) == 1, c.getInt(4) == 1, c.getInt(5) == 1,
-        c.getDouble(6), c.getDouble(7), c.getDouble(8), c.getLong(9),
+        c.getDouble(6), c.getDouble(7), c.getDouble(8), c.getLong(9), if (c.isNull(10)) null else c.getLong(10),
     )
 
     companion object {
-        const val VERSION = 1
-        private const val COIN_COLUMNS = "symbol, base, status, offered, stable, delisted, quote_volume, high24, low24, seen_at"
+        const val VERSION = 2
+        private const val COIN_COLUMNS = "symbol, base, status, offered, stable, delisted, quote_volume, high24, low24, seen_at, listed_at"
     }
 }

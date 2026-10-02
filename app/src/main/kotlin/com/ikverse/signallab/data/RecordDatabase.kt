@@ -80,6 +80,18 @@ class RecordDatabase(context: Context?, name: String? = "signal_lab.db") :
                     "CREATE TRIGGER ${t}_no_delete BEFORE DELETE ON $t BEGIN SELECT RAISE(ABORT, '$t is append-only'); END",
                 )
             },
+            // Step 2: charts chosen per list, how each trade exits, what it cost, and what it did on the way. Every column is new
+            // and nullable (or has a default), so a trade from before reads as it was: no stored cost means the old costs,
+            // no stored mode means the classic exit (a target) or a hold (none). Lists that existed keep 1h, 4h and 1d.
+            listOf(
+                "ALTER TABLE watchlists ADD COLUMN timeframes TEXT NOT NULL DEFAULT '1h,4h,1d'",
+                "ALTER TABLE live_trades ADD COLUMN cost REAL",
+                "ALTER TABLE live_trades ADD COLUMN exit_mode TEXT",
+                "ALTER TABLE live_trades ADD COLUMN atr REAL",
+                "ALTER TABLE live_exits ADD COLUMN max_up REAL",
+                "ALTER TABLE live_exits ADD COLUMN max_down REAL",
+                "ALTER TABLE live_exits ADD COLUMN bars_to_peak INTEGER",
+            ),
         )
 
         val SCHEMA_VERSION: Int = MIGRATIONS.size

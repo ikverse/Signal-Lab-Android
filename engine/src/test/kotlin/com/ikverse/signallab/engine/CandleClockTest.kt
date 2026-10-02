@@ -29,8 +29,12 @@ class CandleClockTest {
 
     @Test
     fun theNextCloseOfAnyTimeframeIsTheSoonest() {
-        assertEquals(midnight + 5 * hour, CandleClock.nextClose(midnight + 4 * hour + 1))
-        assertEquals(midnight + 24 * hour, CandleClock.nextClose(midnight + 23 * hour))
+        val hourlyUp = listOf(Timeframe.H1, Timeframe.H4, Timeframe.D1)
+        assertEquals(midnight + 5 * hour, CandleClock.nextClose(midnight + 4 * hour + 1, hourlyUp))
+        assertEquals(midnight + 24 * hour, CandleClock.nextClose(midnight + 23 * hour, hourlyUp))
+        // With the short charts in play the soonest close is the next minute, or the next five.
+        assertEquals(midnight + 4 * hour + 60_000, CandleClock.nextClose(midnight + 4 * hour + 1))
+        assertEquals(midnight + 4 * hour + 300_000, CandleClock.nextClose(midnight + 4 * hour + 1, listOf(Timeframe.M5, Timeframe.H1)))
     }
 
     @Test
@@ -42,9 +46,12 @@ class CandleClockTest {
 
     @Test
     fun midnightClosesEveryTimeframeAndOtherHoursOnlyTheShorterOnes() {
-        assertEquals(listOf(Timeframe.H1, Timeframe.H4, Timeframe.D1), CandleClock.closingAt(midnight + 24 * hour))
-        assertEquals(listOf(Timeframe.H1, Timeframe.H4), CandleClock.closingAt(midnight + 4 * hour))
-        assertEquals(listOf(Timeframe.H1), CandleClock.closingAt(midnight + 5 * hour))
+        val shorter = listOf(Timeframe.M1, Timeframe.M5, Timeframe.M15, Timeframe.M30)
+        assertEquals(shorter + listOf(Timeframe.H1, Timeframe.H4, Timeframe.D1), CandleClock.closingAt(midnight + 24 * hour))
+        assertEquals(shorter + listOf(Timeframe.H1, Timeframe.H4), CandleClock.closingAt(midnight + 4 * hour))
+        assertEquals(shorter + listOf(Timeframe.H1), CandleClock.closingAt(midnight + 5 * hour))
+        assertEquals(listOf(Timeframe.M1, Timeframe.M5, Timeframe.M15), CandleClock.closingAt(midnight + 5 * hour + 15 * 60_000))
+        assertEquals(listOf(Timeframe.M1), CandleClock.closingAt(midnight + 5 * hour + 60_000))
         assertEquals(emptyList(), CandleClock.closingAt(midnight + 5 * hour + 1))
     }
 
@@ -58,7 +65,7 @@ class CandleClockTest {
     @Test
     fun theScheduleAgreesWithTheCandlesBinanceServes() {
         // Every golden candle opens on its timeframe's grid and closes one millisecond before the next boundary.
-        for (tf in Timeframe.entries) {
+        for (tf in listOf(Timeframe.M1, Timeframe.M15, Timeframe.H1, Timeframe.H4, Timeframe.D1)) {
             for (c in Golden.panel(tf).values.take(2)) {
                 for (i in c.t.indices step 7) {
                     assertEquals(c.closeTime[i] + 1, CandleClock.nextClose(tf, c.t[i]), "${c.symbol} ${tf.label} candle $i")
