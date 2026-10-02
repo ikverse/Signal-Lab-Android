@@ -35,6 +35,8 @@ class ScanController(
     private val pause: suspend (Long) -> Unit = { delay(it) },
     /** Once-a-day tidying, such as deleting candles that are no longer needed. It decides for itself whether it is due. */
     private val housekeeping: suspend () -> Unit = {},
+    /** Whether the user lets the service follow charts under an hour. */
+    private val followFast: suspend () -> Boolean = { true },
 ) {
     private val startedAt = market.nowMs()
 
@@ -72,7 +74,7 @@ class ScanController(
     suspend fun runFast() {
         health.fast(true)
         try {
-            while (hasWork()) {
+            while (hasWork() && followFast()) {
                 val fast = scanner.timeframesInUse().filter { it.isFast }
                 if (fast.isEmpty()) return
                 val next = CandleClock.nextClose(market.nowMs(), fast) + DataConfig.SCAN_SETTLE_MS

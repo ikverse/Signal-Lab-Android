@@ -6,6 +6,9 @@ import com.ikverse.signallab.engine.SignalKey
 import com.ikverse.signallab.engine.Timeframe
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -70,6 +73,14 @@ class TradeLog(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val lock = Mutex()
+    private val changes = MutableStateFlow(0L)
+
+    /** Goes up by one after every write (a trade opened or closed, an alert saved), so a screen knows to read again. */
+    val version: StateFlow<Long> = changes.asStateFlow()
+
+    private fun changed() {
+        changes.value = changes.value + 1
+    }
 
     /** The log's own clock, which stamps every alert; cooldowns are measured against it. */
     fun now(): Long = clock()
@@ -88,7 +99,7 @@ class TradeLog(
             put("cost", t.cost); put("exit_mode", t.exitMode); put("atr", t.atr)
         }
         val id = d.insertWithOnConflict("live_trades", null, cv, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE)
-        if (id == -1L) null else id
+        if (id == -1L) null else id.also { changed() }
     }
 
     /** Closes the trade; false when it was already closed. */
@@ -99,7 +110,7 @@ class TradeLog(
             put("net", x.net); put("random_mean", x.randomMean); put("excess", x.excess); put("closed_at", clock())
             put("max_up", x.maxUp); put("max_down", x.maxDown); put("bars_to_peak", x.barsToPeak)
         }
-        d.insertWithOnConflict("live_exits", null, cv, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE) != -1L
+        (d.insertWithOnConflict("live_exits", null, cv, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE) != -1L).also { if (it) changed() }
     }
 
     suspend fun hasOpen(variant: String, symbol: String, listId: Long): Boolean = access { d ->
@@ -168,6 +179,7 @@ class TradeLog(
             }
             d.insert("alerts", null, cv)
         }
+        changed()
         return Alert(id, ts, kind, symbol, tf, title, body, link)
     }
 
@@ -193,6 +205,15 @@ class TradeLog(
         access { d ->
             val params = JSONObject(key.params.toSortedMap()).toString()
             d.execSQL("INSERT OR IGNORE INTO variants VALUES (?,?,?,?,?)", arrayOf<Any?>(key.name, key.family, tf.label, params, clock()))
+        }
+    }
+
+    /** Every variant that has ever been scanned, with the chart it ran on. */
+    class RegisteredVariant(val name: String, val family: String, val tf: Timeframe)
+
+    suspend fun registeredVariants(): List<RegisteredVariant> = access { d ->
+        d.rawQuery("SELECT variant, family, tf FROM variants ORDER BY variant", null).use { c ->
+            buildList { while (c.moveToNext()) add(RegisteredVariant(c.getString(0), c.getString(1), Timeframe.of(c.getString(2)))) }
         }
     }
 

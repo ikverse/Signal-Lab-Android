@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Lab learn</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #050505; color: #d1d4dc; font: 15px/1.55 Roboto, "Helvetica Neue", Arial, sans-serif; }
+  #content { max-width: 760px; margin: 0 auto; padding: 8px 16px 48px; }
+  h1 { font-size: 22px; font-weight: 500; color: #f0f3fa; margin: 18px 0 6px; }
+  h2 { font-size: 16px; font-weight: 500; color: #f0f3fa; margin: 26px 0 6px; padding-top: 14px; border-top: 1px solid #1e222d; }
+  h3 { font-size: 14px; font-weight: 500; color: #f0f3fa; margin: 18px 0 4px; }
+  p, li { color: #d1d4dc; }
+  li { margin: 3px 0; }
+  a { color: #2962ff; text-decoration: none; }
+  strong { color: #f0f3fa; font-weight: 500; }
+  code { font: 13px "Roboto Mono", Menlo, Consolas, monospace; color: #d1d4dc; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px; }
+  th { text-align: left; color: #868993; font-weight: 500; font-size: 12px; padding: 6px 8px 6px 0; border-bottom: 1px solid #1e222d; }
+  td { padding: 7px 8px 7px 0; border-bottom: 1px solid #14171f; vertical-align: top; }
+  blockquote { margin: 12px 0; padding: 2px 0 2px 12px; border-left: 2px solid #1e222d; color: #868993; }
+  hr { border: 0; border-top: 1px solid #1e222d; margin: 22px 0; }
+  .mermaid { margin: 14px 0; text-align: center; overflow-x: auto; }
+  .figure { margin: 14px 0; }
+  .figure svg { max-width: 100%; height: auto; }
+  .note { color: #868993; font-size: 13px; }
+  .failed { color: #ff9800; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="content"></div>
+<script src="marked.min.js"></script>
+<script src="mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: false, securityLevel: 'strict', theme: 'base',
+    themeVariables: {
+      background: '#050505', primaryColor: '#0d0f14', primaryTextColor: '#d1d4dc', primaryBorderColor: '#2a2e39',
+      lineColor: '#868993', secondaryColor: '#0d0f14', tertiaryColor: '#050505', fontFamily: 'Roboto, Arial, sans-serif', fontSize: '14px'
+    },
+    flowchart: { htmlLabels: true, curve: 'basis' }
+  });
+
+  // The app calls this with a page's Markdown. Mermaid blocks become diagrams; a diagram that will not draw says so and shows nothing else.
+  window.render = async function (markdown) {
+    var host = document.getElementById('content');
+    host.innerHTML = marked.parse(markdown, { gfm: true });
+    var blocks = host.querySelectorAll('pre > code.language-mermaid');
+    var nodes = [];
+    blocks.forEach(function (code) {
+      var div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = code.textContent;
+      code.parentElement.replaceWith(div);
+      nodes.push(div);
+    });
+    try {
+      if (nodes.length) await mermaid.run({ nodes: nodes });
+    } catch (e) {
+      nodes.forEach(function (n) { if (!n.querySelector('svg')) { n.className = 'failed'; n.textContent = 'This diagram could not be drawn.'; } });
+    }
+    window.scrollTo(0, 0);
+    return host.querySelectorAll('svg').length;
+  };
+</script>
+</body>
+</html>

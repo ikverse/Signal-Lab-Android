@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Signal Lab chart</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #050505; overflow: hidden; }
+  #chart { width: 100%; height: 100%; }
+  #empty { position: absolute; left: 0; right: 0; top: 40%; text-align: center; color: #868993; font: 14px Roboto, sans-serif; display: none; }
+</style>
+</head>
+<body>
+<div id="chart"></div>
+<div id="empty">No candles stored for this chart yet.</div>
+<script src="klinecharts.min.js"></script>
+<script>
+  // TradingView's palette, as used everywhere else in the app.
+  var UP = '#089981', DOWN = '#f23645', MUTED = '#868993', RULE = '#1e222d', ACCENT = '#2962FF', TEXT = '#d1d4dc';
+  var FONT = 'Roboto, "Helvetica Neue", Arial, sans-serif';
+  var chart = klinecharts.init('chart', { locale: 'en-US' });
+  chart.setStyles({
+    grid: { horizontal: { color: '#0d0f14' }, vertical: { color: '#0d0f14' } },
+    candle: {
+      bar: {
+        upColor: UP, downColor: DOWN, noChangeColor: MUTED,
+        upBorderColor: UP, downBorderColor: DOWN, noChangeBorderColor: MUTED,
+        upWickColor: UP, downWickColor: DOWN, noChangeWickColor: MUTED
+      },
+      priceMark: {
+        high: { color: MUTED, textFamily: FONT }, low: { color: MUTED, textFamily: FONT },
+        last: { upColor: UP, downColor: DOWN, noChangeColor: MUTED, line: { style: 'dashed' }, text: { family: FONT } }
+      },
+      tooltip: { text: { color: MUTED, family: FONT } }
+    },
+    indicator: {
+      bars: [{ upColor: 'rgba(8,153,129,0.5)', downColor: 'rgba(242,54,69,0.5)', noChangeColor: MUTED }],
+      tooltip: { text: { color: MUTED, family: FONT } }
+    },
+    xAxis: { axisLine: { color: RULE }, tickLine: { color: RULE }, tickText: { color: MUTED, family: FONT } },
+    yAxis: { axisLine: { color: RULE }, tickLine: { color: RULE }, tickText: { color: MUTED, family: FONT } },
+    separator: { color: RULE },
+    crosshair: {
+      horizontal: { line: { color: MUTED }, text: { backgroundColor: RULE, color: TEXT, borderColor: RULE, family: FONT } },
+      vertical: { line: { color: MUTED }, text: { backgroundColor: RULE, color: TEXT, borderColor: RULE, family: FONT } }
+    }
+  });
+  // Volume as plain bars, with no moving-average lines over them.
+  chart.createIndicator({ name: 'VOL', calcParams: [] }, false);
+
+  var KIND_COLOR = { ENTRY: ACCENT, STOP: DOWN, TARGET: UP };
+  var haveData = false;
+
+  function clearGroup(id) {
+    try { chart.removeOverlay({ groupId: id }); } catch (e) {}
+  }
+
+  function drawLevel(group, price, label, color, timestamp, dashed) {
+    try {
+      chart.createOverlay({
+        name: 'horizontalStraightLine', groupId: group, lock: true,
+        points: [{ timestamp: timestamp, value: price }],
+        styles: { line: { color: color, size: 1, style: dashed ? 'dashed' : 'solid', dashedValue: [4, 4] } }
+      });
+      chart.createOverlay({
+        name: 'simpleTag', groupId: group, lock: true, extendData: label,
+        points: [{ timestamp: timestamp, value: price }],
+        styles: { text: { color: '#ffffff', backgroundColor: color, borderColor: color }, line: { color: color } }
+      });
+    } catch (e) { /* a missing overlay must never take the chart down */ }
+  }
+
+  // The app calls these two. Everything else is the library's.
+  window.signalLab = {
+    // data = { candles: [[time, open, high, low, close, volume], ...], levels: [{kind, label, price}, ...] }
+    setData: function (data) {
+      var rows = (data.candles || []).map(function (c) {
+        return { timestamp: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] };
+      });
+      haveData = rows.length > 0;
+      document.getElementById('empty').style.display = haveData ? 'none' : 'block';
+      chart.applyNewData(rows);
+      clearGroup('levels');
+      // A price line from the previous chart sits at a time this chart may not have: drawing it would stretch the axis.
+      clearGroup('live');
+      if (haveData) {
+        var last = rows[rows.length - 1].timestamp;
+        (data.levels || []).forEach(function (l) {
+          drawLevel('levels', l.price, l.label, KIND_COLOR[l.kind] || MUTED, last, true);
+        });
+      }
+    },
+    setLastPrice: function (price) {
+      clearGroup('live');
+      if (!haveData || !(price > 0)) return;
+      var data = chart.getDataList();
+      drawLevel('live', price, '', ACCENT, data[data.length - 1].timestamp, false);
+    },
+    // How long the last drawing took, for the chart check on the debug page.
+    benchmark: function (n) {
+      var t0 = performance.now(), price = 100, rows = [], t = 1700000000000;
+      for (var i = 0; i < n; i++) {
+        var o = price, c = o * (1 + (Math.sin(i / 7) + Math.cos(i / 3)) * 0.004), h = Math.max(o, c) * 1.002, l = Math.min(o, c) * 0.998;
+        rows.push([t + i * 60000, o, h, l, c, 10 + (i % 17)]);
+        price = c;
+      }
+      window.signalLab.setData({ candles: rows, levels: [] });
+      return Math.round(performance.now() - t0);
+    },
+    // The chart check: draw n candles, then scroll back and forth for three seconds and time every frame. Reports to the app.
+    check: function (n) {
+      var t0 = performance.now();
+      window.signalLab.benchmark(n);
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          var drawMs = Math.round(performance.now() - t0);
+          var frames = 0, worst = 0, total = 0, dir = 1, last = performance.now(), end = last + 3000;
+          function tick(now) {
+            var dt = now - last; last = now; frames++; total += dt; if (dt > worst) worst = dt;
+            chart.scrollByDistance(dir * 40);
+            if (frames % 60 === 0) dir = -dir;
+            if (now < end) { requestAnimationFrame(tick); return; }
+            var result = { drawMs: drawMs, frames: frames, avgMs: total / frames, worstMs: worst };
+            window.__check = result;
+            if (window.Android) window.Android.report(JSON.stringify(result));
+          }
+          requestAnimationFrame(tick);
+        });
+      });
+    }
+  };
+</script>
+</body>
+</html>
