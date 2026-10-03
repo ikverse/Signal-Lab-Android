@@ -108,6 +108,25 @@ data class SettingsUi(
     val dataNote: String,
 )
 
+enum class UpdateStatus { IDLE, CHECKING, UP_TO_DATE, AVAILABLE, DOWNLOADING, NEEDS_PERMISSION, INSTALLER_OPEN, FAILED }
+
+/** Where the app's own update stands, for the Updates section of Settings. */
+data class UpdateUi(
+    val status: UpdateStatus = UpdateStatus.IDLE,
+    /** The version on offer, when there is one. */
+    val version: String? = null,
+    /** What the release says changed; empty when it says nothing. */
+    val notes: String = "",
+    /** From 0 to 1 while downloading, otherwise null. */
+    val progress: Float? = null,
+    /** A sentence that explains the state, such as why something failed. */
+    val message: String? = null,
+    /** When GitHub last answered, if it has. */
+    val checkedAt: Long? = null,
+    /** Whether tapping Install does something: an update is on offer, or the last try can be repeated. */
+    val canInstall: Boolean = false,
+)
+
 interface ListsModel {
     val lists: StateFlow<List<ListUi>>
 
@@ -171,6 +190,14 @@ interface SettingsModel {
     suspend fun setBackgroundScanning(on: Boolean)
     suspend fun setFollowFastCharts(on: Boolean)
     suspend fun setBinanceUs(on: Boolean)
+
+    val update: StateFlow<UpdateUi>
+
+    /** Asks GitHub whether a newer version exists. */
+    suspend fun checkForUpdate()
+
+    /** Downloads the update on offer, checks it, and opens Android's installer. */
+    suspend fun installUpdate()
 
     /** Opens Android's own screen for one of the permissions. */
     fun openSystemScreen(prompt: PermissionPrompt)

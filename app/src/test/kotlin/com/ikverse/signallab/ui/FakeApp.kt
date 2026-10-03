@@ -150,6 +150,17 @@ class FakeSettings(initial: SettingsUi = defaultSettings()) : SettingsModel {
         state.value = state.value.copy(binanceUs = on)
     }
 
+    val updateState = MutableStateFlow(UpdateUi())
+    override val update: StateFlow<UpdateUi> = updateState
+
+    override suspend fun checkForUpdate() {
+        log += "check update"
+    }
+
+    override suspend fun installUpdate() {
+        log += "install update"
+    }
+
     override fun openSystemScreen(prompt: PermissionPrompt) {
         log += "open ${prompt.name}"
     }

@@ -52,6 +52,9 @@ class SettingsStore(
         const val EXTRA_COST_MAJORS = "extra_cost_majors"
         const val EXTRA_COST_OTHERS = "extra_cost_others"
 
+        /** When the updater last heard from GitHub successfully, in phone-clock milliseconds. */
+        const val LAST_UPDATE_CHECK = "last_update_check"
+
         /** Which permission prompts have already been shown, so none is asked twice. */
         const val ASKED_PREFIX = "asked_"
     }

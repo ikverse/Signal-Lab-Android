@@ -37,6 +37,7 @@ import com.ikverse.signallab.ui.SettingsModel
 import com.ikverse.signallab.ui.SettingsUi
 import com.ikverse.signallab.ui.TradeUi
 import com.ikverse.signallab.ui.TradesModel
+import com.ikverse.signallab.ui.UpdateUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -303,6 +304,13 @@ class LiveSettingsModel(
         graph.syncService(context)
         refresh()
     }
+
+    override val update: StateFlow<UpdateUi> =
+        graph.updates.state.map { it.toUi() }.stateIn(scope, SharingStarted.Eagerly, graph.updates.state.value.toUi())
+
+    override suspend fun checkForUpdate() = graph.updates.checkNow()
+
+    override suspend fun installUpdate() = graph.updates.install()
 
     override suspend fun setBinanceUs(on: Boolean) {
         graph.useHost(if (on) DataConfig.HOST_US else DataConfig.HOST_COM)

@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Offer to be exempted from battery optimisation, so overnight scans are not cut short. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Hand a downloaded update to Android's installer (which still asks the user before it installs anything). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".SignalLabApplication"
@@ -33,6 +35,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Lets the installer read the downloaded update from the app's cache, and nothing else. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
 
         <service
             android:name=".scan.ScanService"

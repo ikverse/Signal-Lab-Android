@@ -654,6 +654,101 @@ class AppUiTest {
         assertTrue(!exists("debug"))
     }
 
+    // --- updates (in settings) ---------------------------------------------------------------------
+
+    private fun offered(status: UpdateStatus = UpdateStatus.AVAILABLE, canInstall: Boolean = true, message: String? = null, progress: Float? = null) = UpdateUi(
+        status, version = "0.2.0", notes = "Adds the updater.", progress = progress, message = message, checkedAt = 1_700_000_000_000L, canInstall = canInstall,
+    )
+
+    /** Settings sits under "More" on a narrow screen and has its own button once the rail shows every screen. */
+    private fun openUpdates(app: FakeApp) {
+        show(app)
+        if (exists("nav-Settings")) {
+            click("nav-Settings")
+        } else {
+            click("nav-More")
+            click("more-Settings")
+        }
+        tag("updates").performScrollTo()
+    }
+
+    private fun updatesShowAndWork() {
+        val app = FakeApp.full()
+        app.settings.updateState.value = offered()
+        openUpdates(app)
+        tag("update-status").assertTextEquals("Version 0.2.0 is available.")
+        tag("update-notes").assertTextEquals("Adds the updater.")
+        rule.onNodeWithText("Download and install").performScrollTo().assertIsDisplayed()
+        tag("update-check").performScrollTo().performClick()
+        tag("update-install").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.size == 2 }
+        assertEquals(listOf("check update", "install update"), app.settings.log)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `updates on a phone held upright show the offer and both buttons work`() = updatesShowAndWork()
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `updates on a phone held sideways show the offer and both buttons work`() = updatesShowAndWork()
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `updates on a tablet show the offer and both buttons work`() = updatesShowAndWork()
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `with nothing on offer there is no install button and no notes, only a check`() {
+        val app = FakeApp.full()
+        app.settings.updateState.value = UpdateUi(UpdateStatus.UP_TO_DATE, checkedAt = 1_700_000_000_000L)
+        openUpdates(app)
+        tag("update-status").assertTextEquals("You have the newest version.")
+        assertTrue(!exists("update-install"))
+        assertTrue(!exists("update-notes"))
+        assertTrue(exists("update-check"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `while checking or downloading, neither button can be pressed`() {
+        val app = FakeApp.full()
+        app.settings.updateState.value = offered(UpdateStatus.DOWNLOADING, canInstall = true, progress = 0.4f)
+        openUpdates(app)
+        tag("update-status").assertTextEquals("Downloading version 0.2.0: 40%")
+        tag("update-check").performScrollTo().performClick()
+        tag("update-install").performScrollTo().performClick()
+        rule.waitForIdle()
+        assertTrue(app.settings.log.isEmpty())
+        app.settings.updateState.value = UpdateUi(UpdateStatus.CHECKING)
+        rule.waitForIdle()
+        tag("update-check").performScrollTo().performClick()
+        rule.waitForIdle()
+        assertTrue(app.settings.log.isEmpty())
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a failure shows its reason, and Install appears only when trying again could work`() {
+        val app = FakeApp.full()
+        app.settings.updateState.value = UpdateUi(UpdateStatus.FAILED, message = "The update is signed with a different key than this app.", canInstall = false)
+        openUpdates(app)
+        tag("update-message").assertTextContains("different key", substring = true)
+        assertTrue(!exists("update-install"))
+        app.settings.updateState.value = offered(UpdateStatus.FAILED, canInstall = true, message = "The download stopped early.")
+        rule.waitForIdle()
+        tag("update-message").assertTextEquals("The download stopped early.")
+        rule.onNodeWithText("Install").performScrollTo().assertIsDisplayed()
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the explanation of how updates are checked is on the screen`() {
+        openUpdates(FakeApp.full())
+        rule.onNodeWithText("signed with the same key as this app", substring = true).performScrollTo().assertExists()
+        rule.onNodeWithText("asks you before it installs anything", substring = true).performScrollTo().assertExists()
+    }
+
     // --- resizable panels (landscape) ---------------------------------------------------------------
 
     private fun density() = rule.activity.resources.displayMetrics.density

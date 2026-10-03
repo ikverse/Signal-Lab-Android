@@ -1,7 +1,7 @@
 name: ci
 
 # Every push runs the engine tests, the app's tests and a debug build. Nothing is published:
-# releases come only from version tags (added with the updater in M6).
+# releases come only from version tags (release.yml).
 on:
   push:
     branches: [main]

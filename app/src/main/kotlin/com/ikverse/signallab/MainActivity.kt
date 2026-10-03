@@ -67,6 +67,8 @@ class MainActivity : ComponentActivity() {
             app.graph.permissions.evaluate()
             app.model.refreshSettings()
         }
+        // The quiet daily look for a newer release; skipped if one answered in the last day.
+        lifecycleScope.launch { app.graph.updates.checkIfDue() }
     }
 
     private fun launch(intent: Intent) {

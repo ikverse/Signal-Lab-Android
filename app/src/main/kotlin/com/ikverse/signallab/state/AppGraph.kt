@@ -1,6 +1,7 @@
 package com.ikverse.signallab.state
 
 import android.content.Context
+import com.ikverse.signallab.BuildConfig
 import com.ikverse.signallab.data.CandleStore
 import com.ikverse.signallab.data.CandleSync
 import com.ikverse.signallab.data.DataConfig
@@ -22,6 +23,13 @@ import com.ikverse.signallab.scan.ScanService
 import com.ikverse.signallab.scan.ScanController
 import com.ikverse.signallab.scan.ScanHealth
 import com.ikverse.signallab.scan.Scanner
+import com.ikverse.signallab.update.AndroidApkInspector
+import com.ikverse.signallab.update.AndroidInstallLauncher
+import com.ikverse.signallab.update.ApkDownloader
+import com.ikverse.signallab.update.AppVersion
+import com.ikverse.signallab.update.UpdateChecker
+import com.ikverse.signallab.update.UpdateController
+import com.ikverse.signallab.update.UpdateMemory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -76,6 +84,19 @@ class AppGraph(context: Context, scope: CoroutineScope) {
 
     /** Asks for alerts, exact alarms and a battery exemption, once each, after the first list is switched on. */
     val permissions = PermissionFlow(context, settings, { watchlists.load(); watchlists.activeCoins().isNotEmpty() }, scope)
+
+    /** Looks for a newer release on GitHub and, when asked, installs it. Needs nothing from Binance or the lists. */
+    val updates = UpdateController(
+        installed = AppVersion.parse(BuildConfig.VERSION_NAME) ?: AppVersion(0, 0, 0),
+        source = UpdateChecker(BinanceClient.defaultHttp()),
+        downloader = ApkDownloader(BinanceClient.defaultHttp(), AndroidInstallLauncher.downloadDir(context)),
+        inspector = AndroidApkInspector(context),
+        launcher = AndroidInstallLauncher(context),
+        memory = object : UpdateMemory {
+            override suspend fun lastCheck() = settings.get(SettingsStore.LAST_UPDATE_CHECK)?.toLongOrNull() ?: 0L
+            override suspend fun saveLastCheck(time: Long) = settings.set(SettingsStore.LAST_UPDATE_CHECK, time.toString())
+        },
+    )
 
     private val problem = MutableStateFlow<String?>(null)
 
