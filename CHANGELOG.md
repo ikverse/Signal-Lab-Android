@@ -5,6 +5,12 @@ release notes.
 
 ## Unreleased
 
+- Updater (M6): Settings looks at this app's GitHub releases once a day (and on "Check now") and offers a
+  newer version with its notes. Tapping Download and install fetches the file, checks it is complete, is this
+  app, is newer, and is signed with the same key as the installed copy, then opens Android's installer,
+  which still asks before it installs. A file that fails any check is deleted and never handed over. The
+  release workflow builds, signs and publishes the file when a version tag is pushed.
+
 - Data layer (M3): Binance client with pacing, rate-limit waits, retries and a clear message when
   Binance refuses the network; the closed-candle rule judged by Binance's clock; candle sync that
   resumes interrupted downloads and refills holes; a candle store and a record database (append-only
