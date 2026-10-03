@@ -5,6 +5,19 @@ release notes.
 
 ## Unreleased
 
+## 0.1.1 - 2026-10-03
+
+- Screens (M5): Markets (coin list, chart, details), Paper trades, Scorecard, Alerts, Learn (16 pages),
+  Lists and Settings, with a first-run "Choose your coins". The layout follows the window width: a bottom
+  bar on a narrow screen, a side rail with two or three panels on a wide one. The scorecard is built from
+  your live paper trades and raises the bar for a verdict with every pattern tried.
+- Charts you choose (M4b): each list picks its own chart sizes from 1 minute to 1 day. Added Bullish
+  Harami and Hikkake, an intraday breakout and a 30-minute day momentum. Warnings for pumps, new coins and
+  volume spikes. Exits chosen per pattern (trailing, learned or held). Binance's own 0.10% fee each way
+  by default. History is kept per chart and trimmed daily.
+- Background scanning (M4): scans each candle as it closes with the app closed, opens a paper trade for
+  every signal it notices in time (otherwise logs it as missed), follows open trades to their exit, and
+  sends alerts. Needs notifications, exact alarms and a battery exemption to be reliable.
 - Updater (M6): Settings looks at this app's GitHub releases once a day (and on "Check now") and offers a
   newer version with its notes. Tapping Download and install fetches the file, checks it is complete, is this
   app, is newer, and is signed with the same key as the installed copy, then opens Android's installer,
