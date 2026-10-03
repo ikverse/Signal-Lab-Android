@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,7 +33,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun SignalLabApp(model: AppModel, debug: Boolean, webViews: Boolean = true, nav: NavState = rememberNavState()) {
     SignalLabTheme(webViews) {
         PermissionDialogs(model.prompts)
-        BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Background).statusBarsPadding().navigationBarsPadding()) {
+        // Clear of the system bars and of the notch or punch hole, whatever size and side the phone reports them on.
+        BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Background).windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))) {
             val layout = LayoutClass.of(maxWidth.value)
             Frame(model, debug, layout, nav)
         }
@@ -82,7 +86,7 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
         return
     }
     when (nav.dest) {
-        Dest.Markets -> MarketsScreen(model.markets, model.trades, model.alerts, layout, nav, onOpenLearn = openVariant, onOpenLists = { nav.go(Dest.Lists) })
+        Dest.Markets -> MarketsScreen(model.markets, model.trades, model.alerts, model.panels, layout, nav, onOpenLearn = openVariant, onOpenLists = { nav.go(Dest.Lists) })
         Dest.Trades -> TradesScreen(model.trades, onOpenCoin = { s, tf -> nav.openCoin(s, tf) }, onOpenLearn = openVariant)
         Dest.Scorecard -> ScorecardScreen(model.scorecard, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact)
         Dest.Alerts -> AlertsScreen(model.alerts, onOpenCoin = { s, tf -> nav.openCoin(s, tf) })

@@ -170,6 +170,16 @@ class FakePrompts : PermissionPrompts {
     override fun decline(prompt: PermissionPrompt) { log += "decline ${prompt.name}"; state.value = null }
 }
 
+class FakePanels(initial: Map<String, String>? = emptyMap()) : PanelPrefs {
+    val state = MutableStateFlow(initial)
+    val log = mutableListOf<String>()
+    override val saved: StateFlow<Map<String, String>?> = state
+    override fun save(key: String, text: String) {
+        log += "$key $text"
+        state.value = (state.value ?: emptyMap()) + (key to text)
+    }
+}
+
 class FakeDebug : DebugState {
     override val lines = MutableStateFlow(listOf("debug line"))
     val log = mutableListOf<String>()
@@ -189,6 +199,7 @@ class FakeApp(
     override val learn: FakeLearn = FakeLearn(),
     override val settings: FakeSettings = FakeSettings(),
     override val prompts: FakePrompts = FakePrompts(),
+    override val panels: FakePanels = FakePanels(),
     override val debug: FakeDebug? = FakeDebug(),
 ) : AppModel {
     val link = MutableStateFlow<Link?>(null)
@@ -212,7 +223,8 @@ class FakeApp(
             AlertUi(id, 1_700_000_000_000L + id * 1_000L, kind, "Title $id", "Body $id", symbol, tf)
 
         /** A fully filled app: one list, three coins, trades, a scorecard and alerts. */
-        fun full() = FakeApp(
+        fun full(panels: FakePanels = FakePanels()) = FakeApp(
+            panels = panels,
             lists = FakeLists(listOf(list)),
             markets = FakeMarkets(listOf(btc, eth, sol)),
             trades = FakeTrades(listOf(trade(1), trade(2, net = 0.03), trade(3, "ETHUSDT", net = -0.01))),

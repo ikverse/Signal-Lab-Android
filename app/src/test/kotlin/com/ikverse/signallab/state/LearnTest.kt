@@ -82,7 +82,7 @@ class LearnTest {
         val values = LearnValues.map()
         val used = HashSet<String>()
         for (e in LearnIndex.entries) {
-            for (m in Regex("""\{\{([A-Z0-9_]+)}}""").findAll(File(dir, "${e.id}.md").readText())) {
+            for (m in Regex("""\{\{([A-Z0-9_]+)\}\}""").findAll(File(dir, "${e.id}.md").readText())) {
                 assertTrue("${e.id} uses ${m.groupValues[1]}, which has no value", m.groupValues[1] in values)
                 used.add(m.groupValues[1])
             }

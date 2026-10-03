@@ -108,7 +108,8 @@ object LearnValues {
         "MAX_5M" to WatchlistRules.maxCoinsOn(Timeframe.M5).toString(),
     )
 
-    private val placeholder = Regex("""\{\{([A-Z0-9_]+)}}""")
+    // Both closing braces are escaped: the PC's regex engine tolerates a bare "}" but Android's rejects it, and that crashed the Learn tab.
+    private val placeholder = Regex("""\{\{([A-Z0-9_]+)\}\}""")
 
     /** Fills every `{{NAME}}` in [text]. A name with no value is a mistake in the page, so it fails loudly instead of showing a hole. */
     fun resolve(text: String, values: Map<String, String> = map()): String =

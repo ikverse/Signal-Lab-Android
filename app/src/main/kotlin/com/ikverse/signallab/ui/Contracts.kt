@@ -188,6 +188,14 @@ fun parseLink(text: String?): Link? {
     return Link(symbol, tf)
 }
 
+/** Where panel sizes are kept between runs: one piece of text per screen, and null until what was saved has been read. */
+interface PanelPrefs {
+    val saved: StateFlow<Map<String, String>?>
+
+    /** Remembers [text] for [key]; [saved] shows it straight away. */
+    fun save(key: String, text: String)
+}
+
 interface AppModel {
     val lists: ListsModel
     val markets: MarketsModel
@@ -197,6 +205,7 @@ interface AppModel {
     val learn: LearnModel
     val settings: SettingsModel
     val prompts: PermissionPrompts
+    val panels: PanelPrefs
 
     /** A link the app was opened with (a notification tap), until the screens have used it. */
     val pendingLink: StateFlow<Link?>

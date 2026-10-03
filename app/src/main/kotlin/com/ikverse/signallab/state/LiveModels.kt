@@ -27,6 +27,7 @@ import com.ikverse.signallab.ui.ListUi
 import com.ikverse.signallab.ui.ListsModel
 import com.ikverse.signallab.ui.MarketsModel
 import com.ikverse.signallab.ui.OfferUi
+import com.ikverse.signallab.ui.PanelPrefs
 import com.ikverse.signallab.ui.Outcome
 import com.ikverse.signallab.ui.PermissionPrompt
 import com.ikverse.signallab.ui.PermissionsUi
@@ -323,5 +324,29 @@ class LiveSettingsModel(
     private companion object {
         const val MAX_FEE = 0.01
         const val MAX_EXTRA = 0.05
+    }
+}
+
+/** Panel sizes kept in the settings, one entry per screen, so they are still there the next time the app opens. */
+class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = listOf("markets")) : PanelPrefs {
+    private val state = MutableStateFlow<Map<String, String>?>(null)
+    override val saved: StateFlow<Map<String, String>?> = state
+
+    init {
+        scope.launch {
+            val found = HashMap<String, String>()
+            for (k in keys) graph.settings.get(PREFIX + k)?.let { found[k] = it }
+            // A change made before the read finished wins over what was read.
+            state.value = found + (state.value ?: emptyMap())
+        }
+    }
+
+    override fun save(key: String, text: String) {
+        state.value = (state.value ?: emptyMap()) + (key to text)
+        scope.launch { graph.settings.set(PREFIX + key, text) }
+    }
+
+    private companion object {
+        const val PREFIX = "panels_"
     }
 }
