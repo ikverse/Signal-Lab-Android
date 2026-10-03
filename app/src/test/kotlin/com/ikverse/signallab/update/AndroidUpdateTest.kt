@@ -7,6 +7,7 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -25,6 +26,16 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 class AndroidUpdateTest {
     private val app: Application = ApplicationProvider.getApplicationContext()
+
+    /**
+     * FileProvider remembers its folders in a static map, but Robolectric gives every test its own cache folder, so a
+     * test that ran second would be matched against the first test's folder. Forget them before each test.
+     */
+    @Before
+    fun forgetProviderFolders() {
+        val cache = FileProvider::class.java.getDeclaredField("sCache").also { it.isAccessible = true }
+        (cache.get(null) as MutableMap<*, *>).clear()
+    }
 
     @Test
     fun `the manifest asks to hand files to the installer`() {
