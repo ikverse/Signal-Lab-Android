@@ -65,6 +65,7 @@ fun ChoiceText(text: String, selected: Boolean, onClick: () -> Unit, modifier: M
         Text(
             text,
             style = (if (selected) Type.BodyStrong else Type.Body.copy(color = Palette.Muted)).copy(textDecoration = if (selected) TextDecoration.Underline else null),
+            maxLines = 1,
         )
     }
 }

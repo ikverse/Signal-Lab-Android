@@ -3,6 +3,9 @@ package com.ikverse.signallab.ui
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
@@ -26,6 +29,11 @@ import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -36,7 +44,7 @@ import org.robolectric.annotation.Config
 
 private const val PHONE_UPRIGHT = "w400dp-h800dp"
 private const val PHONE_SIDEWAYS = "w700dp-h360dp"
-private const val TABLET = "w1000dp-h700dp"
+private const val TABLET = "w1200dp-h700dp"
 
 /** The screens, drawn for real (without web views) and used the way a person would: what shows, what a touch does, what survives rotation. */
 @OptIn(ExperimentalTestApi::class)
@@ -141,6 +149,30 @@ class AppUiTest {
         assertTrue(exists("markets-compact"))
         assertTrue(exists("coin-list"))
         assertTrue(!exists("details"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the three Markets tabs share the whole row, with no empty space on the right`() {
+        show(FakeApp.full())
+        val tabs = MarketsTab.entries.map { tag("markets-tab-${it.name}").getBoundsInRoot() }
+        assertEquals(400f, tabs.last().right.value, 0.5f)
+        for (t in tabs) assertEquals(400f / 3, t.width.value, 1f)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the app starts below a notch and beside a punch hole, however big the phone says they are`() {
+        show(FakeApp.full())
+        val before = tag("markets-compact").getBoundsInRoot()
+        rule.runOnUiThread {
+            val cutout = WindowInsetsCompat.Builder().setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(48, 90, 0, 0)).build()
+            ViewCompat.dispatchApplyWindowInsets(rule.activity.window.decorView, cutout)
+        }
+        rule.waitForIdle()
+        val after = tag("markets-compact").getBoundsInRoot()
+        assertTrue("top ${after.top} not below the cutout (was ${before.top})", after.top.value >= 90f)
+        assertTrue("left ${after.left} not beside the cutout", after.left.value >= 48f)
     }
 
     @Config(qualifiers = PHONE_SIDEWAYS)
@@ -620,6 +652,236 @@ class AppUiTest {
         back()
         assertTrue(exists("settings"))
         assertTrue(!exists("debug"))
+    }
+
+    // --- resizable panels (landscape) ---------------------------------------------------------------
+
+    private fun density() = rule.activity.resources.displayMetrics.density
+
+    private fun widthOf(t: String) = tag(t).getBoundsInRoot().width
+
+    private fun heightOf(t: String) = tag(t).getBoundsInRoot().height
+
+    private fun dragBy(t: String, dx: Float, dy: Float = 0f) {
+        tag(t).performTouchInput {
+            down(center)
+            moveBy(Offset(dx, dy))
+            up()
+        }
+        rule.waitForIdle()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a wide screen starts with the coin list and the details at their usual widths`() {
+        show(FakeApp.full())
+        tag("pane-coins").assertWidthIsEqualTo(280.dp)
+        tag("pane-details").assertWidthIsEqualTo(320.dp)
+        tag("divider-coins").assertExists()
+        tag("divider-details").assertExists()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `dragging a divider resizes the panel beside it, the right way round`() {
+        show(FakeApp.full())
+        val coins = widthOf("pane-coins").value
+        dragBy("divider-coins", 100f * density())
+        val grown = widthOf("pane-coins").value
+        assertTrue("coins $coins -> $grown", grown > coins + 50f && grown <= coins + 101f)
+
+        val details = widthOf("pane-details").value
+        dragBy("divider-details", -80f * density())
+        val widened = widthOf("pane-details").value
+        assertTrue("details $details -> $widened", widened > details + 40f && widened <= details + 81f)
+        dragBy("divider-details", 60f * density())
+        assertTrue(widthOf("pane-details").value < widened - 30f)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a panel cannot be made narrower than its minimum, and the chart is always left its own`() {
+        show(FakeApp.full())
+        dragBy("divider-coins", -3000f * density())
+        assertEquals(PaneMath.MIN_SIDE, widthOf("pane-coins").value, 0.6f)
+        dragBy("divider-coins", 5000f * density())
+        assertTrue("chart ${widthOf("pane-chart").value}", widthOf("pane-chart").value >= PaneMath.MIN_CHART - 0.6f)
+        dragBy("divider-details", -5000f * density())
+        assertTrue("chart ${widthOf("pane-chart").value}", widthOf("pane-chart").value >= PaneMath.MIN_CHART - 0.6f)
+        assertTrue(widthOf("pane-coins").value >= PaneMath.MIN_SIDE - 0.6f)
+        assertTrue(widthOf("pane-details").value >= PaneMath.MIN_SIDE - 0.6f)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `the arrow hides a panel and brings it back at the size it had`() {
+        show(FakeApp.full())
+        dragBy("divider-coins", 40f * density())
+        val before = widthOf("pane-coins").value
+        val chartBefore = widthOf("pane-chart").value
+        rule.onNodeWithContentDescription("Hide coins").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("pane-coins"))
+        assertTrue(widthOf("pane-chart").value > chartBefore + before - 1f)
+        rule.onNodeWithContentDescription("Show coins").assertExists()
+        rule.onNodeWithContentDescription("Hide coins").assertDoesNotExist()
+        // A hidden panel is not dragged back to a size by touching its divider.
+        dragBy("divider-coins", 200f * density())
+        assertTrue(!exists("pane-coins"))
+        rule.onNodeWithContentDescription("Show coins").performClick()
+        rule.waitForIdle()
+        assertEquals(before, widthOf("pane-coins").value, 0.6f)
+
+        rule.onNodeWithContentDescription("Hide details").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("pane-details"))
+        assertTrue(exists("pane-chart"))
+        rule.onNodeWithContentDescription("Show details").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("pane-details"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `the chart has no hide button, and hiding both side panels leaves the chart the whole width`() {
+        show(FakeApp.full())
+        rule.onNodeWithContentDescription("Hide chart").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Hide coins").performClick()
+        rule.onNodeWithContentDescription("Hide details").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("pane-chart"))
+        assertTrue(exists("chart-placeholder"))
+        assertTrue(widthOf("pane-chart").value > 1200f - 112f - 2 * PaneMath.DIVIDER - 2f)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `sizes are saved when changed, and nothing is saved before the user changes anything`() {
+        val first = FakePanels()
+        show(FakeApp.full(first))
+        assertTrue(first.log.isEmpty())
+        dragBy("divider-coins", 60f * density())
+        rule.onNodeWithContentDescription("Hide details").performClick()
+        rule.waitForIdle()
+        assertTrue(first.log.isNotEmpty())
+        val saved = first.state.value!!.getValue("markets")
+        assertTrue(saved, saved.contains("wide.coins=") && saved.contains("!wide.details"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a saved layout is applied once it has been read`() {
+        show(FakeApp.full(FakePanels(mapOf("markets" to "wide.coins=200.0;wide.details=250.0"))))
+        tag("pane-coins").assertWidthIsEqualTo(200.dp)
+        tag("pane-details").assertWidthIsEqualTo(250.dp)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a saved hidden panel stays hidden`() {
+        show(FakeApp.full(FakePanels(mapOf("markets" to "!wide.coins"))))
+        assertTrue(!exists("pane-coins"))
+        rule.onNodeWithContentDescription("Show coins").assertExists()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a layout saved in damaged form is ignored and the usual sizes apply`() {
+        show(FakeApp.full(FakePanels(mapOf("markets" to ";;=;wide.coins=abc;wide.details=-5;!;wide.coins=NaN"))))
+        tag("pane-coins").assertWidthIsEqualTo(280.dp)
+        tag("pane-details").assertWidthIsEqualTo(320.dp)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `nothing is saved before the saved layout has been read`() {
+        val waiting = FakePanels(initial = null)
+        show(FakeApp.full(waiting))
+        dragBy("divider-coins", 60f * density())
+        assertTrue(waiting.log.isEmpty())
+        tag("pane-coins").assertExists()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `the layout survives the screen being rebuilt`() {
+        val restore = StateRestorationTester(rule)
+        val app = FakeApp.full(FakePanels(initial = null))
+        restore.setContent { SignalLabApp(app, debug = false, webViews = false) }
+        rule.waitForIdle()
+        dragBy("divider-coins", 70f * density())
+        rule.onNodeWithContentDescription("Hide details").performClick()
+        rule.waitForIdle()
+        val width = widthOf("pane-coins").value
+        restore.emulateSavedInstanceStateRestore()
+        rule.waitForIdle()
+        assertEquals(width, widthOf("pane-coins").value, 0.6f)
+        assertTrue(!exists("pane-details"))
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `a small phone held sideways can resize the list and hide the details under the chart`() {
+        show(FakeApp.full())
+        tag("pane-coins").assertWidthIsEqualTo(220.dp)
+        val chart = heightOf("pane-chart").value
+        val details = heightOf("pane-details").value
+        // Down makes the details shorter and the chart taller; up makes them taller again.
+        dragBy("divider-details", 0f, 40f * density())
+        val shorter = heightOf("pane-details").value
+        assertTrue("details $details -> $shorter", shorter < details - 20f)
+        assertTrue(heightOf("pane-chart").value > chart + 20f)
+        dragBy("divider-details", 0f, -40f * density())
+        assertTrue(heightOf("pane-details").value > shorter + 10f)
+        assertTrue(heightOf("pane-chart").value >= PaneMath.MIN_CHART_HEIGHT - 0.6f)
+        dragBy("divider-coins", 50f * density())
+        assertTrue(widthOf("pane-coins").value > 220f)
+        rule.onNodeWithContentDescription("Hide details").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("pane-details"))
+        assertTrue(heightOf("pane-chart").value > chart)
+        rule.onNodeWithContentDescription("Hide coins").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("pane-coins"))
+        assertTrue(exists("pane-chart"))
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `the details under the chart cannot be dragged so tall that the chart disappears`() {
+        show(FakeApp.full())
+        dragBy("divider-details", 0f, -5000f * density())
+        assertTrue("chart ${heightOf("pane-chart").value}", heightOf("pane-chart").value >= PaneMath.MIN_CHART_HEIGHT - 0.6f)
+        dragBy("divider-details", 0f, 5000f * density())
+        assertTrue(heightOf("pane-details").value >= PaneMath.MIN_PANE_HEIGHT - 0.6f)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `held upright there are no dividers, and the three tabs are as they were`() {
+        show(FakeApp.full())
+        assertTrue(!exists("divider-coins"))
+        assertTrue(!exists("divider-details"))
+        assertTrue(!exists("pane-coins"))
+        rule.onNodeWithContentDescription("Chart").assertExists()
+        rule.onNodeWithContentDescription("Details").assertExists()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `every touchable thing on a wide screen, the buttons on the dividers too, is at least 48 dp tall`() {
+        show(FakeApp.full())
+        everyTouchTargetIsBigEnough()
+        rule.onNodeWithContentDescription("Hide coins").performClick()
+        rule.waitForIdle()
+        everyTouchTargetIsBigEnough()
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `every touchable thing on a small phone held sideways is at least 48 dp tall`() {
+        show(FakeApp.full())
+        everyTouchTargetIsBigEnough()
     }
 
     // --- every control is big enough to touch ---------------------------------------------------------

@@ -9,6 +9,7 @@ import com.ikverse.signallab.ui.LearnModel
 import com.ikverse.signallab.ui.Link
 import com.ikverse.signallab.ui.ListsModel
 import com.ikverse.signallab.ui.MarketsModel
+import com.ikverse.signallab.ui.PanelPrefs
 import com.ikverse.signallab.ui.PermissionPrompt
 import com.ikverse.signallab.ui.PermissionPrompts
 import com.ikverse.signallab.ui.ScorecardModel
@@ -37,6 +38,7 @@ class LiveAppModel(graph: AppGraph, context: Context, scope: CoroutineScope, deb
     private val liveSettings = LiveSettingsModel(graph, context, scope, systemScreens)
     override val settings: SettingsModel = liveSettings
     override val prompts: PermissionPrompts = graph.permissions
+    override val panels: PanelPrefs = LivePanelPrefs(graph, scope)
     override val debug: DebugState? = if (BuildConfig.DEBUG) debugState else null
 
     private val link = MutableStateFlow<Link?>(null)

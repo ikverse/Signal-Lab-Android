@@ -1,6 +1,7 @@
 package com.ikverse.signallab.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -39,6 +40,7 @@ fun MarketsScreen(
     markets: MarketsModel,
     trades: TradesModel,
     alerts: AlertsModel,
+    panels: PanelPrefs,
     layout: LayoutClass,
     nav: NavState,
     onOpenLearn: (String) -> Unit,
@@ -50,6 +52,7 @@ fun MarketsScreen(
     val changes by markets.changes.collectAsStateWithLifecycle()
     val allTrades by trades.trades.collectAsStateWithLifecycle()
     val allAlerts by alerts.alerts.collectAsStateWithLifecycle()
+    val pane = rememberPaneLayout(panels, "markets")
 
     val symbols = coins.map { it.symbol }.toSet()
     DisposableEffect(symbols) {
@@ -74,25 +77,57 @@ fun MarketsScreen(
     val details = @Composable { Details(coin, live, allTrades.filter { it.symbol == coin.symbol }, allAlerts.filter { it.symbol == coin.symbol && it.kind == "warning" }, onOpenLearn, Modifier.fillMaxSize()) }
 
     when (layout) {
-        LayoutClass.Wide -> Row(modifier.fillMaxSize().testTag("markets-wide")) {
-            Column(Modifier.width(280.dp)) { list() }
-            VRule()
-            Column(Modifier.weight(1f)) { chartPane() }
-            VRule()
-            Column(Modifier.width(320.dp)) { details() }
+        LayoutClass.Wide -> BoxWithConstraints(modifier.fillMaxSize().testTag("markets-wide")) {
+            val total = maxWidth.value
+            val coinsHidden = pane.isHidden("wide.coins")
+            val detailsHidden = pane.isHidden("wide.details")
+            val (c, d) = PaneMath.fit(total, pane.size("wide.coins", 280f), pane.size("wide.details", 320f), coinsHidden, detailsHidden)
+            Row(Modifier.fillMaxSize()) {
+                if (!coinsHidden) Column(Modifier.width(c.dp).pane("coins")) { list() }
+                PaneDivider(
+                    vertical = true, hidden = coinsHidden, label = "coins", arrow = if (coinsHidden) "›" else "‹",
+                    onDrag = { pane.set("wide.coins", PaneMath.dragged(c, it, max = total - 2 * PaneMath.DIVIDER - PaneMath.MIN_CHART - d)) },
+                    onToggle = { pane.toggle("wide.coins") }, modifier = Modifier.testTag("divider-coins"),
+                )
+                Column(Modifier.weight(1f).pane("chart")) { chartPane() }
+                PaneDivider(
+                    vertical = true, hidden = detailsHidden, label = "details", arrow = if (detailsHidden) "‹" else "›",
+                    onDrag = { pane.set("wide.details", PaneMath.dragged(d, -it, max = total - 2 * PaneMath.DIVIDER - PaneMath.MIN_CHART - c)) },
+                    onToggle = { pane.toggle("wide.details") }, modifier = Modifier.testTag("divider-details"),
+                )
+                if (!detailsHidden) Column(Modifier.width(d.dp).pane("details")) { details() }
+            }
         }
-        LayoutClass.Medium -> Row(modifier.fillMaxSize().testTag("markets-medium")) {
-            Column(Modifier.width(220.dp)) { list() }
-            VRule()
-            Column(Modifier.weight(1f)) {
-                Column(Modifier.weight(1f)) { chartPane() }
-                HRule()
-                Column(Modifier.height(190.dp)) { details() }
+        LayoutClass.Medium -> BoxWithConstraints(modifier.fillMaxSize().testTag("markets-medium")) {
+            val totalW = maxWidth.value
+            val totalH = maxHeight.value
+            val coinsHidden = pane.isHidden("medium.coins")
+            val detailsHidden = pane.isHidden("medium.details")
+            val c = PaneMath.fitOne(totalW, pane.size("medium.coins", 220f), coinsHidden, PaneMath.MIN_SIDE, PaneMath.MIN_CHART, PaneMath.DIVIDER)
+            val h = PaneMath.fitOne(totalH, pane.size("medium.details", 190f), detailsHidden, PaneMath.MIN_PANE_HEIGHT, PaneMath.MIN_CHART_HEIGHT, PaneMath.DIVIDER)
+            Row(Modifier.fillMaxSize()) {
+                if (!coinsHidden) Column(Modifier.width(c.dp).pane("coins")) { list() }
+                PaneDivider(
+                    vertical = true, hidden = coinsHidden, label = "coins", arrow = if (coinsHidden) "›" else "‹",
+                    onDrag = { pane.set("medium.coins", PaneMath.dragged(c, it, max = totalW - PaneMath.DIVIDER - PaneMath.MIN_CHART)) },
+                    onToggle = { pane.toggle("medium.coins") }, modifier = Modifier.testTag("divider-coins"),
+                )
+                Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f).pane("chart")) { chartPane() }
+                    PaneDivider(
+                        vertical = false, hidden = detailsHidden, label = "details", arrow = if (detailsHidden) "▴" else "▾",
+                        onDrag = {
+                            pane.set("medium.details", PaneMath.dragged(h, -it, max = totalH - PaneMath.DIVIDER - PaneMath.MIN_CHART_HEIGHT, min = PaneMath.MIN_PANE_HEIGHT))
+                        },
+                        onToggle = { pane.toggle("medium.details") }, modifier = Modifier.testTag("divider-details"),
+                    )
+                    if (!detailsHidden) Column(Modifier.height(h.dp).pane("details")) { details() }
+                }
             }
         }
         LayoutClass.Compact -> Column(modifier.fillMaxSize().testTag("markets-compact")) {
             Row(Modifier.fillMaxWidth()) {
-                for (t in MarketsTab.entries) ChoiceText(t.label, nav.marketsTab == t, { nav.marketsTab = t })
+                for (t in MarketsTab.entries) ChoiceText(t.label, nav.marketsTab == t, { nav.marketsTab = t }, Modifier.weight(1f).testTag("markets-tab-${t.name}"))
             }
             HRule()
             Column(Modifier.weight(1f)) {
