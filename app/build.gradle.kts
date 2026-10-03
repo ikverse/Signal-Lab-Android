@@ -100,8 +100,9 @@ android {
         // Robolectric reads the merged manifest and resources to stand up a context; without this
         // it starts with neither and every test that needs one fails on the same complaint.
         unitTests.isIncludeAndroidResources = true
-        // The default test heap ran out partway through a run of database tests.
-        unitTests.all { it.maxHeapSize = "2g" }
+        // The default test heap ran out partway through a run of database tests, and 2g ran out intermittently
+        // once the suite passed 500 tests (the backtest and screen tests are the heavy ones).
+        unitTests.all { it.maxHeapSize = "3g" }
     }
 
     // The engine's golden files (real candles and what the research version produced) are read by
