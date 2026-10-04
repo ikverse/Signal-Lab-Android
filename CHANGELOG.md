@@ -5,6 +5,15 @@ release notes.
 
 ## Unreleased
 
+## 0.1.2 - 2026-10-04
+
+- Fixed: the first list you make now keeps its coins and is switched on. Before, it could be left empty and off, and coins could not be added to it.
+- Fixed: "Add coins" on an existing list now shows the coins and adds them.
+- Pick coins by Volume, Gainers, Losers (1 hour, 24 hours, 7 days), Most trades, Volatile or New listings (last 30 days).
+- Chart: a new Indicators menu (Volume, moving averages, Bollinger Bands, RSI, MACD), a Draw menu (trend line, horizontal line, ray, parallel channel, Fibonacci) and a Latest button. The chart now resizes with its pane.
+- Lists and Learn have the same resizable panes as Markets.
+- Settings: "Keep the screen on and dim it".
+
 ## 0.1.1 - 2026-10-03
 
 - Screens (M5): Markets (coin list, chart, details), Paper trades, Scorecard, Alerts, Learn (16 pages),
