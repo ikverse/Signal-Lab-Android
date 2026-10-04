@@ -5,20 +5,41 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Signal Lab chart</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #050505; overflow: hidden; }
-  #chart { width: 100%; height: 100%; }
+  html, body { margin: 0; height: 100%; background: #050505; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+  /* The strip above the chart: plain words, TradingView's colours, nothing boxed. */
+  #bar { position: absolute; top: 0; left: 0; right: 0; height: 44px; display: flex; align-items: center; background: #050505; border-bottom: 1px solid #1e222d; font: 14px Roboto, "Helvetica Neue", Arial, sans-serif; z-index: 3; }
+  #bar button { background: none; border: 0; margin: 0; padding: 0 14px; height: 44px; min-width: 44px; color: #868993; font: inherit; }
+  #bar button.on { color: #d1d4dc; text-decoration: underline; }
+  #hint { flex: 1; text-align: right; padding-right: 12px; color: #868993; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #chart { position: absolute; top: 45px; left: 0; right: 0; bottom: 0; }
   #empty { position: absolute; left: 0; right: 0; top: 40%; text-align: center; color: #868993; font: 14px Roboto, sans-serif; display: none; }
+  #shade { position: absolute; inset: 0; z-index: 4; display: none; }
+  #menu { position: absolute; top: 45px; left: 0; min-width: 240px; max-width: 100%; background: #0d0f14; border: 1px solid #1e222d; border-left: 0; z-index: 5; display: none; font: 14px Roboto, "Helvetica Neue", Arial, sans-serif; }
+  #menu .row { display: flex; align-items: center; height: 44px; padding: 0 14px; color: #d1d4dc; border-bottom: 1px solid #1e222d; }
+  #menu .row:last-child { border-bottom: 0; }
+  #menu .row .box { width: 28px; color: #868993; font-family: monospace; }
+  #menu .row.on .box { color: #2962ff; }
+  #menu .row.quiet { color: #868993; }
 </style>
 </head>
 <body>
+<div id="bar">
+  <button id="btn-ind" type="button">Indicators</button>
+  <button id="btn-draw" type="button">Draw</button>
+  <button id="btn-latest" type="button">Latest</button>
+  <span id="hint"></span>
+</div>
 <div id="chart"></div>
 <div id="empty">No candles stored for this chart yet.</div>
+<div id="shade"></div>
+<div id="menu"></div>
 <script src="klinecharts.min.js"></script>
 <script>
   // TradingView's palette, as used everywhere else in the app.
   var UP = '#089981', DOWN = '#f23645', MUTED = '#868993', RULE = '#1e222d', ACCENT = '#2962FF', TEXT = '#d1d4dc';
   var FONT = 'Roboto, "Helvetica Neue", Arial, sans-serif';
   var chart = klinecharts.init('chart', { locale: 'en-US' });
+  var LINE = { style: 'solid', smooth: false, size: 1, dashedValue: [2, 2] };
   chart.setStyles({
     grid: { horizontal: { color: '#0d0f14' }, vertical: { color: '#0d0f14' } },
     candle: {
@@ -35,6 +56,11 @@
     },
     indicator: {
       bars: [{ upColor: 'rgba(8,153,129,0.5)', downColor: 'rgba(242,54,69,0.5)', noChangeColor: MUTED }],
+      // The lines of the averages, bands, RSI and MACD: the accent first, then warm colours, never the library's rainbow.
+      lines: [
+        Object.assign({ color: ACCENT }, LINE), Object.assign({ color: '#ff9800' }, LINE), Object.assign({ color: '#ab47bc' }, LINE),
+        Object.assign({ color: '#26c6da' }, LINE), Object.assign({ color: '#d1d4dc' }, LINE)
+      ],
       tooltip: { text: { color: MUTED, family: FONT } }
     },
     xAxis: { axisLine: { color: RULE }, tickLine: { color: RULE }, tickText: { color: MUTED, family: FONT } },
@@ -45,8 +71,12 @@
       vertical: { line: { color: MUTED }, text: { backgroundColor: RULE, color: TEXT, borderColor: RULE, family: FONT } }
     }
   });
-  // Volume as plain bars, with no moving-average lines over them.
-  chart.createIndicator({ name: 'VOL', calcParams: [] }, false);
+
+  // --- Size: the library only learns of a new container size when it is told, so tell it whenever the page or the chart's box changes.
+  function fit() { try { chart.resize(); } catch (e) { /* a failed resize must never take the chart down */ } }
+  var chartBox = document.getElementById('chart');
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fit).observe(chartBox);
+  window.addEventListener('resize', fit);
 
   var KIND_COLOR = { ENTRY: ACCENT, STOP: DOWN, TARGET: UP };
   var haveData = false;
@@ -70,9 +100,168 @@
     } catch (e) { /* a missing overlay must never take the chart down */ }
   }
 
-  // The app calls these two. Everything else is the library's.
+  // --- Indicators: each is on the price (stacked on the candles) or in a panel of its own underneath.
+  var INDICATORS = [
+    { id: 'VOL', label: 'Volume', onPrice: false, make: { name: 'VOL', calcParams: [] } },
+    { id: 'MA', label: 'Moving averages (20, 50)', onPrice: true, make: { name: 'MA', calcParams: [20, 50] } },
+    { id: 'EMA', label: 'Exponential averages (20, 50)', onPrice: true, make: { name: 'EMA', calcParams: [20, 50] } },
+    { id: 'BOLL', label: 'Bollinger Bands (20, 2)', onPrice: true, make: { name: 'BOLL', calcParams: [20, 2] } },
+    { id: 'RSI', label: 'RSI (14)', onPrice: false, make: { name: 'RSI', calcParams: [14] } },
+    { id: 'MACD', label: 'MACD (12, 26, 9)', onPrice: false, make: { name: 'MACD', calcParams: [12, 26, 9] } }
+  ];
+  var activeIndicators = {}; // id -> the panel it is in
+
+  function indicatorById(id) {
+    for (var i = 0; i < INDICATORS.length; i++) if (INDICATORS[i].id === id) return INDICATORS[i];
+    return null;
+  }
+
+  function setIndicator(id, on) {
+    var def = indicatorById(id);
+    if (!def) return;
+    try {
+      if (on && !activeIndicators[id]) {
+        var pane = chart.createIndicator(def.make, def.onPrice, def.onPrice ? { id: 'candle_pane' } : { height: 80, minHeight: 40 });
+        activeIndicators[id] = def.onPrice ? 'candle_pane' : pane;
+      } else if (!on && activeIndicators[id]) {
+        chart.removeIndicator(activeIndicators[id], def.make.name);
+        delete activeIndicators[id];
+      }
+    } catch (e) { /* an indicator that cannot be drawn is left out */ }
+  }
+
+  function indicatorList() {
+    return INDICATORS.filter(function (d) { return activeIndicators[d.id]; }).map(function (d) { return d.id; });
+  }
+
+  function tellApp(method, arg) {
+    try { if (window.Android && window.Android[method]) window.Android[method](arg); } catch (e) {}
+  }
+
+  // --- Drawings: the user's own lines, kept per coin and chart size by the app (the page only draws them and reports them).
+  var DRAW_STYLE = {
+    line: { color: ACCENT, size: 1 },
+    point: { color: ACCENT, borderColor: ACCENT, activeColor: ACCENT, activeBorderColor: ACCENT, radius: 4, activeRadius: 5 },
+    // Labels (the Fibonacci levels) are plain text on the chart, not boxes.
+    text: { color: TEXT, family: FONT, size: 11, backgroundColor: 'rgba(0,0,0,0)', borderColor: 'rgba(0,0,0,0)', borderSize: 0 }
+  };
+  var TOOLS = [
+    { name: 'segment', label: 'Trend line', hint: 'Tap the start, then the end' },
+    { name: 'horizontalStraightLine', label: 'Horizontal line', hint: 'Tap the price level' },
+    { name: 'rayLine', label: 'Ray', hint: 'Tap the start, then a point on its path' },
+    { name: 'parallelStraightLine', label: 'Parallel channel', hint: 'Tap two points, then the width' },
+    { name: 'fibonacciLine', label: 'Fibonacci retracement', hint: 'Tap the high, then the low (or the reverse)' }
+  ];
+  var drawingsKey = '';
+  var drawIds = [];
+  var pendingId = null;
+
+  function liveDrawings() {
+    drawIds = drawIds.filter(function (id) { return !!chart.getOverlayById(id); });
+    return drawIds.map(function (id) {
+      var o = chart.getOverlayById(id);
+      return { name: o.name, points: (o.points || []).map(function (p) { return { timestamp: p.timestamp, value: p.value }; }) };
+    });
+  }
+
+  function reportDrawings() {
+    try { tellApp('drawingsChanged', JSON.stringify({ key: drawingsKey, drawings: liveDrawings() })); } catch (e) {}
+  }
+
+  function setHint(text) { document.getElementById('hint').textContent = text || ''; }
+
+  function startDraw(name) {
+    try {
+      // A tool picked and then abandoned half way is dropped, so it never lingers as a stray point.
+      if (pendingId) { chart.removeOverlay(pendingId); pendingId = null; }
+      var id = chart.createOverlay({
+        name: name, groupId: 'draw', styles: DRAW_STYLE,
+        onDrawEnd: function () { pendingId = null; setHint(''); reportDrawings(); return false; },
+        onPressedMoveEnd: function () { reportDrawings(); return false; }
+      });
+      if (id) { drawIds.push(id); pendingId = id; }
+    } catch (e) { setHint(''); }
+  }
+
+  function clearDrawings() {
+    clearGroup('draw');
+    drawIds = [];
+    pendingId = null;
+    setHint('');
+    reportDrawings();
+  }
+
+  function restoreDrawings(list) {
+    (list || []).forEach(function (d) {
+      try {
+        var id = chart.createOverlay({ name: d.name, groupId: 'draw', styles: DRAW_STYLE, points: d.points,
+          onPressedMoveEnd: function () { reportDrawings(); return false; } });
+        if (id) drawIds.push(id);
+      } catch (e) {}
+    });
+  }
+
+  // --- The strip and its two menus.
+  var menu = document.getElementById('menu'), shade = document.getElementById('shade');
+  var openMenu = null;
+
+  function closeMenu() {
+    openMenu = null;
+    menu.style.display = 'none';
+    shade.style.display = 'none';
+    document.getElementById('btn-ind').className = '';
+    document.getElementById('btn-draw').className = '';
+  }
+
+  function row(text, box, on, quiet, onTap) {
+    var r = document.createElement('div');
+    r.className = 'row' + (on ? ' on' : '') + (quiet ? ' quiet' : '');
+    var b = document.createElement('span');
+    b.className = 'box';
+    b.textContent = box;
+    r.appendChild(b);
+    r.appendChild(document.createTextNode(text));
+    r.addEventListener('click', onTap);
+    return r;
+  }
+
+  function showMenu(which) {
+    if (openMenu === which) { closeMenu(); return; }
+    closeMenu();
+    openMenu = which;
+    menu.innerHTML = '';
+    if (which === 'ind') {
+      INDICATORS.forEach(function (d) {
+        var on = !!activeIndicators[d.id];
+        menu.appendChild(row(d.label, on ? '[x]' : '[ ]', on, false, function () {
+          setIndicator(d.id, !activeIndicators[d.id]);
+          tellApp('indicatorsChanged', indicatorList().join(','));
+          showMenuAgain('ind');
+        }));
+      });
+      document.getElementById('btn-ind').className = 'on';
+    } else {
+      TOOLS.forEach(function (t) {
+        menu.appendChild(row(t.label, '', false, false, function () { closeMenu(); setHint(t.hint); startDraw(t.name); }));
+      });
+      menu.appendChild(row('Clear drawings', '', false, true, function () { closeMenu(); clearDrawings(); }));
+      document.getElementById('btn-draw').className = 'on';
+    }
+    menu.style.display = 'block';
+    shade.style.display = 'block';
+  }
+
+  // Ticking an indicator keeps its menu open so several can be set in one go.
+  function showMenuAgain(which) { openMenu = null; showMenu(which); }
+
+  document.getElementById('btn-ind').addEventListener('click', function () { showMenu('ind'); });
+  document.getElementById('btn-draw').addEventListener('click', function () { showMenu('draw'); });
+  document.getElementById('btn-latest').addEventListener('click', function () { closeMenu(); try { chart.scrollToRealTime(300); } catch (e) {} });
+  shade.addEventListener('click', closeMenu);
+
+  // The app calls these. Everything else is the library's.
   window.signalLab = {
-    // data = { candles: [[time, open, high, low, close, volume], ...], levels: [{kind, label, price}, ...] }
+    // data = { key, candles: [[time, open, high, low, close, volume], ...], levels: [{kind, label, price}, ...], drawings: [{name, points}, ...] }
     setData: function (data) {
       var rows = (data.candles || []).map(function (c) {
         return { timestamp: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] };
@@ -83,6 +272,16 @@
       clearGroup('levels');
       // A price line from the previous chart sits at a time this chart may not have: drawing it would stretch the axis.
       clearGroup('live');
+      // The user's drawings belong to a coin and chart size: a refresh of the same chart keeps them, another chart gets its own.
+      var key = data.key || '';
+      if (key !== drawingsKey) {
+        clearGroup('draw');
+        drawIds = [];
+        pendingId = null;
+        setHint('');
+        drawingsKey = key;
+        restoreDrawings(data.drawings);
+      }
       if (haveData) {
         var last = rows[rows.length - 1].timestamp;
         (data.levels || []).forEach(function (l) {
@@ -95,6 +294,13 @@
       if (!haveData || !(price > 0)) return;
       var data = chart.getDataList();
       drawLevel('live', price, '', ACCENT, data[data.length - 1].timestamp, false);
+    },
+    // The indicators to show, as a list of ids such as ["VOL", "RSI"]; everything not listed is taken off.
+    setIndicators: function (ids) {
+      var want = {};
+      (ids || []).forEach(function (id) { want[id] = true; });
+      INDICATORS.forEach(function (d) { setIndicator(d.id, !!want[d.id]); });
+      if (openMenu === 'ind') showMenuAgain('ind');
     },
     // How long the last drawing took, for the chart check on the debug page.
     benchmark: function (n) {
@@ -129,6 +335,9 @@
       });
     }
   };
+
+  // Volume only, until the app says otherwise.
+  window.signalLab.setIndicators(['VOL']);
 </script>
 </body>
 </html>

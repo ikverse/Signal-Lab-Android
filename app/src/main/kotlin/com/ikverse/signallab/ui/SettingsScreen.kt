@@ -90,6 +90,20 @@ fun SettingsScreen(model: SettingsModel, hasDebug: Boolean, onOpenDebug: () -> U
         )
         HRule()
 
+        SectionLabel("Screen")
+        SwitchRow(
+            "Keep the screen on and dim it",
+            "Stops the screen turning off while Signal Lab is showing, and turns its brightness down so the phone can sit on a desk or a charger. Your usual brightness comes back when you switch this off or leave the app. Scanning does not depend on it.",
+            s.dimScreen, { scope.launch { model.setDimScreen(it) } }, Modifier.testTag("dim-screen"),
+        )
+        if (s.dimScreen) {
+            Row(Modifier.padding(horizontal = 6.dp).testTag("dim-levels"), verticalAlignment = Alignment.CenterVertically) {
+                Text("How dim", style = Type.Small, modifier = Modifier.padding(horizontal = 10.dp))
+                for (level in DimLevel.entries) ChoiceText(level.label, level == s.dimLevel, { scope.launch { model.setDimLevel(level) } }, Modifier.testTag("dim-${level.name}"))
+            }
+        }
+        HRule()
+
         SectionLabel("Data source")
         SwitchRow(
             "Use Binance.US", "Choose this if Binance.com is not available from your network (it answers with error 451).",

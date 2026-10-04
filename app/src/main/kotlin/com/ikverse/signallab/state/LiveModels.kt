@@ -23,14 +23,19 @@ import com.ikverse.signallab.ui.CoinUi
 import com.ikverse.signallab.ui.DownloadUi
 import com.ikverse.signallab.ui.LevelKind
 import com.ikverse.signallab.ui.LevelUi
+import com.ikverse.signallab.ui.DimLevel
 import com.ikverse.signallab.ui.ListUi
+import com.ikverse.signallab.ui.ListingCheckUi
 import com.ikverse.signallab.ui.ListsModel
 import com.ikverse.signallab.ui.MarketsModel
 import com.ikverse.signallab.ui.OfferUi
+import com.ikverse.signallab.ui.OffersUi
 import com.ikverse.signallab.ui.PanelPrefs
 import com.ikverse.signallab.ui.Outcome
 import com.ikverse.signallab.ui.PermissionPrompt
 import com.ikverse.signallab.ui.PermissionsUi
+import com.ikverse.signallab.ui.PickSource
+import com.ikverse.signallab.ui.PickWindow
 import com.ikverse.signallab.ui.ScorecardModel
 import com.ikverse.signallab.ui.ScorecardUi
 import com.ikverse.signallab.ui.SettingsModel
@@ -77,12 +82,27 @@ fun refusalText(r: Refusal): String = when (r) {
     Refusal.NO_TIMEFRAME -> "Choose at least one chart."
 }
 
+private fun PickSource.toData() = when (this) {
+    PickSource.VOLUME -> com.ikverse.signallab.data.PickerSource.VOLUME
+    PickSource.GAINERS -> com.ikverse.signallab.data.PickerSource.GAINERS
+    PickSource.LOSERS -> com.ikverse.signallab.data.PickerSource.LOSERS
+    PickSource.ACTIVE -> com.ikverse.signallab.data.PickerSource.ACTIVE
+    PickSource.VOLATILE -> com.ikverse.signallab.data.PickerSource.VOLATILE
+    PickSource.NEW -> com.ikverse.signallab.data.PickerSource.NEW
+}
+
+private fun PickWindow.toData() = when (this) {
+    PickWindow.H1 -> com.ikverse.signallab.data.MoveWindow.H1
+    PickWindow.H24 -> com.ikverse.signallab.data.MoveWindow.H24
+    PickWindow.D7 -> com.ikverse.signallab.data.MoveWindow.D7
+}
+
 private fun WatchlistResult<*>.outcome(): Outcome = when (this) {
     is WatchlistResult.Ok -> Outcome.Done
     is WatchlistResult.Refused -> Outcome.Refused(refusalText(reason))
 }
 
-class LiveListsModel(private val graph: AppGraph, scope: CoroutineScope) : ListsModel {
+class LiveListsModel(private val graph: AppGraph, private val scope: CoroutineScope) : ListsModel {
     override val lists: StateFlow<List<ListUi>> = graph.watchlists.lists
         .map { all -> all.map { it.toUi() } }
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
@@ -107,37 +127,48 @@ class LiveListsModel(private val graph: AppGraph, scope: CoroutineScope) : Lists
         }
     }
 
-    override suspend fun offers(query: String): List<OfferUi> {
-        suspend fun read() = graph.universe.search(query.trim(), 50).map { OfferUi(it.symbol, it.base, it.quoteVolume) }
-        val found = read()
-        if (found.isNotEmpty() || query.isNotBlank()) return found
-        // Nothing stored yet (a first run before the pair list arrived): ask for it now.
-        return try {
-            graph.universe.refreshIfStale()
-            read()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            emptyList()
+    override val listingCheck: StateFlow<ListingCheckUi> = graph.universe.listingLookup
+        .map { ListingCheckUi(it.running, it.done, it.total, it.failed) }
+        .stateIn(scope, SharingStarted.Eagerly, ListingCheckUi())
+
+    override fun checkListings() {
+        scope.launch {
+            try {
+                graph.universe.lookUpListings()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The lookup reports its own failures through listingCheck; anything else leaves "New" as it was.
+            }
         }
     }
 
-    override suspend fun create(name: String, symbols: List<String>, timeframes: Set<String>, activate: Boolean): Outcome {
-        val repo = graph.watchlists
-        val made = when (val r = repo.create(name)) {
-            is WatchlistResult.Ok -> r.value
-            is WatchlistResult.Refused -> return Outcome.Refused(refusalText(r.reason))
+    override suspend fun offers(query: String, source: PickSource, window: PickWindow): OffersUi {
+        val universe = graph.universe
+        var problem: String? = null
+        try {
+            // The day's figures behind gainers, losers and trade counts go stale in minutes; the pair list itself changes slowly.
+            universe.refreshIfStale(maxAgeMs = DataConfig.PICKER_REFRESH_MS)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            problem = e.message ?: "Binance did not answer."
         }
-        // Anything that is refused part-way takes the half-made list back, so a failed attempt leaves nothing behind.
-        suspend fun undo(r: WatchlistResult<*>): Outcome {
-            repo.delete(made.id)
-            return r.outcome()
+        val found = try {
+            universe.offers(query.trim(), source.toData(), window.toData(), 50).map { OfferUi(it.coin.symbol, it.coin.base, it.coin.quoteVolume, it.value) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            problem = e.message ?: "Binance did not answer."
+            emptyList()
         }
-        repo.setTimeframes(made.id, timeframes.map(Timeframe::of).toSet()).let { if (it is WatchlistResult.Refused) return undo(it) }
-        for (s in symbols.distinct()) repo.add(made.id, s).let { if (it is WatchlistResult.Refused) return undo(it) }
-        if (activate) repo.setActive(made.id, true).let { if (it is WatchlistResult.Refused) return undo(it) }
-        return Outcome.Done
+        // Stale figures are shown quietly; only an empty answer needs the reason.
+        return OffersUi(found, problem.takeIf { found.isEmpty() })
     }
+
+    /** One step, all or nothing: see [com.ikverse.signallab.data.WatchlistRepository.createWith]. */
+    override suspend fun create(name: String, symbols: List<String>, timeframes: Set<String>, activate: Boolean): Outcome =
+        graph.watchlists.createWith(name, symbols, timeframes.map(Timeframe::of).toSet(), activate).outcome()
 
     override suspend fun rename(id: Long, name: String) = graph.watchlists.rename(id, name).outcome()
     override suspend fun delete(id: Long) = graph.watchlists.delete(id).outcome()
@@ -249,14 +280,14 @@ class LiveSettingsModel(
     /** Where a request to open one of Android's own screens goes; the activity listens and opens it. */
     private val systemScreens: MutableSharedFlow<PermissionPrompt>,
 ) : SettingsModel {
-    private val state = MutableStateFlow(read(CostModel(), scanning = true, followFast = true, us = false))
+    private val state = MutableStateFlow(read(CostModel(), scanning = true, followFast = true, us = false, dim = false, level = DimLevel.DIM))
     override val settings: StateFlow<SettingsUi> = state
 
     init {
         scope.launch { refresh() }
     }
 
-    private fun read(costs: CostModel, scanning: Boolean, followFast: Boolean, us: Boolean): SettingsUi {
+    private fun read(costs: CostModel, scanning: Boolean, followFast: Boolean, us: Boolean, dim: Boolean, level: DimLevel): SettingsUi {
         val g = graph.permissions.grants()
         return SettingsUi(
             feePerSide = costs.feePerSide, extraMajors = costs.extraMajors, extraOthers = costs.extraOthers,
@@ -264,6 +295,7 @@ class LiveSettingsModel(
             permissions = PermissionsUi(g.notifications, g.exactAlarms, g.batteryExempt),
             version = BuildConfig.VERSION_NAME,
             dataNote = "Everything Signal Lab records stays on this phone. It downloads prices from Binance and sends nothing about you anywhere.",
+            dimScreen = dim, dimLevel = level,
         )
     }
 
@@ -273,7 +305,19 @@ class LiveSettingsModel(
         state.value = read(
             CostModel.load(s), s.getBoolean(SettingsStore.SCAN_IN_BACKGROUND, true), s.getBoolean(SettingsStore.FOLLOW_FAST_CHARTS, true),
             graph.currentHost() == DataConfig.HOST_US,
+            s.getBoolean(SettingsStore.DIM_SCREEN, false),
+            s.get(SettingsStore.DIM_LEVEL)?.let { name -> DimLevel.entries.firstOrNull { it.name == name } } ?: DimLevel.DIM,
         )
+    }
+
+    override suspend fun setDimScreen(on: Boolean) {
+        graph.settings.setBoolean(SettingsStore.DIM_SCREEN, on)
+        refresh()
+    }
+
+    override suspend fun setDimLevel(level: DimLevel) {
+        graph.settings.set(SettingsStore.DIM_LEVEL, level.name)
+        refresh()
     }
 
     override suspend fun setFee(feePerSide: Double): Outcome {
@@ -336,7 +380,7 @@ class LiveSettingsModel(
 }
 
 /** Panel sizes kept in the settings, one entry per screen, so they are still there the next time the app opens. */
-class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = listOf("markets")) : PanelPrefs {
+class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = listOf("markets", "lists", "learn", "chart")) : PanelPrefs {
     private val state = MutableStateFlow<Map<String, String>?>(null)
     override val saved: StateFlow<Map<String, String>?> = state
 

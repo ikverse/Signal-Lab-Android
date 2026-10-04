@@ -29,6 +29,10 @@ data class CoinRow(
     val seenAt: Long,
     /** When Binance first listed it (its first daily candle); null until it has been asked once. */
     val listedAt: Long? = null,
+    /** How far the price moved over the last 24 hours, as a fraction (0.05 is up 5%); 0 when it is not known. */
+    val change24: Double = 0.0,
+    /** How many trades happened in the last 24 hours; 0 when it is not known. */
+    val trades24: Long = 0,
 )
 
 /**
@@ -64,7 +68,8 @@ class CandleStore(
                 symbol TEXT PRIMARY KEY, base TEXT NOT NULL, status TEXT NOT NULL,
                 offered INTEGER NOT NULL, stable INTEGER NOT NULL DEFAULT 0, delisted INTEGER NOT NULL DEFAULT 0,
                 quote_volume REAL NOT NULL DEFAULT 0, high24 REAL NOT NULL DEFAULT 0, low24 REAL NOT NULL DEFAULT 0,
-                seen_at INTEGER NOT NULL, listed_at INTEGER
+                seen_at INTEGER NOT NULL, listed_at INTEGER,
+                change24 REAL NOT NULL DEFAULT 0, trades24 INTEGER NOT NULL DEFAULT 0
             )
         """.trimIndent())
         // A stretch Binance has no candles for (maintenance, a halt). Remembered so it is not asked for again forever.
@@ -78,8 +83,12 @@ class CandleStore(
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // This file only holds what can be downloaded again, so an incompatible change may drop and rebuild it
-        // rather than migrate it. Version 2 only adds when each coin was listed.
+        // rather than migrate it. Version 2 only adds when each coin was listed; version 3 adds the day's change and trade count.
         if (oldVersion < 2) db.execSQL("ALTER TABLE coins ADD COLUMN listed_at INTEGER")
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE coins ADD COLUMN change24 REAL NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE coins ADD COLUMN trades24 INTEGER NOT NULL DEFAULT 0")
+        }
     }
 
     private suspend fun <T> access(block: (SQLiteDatabase) -> T): T =
@@ -229,11 +238,11 @@ class CandleStore(
                 val seen = HashSet<String>()
                 for (r in rows) {
                     seen.add(r.symbol)
-                    db.execSQL("UPDATE coins SET base=?, status=?, offered=?, delisted=0, quote_volume=?, high24=?, low24=?, seen_at=? WHERE symbol=?",
-                        arrayOf<Any?>(r.base, r.status, if (r.offered) 1 else 0, r.quoteVolume, r.high24, r.low24, r.seenAt, r.symbol))
-                    db.execSQL("INSERT OR IGNORE INTO coins (symbol, base, status, offered, stable, delisted, quote_volume, high24, low24, seen_at) " +
-                        "VALUES (?,?,?,?,0,0,?,?,?,?)",
-                        arrayOf<Any?>(r.symbol, r.base, r.status, if (r.offered) 1 else 0, r.quoteVolume, r.high24, r.low24, r.seenAt))
+                    db.execSQL("UPDATE coins SET base=?, status=?, offered=?, delisted=0, quote_volume=?, high24=?, low24=?, seen_at=?, change24=?, trades24=? WHERE symbol=?",
+                        arrayOf<Any?>(r.base, r.status, if (r.offered) 1 else 0, r.quoteVolume, r.high24, r.low24, r.seenAt, r.change24, r.trades24, r.symbol))
+                    db.execSQL("INSERT OR IGNORE INTO coins (symbol, base, status, offered, stable, delisted, quote_volume, high24, low24, seen_at, change24, trades24) " +
+                        "VALUES (?,?,?,?,0,0,?,?,?,?,?,?)",
+                        arrayOf<Any?>(r.symbol, r.base, r.status, if (r.offered) 1 else 0, r.quoteVolume, r.high24, r.low24, r.seenAt, r.change24, r.trades24))
                 }
                 val known = db.rawQuery("SELECT symbol FROM coins WHERE delisted=0", null).use { c ->
                     buildList { while (c.moveToNext()) add(c.getString(0)) }
@@ -283,6 +292,13 @@ class CandleStore(
         db.rawQuery("SELECT listed_at FROM coins WHERE symbol=?", arrayOf(symbol)).use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
     }
 
+    /** The coins the picker offers whose listing day has not been looked up yet, smallest volume first: new coins trade the least, so they turn up soonest. */
+    suspend fun offeredWithoutListing(): List<String> = access { db ->
+        db.rawQuery(
+            "SELECT symbol FROM coins WHERE offered=1 AND stable=0 AND delisted=0 AND status='TRADING' AND listed_at IS NULL ORDER BY quote_volume, symbol", null,
+        ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+    }
+
     /** Remembers when [symbol] was listed. A coin with no row yet gets a minimal one, which the next pair-list refresh fills in. */
     suspend fun setListedAt(symbol: String, time: Long) {
         access { db ->
@@ -327,10 +343,11 @@ class CandleStore(
     private fun coinOf(c: android.database.Cursor) = CoinRow(
         c.getString(0), c.getString(1), c.getString(2), c.getInt(3) == 1, c.getInt(4) == 1, c.getInt(5) == 1,
         c.getDouble(6), c.getDouble(7), c.getDouble(8), c.getLong(9), if (c.isNull(10)) null else c.getLong(10),
+        c.getDouble(11), c.getLong(12),
     )
 
     companion object {
-        const val VERSION = 2
-        private const val COIN_COLUMNS = "symbol, base, status, offered, stable, delisted, quote_volume, high24, low24, seen_at, listed_at"
+        const val VERSION = 3
+        private const val COIN_COLUMNS = "symbol, base, status, offered, stable, delisted, quote_volume, high24, low24, seen_at, listed_at, change24, trades24"
     }
 }

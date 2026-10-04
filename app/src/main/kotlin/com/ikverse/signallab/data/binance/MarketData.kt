@@ -15,7 +15,16 @@ data class Kline(
 
 data class SpotSymbol(val symbol: String, val base: String, val quote: String, val status: String)
 
-data class Ticker24h(val symbol: String, val lastPrice: Double, val high: Double, val low: Double, val quoteVolume: Double)
+/** A pair's last 24 hours. [open] is the price 24 hours ago and [trades] the number of trades since; both are 0 when the answer did not say. */
+data class Ticker24h(
+    val symbol: String,
+    val lastPrice: Double,
+    val high: Double,
+    val low: Double,
+    val quoteVolume: Double,
+    val open: Double = 0.0,
+    val trades: Long = 0,
+)
 
 /** Everything the app needs from an exchange. Binance implements it; tests substitute a fake. */
 interface MarketData {
@@ -25,6 +34,12 @@ interface MarketData {
     suspend fun spotSymbols(): List<SpotSymbol>
 
     suspend fun tickers24h(): List<Ticker24h>
+
+    /**
+     * How much each of [symbols] has moved over the last [window] (Binance's own window sizes: "1h", "4h", "1d", "7d"), as a
+     * fraction: 0.05 is up 5%. A symbol Binance does not answer for is left out.
+     */
+    suspend fun rollingChange(symbols: List<String>, window: String): Map<String, Double>
 
     /** Up to [limit] candles starting at [startTime], oldest first. The last one may still be forming. */
     suspend fun klines(symbol: String, tf: Timeframe, startTime: Long, limit: Int = 1000): List<Kline>

@@ -6,7 +6,11 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredSize
@@ -36,6 +40,9 @@ object PaneMath {
     /** The narrowest a side panel (the coin list, the details) gets, and the narrowest the chart is left. */
     const val MIN_SIDE = 160f
     const val MIN_CHART = 240f
+
+    /** The narrowest the page beside a list (a list's details, a Learn page) is left when the list is dragged wider. */
+    const val MIN_PAGE = 240f
 
     /** For the details panel under the chart on a small phone held sideways: its least height, and the least left to the chart. */
     const val MIN_PANE_HEIGHT = 100f
@@ -155,6 +162,38 @@ fun PaneDivider(
             contentAlignment = Alignment.Center,
         ) {
             Text(arrow, style = Type.BodyStrong.copy(color = Palette.Muted))
+        }
+    }
+}
+
+/**
+ * A list on the left and the page it opens on the right, with a divider between them that drags and a button that hides the
+ * list (or brings it back). The list's width is kept between runs under [key]. Used by Lists and Learn on a screen wide enough
+ * for two panes.
+ */
+@Composable
+fun SplitPane(
+    panels: PanelPrefs,
+    key: String,
+    label: String,
+    defaultWidth: Float,
+    list: @Composable () -> Unit,
+    page: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val pane = rememberPaneLayout(panels, key)
+    BoxWithConstraints(modifier.fillMaxSize().testTag("split-$key")) {
+        val total = maxWidth.value
+        val hidden = pane.isHidden("list")
+        val w = PaneMath.fitOne(total, pane.size("list", defaultWidth), hidden, PaneMath.MIN_SIDE, PaneMath.MIN_PAGE, PaneMath.DIVIDER)
+        Row(Modifier.fillMaxSize()) {
+            if (!hidden) Column(Modifier.width(w.dp).pane("list")) { list() }
+            PaneDivider(
+                vertical = true, hidden = hidden, label = label, arrow = if (hidden) "›" else "‹",
+                onDrag = { pane.set("list", PaneMath.dragged(w, it, max = total - PaneMath.DIVIDER - PaneMath.MIN_PAGE)) },
+                onToggle = { pane.toggle("list") }, modifier = Modifier.testTag("divider-$key"),
+            )
+            Column(Modifier.weight(1f).pane("page")) { page() }
         }
     }
 }

@@ -59,12 +59,44 @@ class BinanceClientTest {
     fun parsesThePairListAndTheTickers() = runTest {
         server.enqueue(ok("""{"symbols":[{"symbol":"BTCUSDT","status":"TRADING","baseAsset":"BTC","quoteAsset":"USDT"},
             {"symbol":"OLDUSDT","status":"BREAK","baseAsset":"OLD","quoteAsset":"USDT"}]}"""))
-        server.enqueue(ok("""[{"symbol":"BTCUSDT","openPrice":"1","highPrice":"90000.5","lowPrice":"85000.25","lastPrice":"88000","volume":"5","quoteVolume":"440000000.5"}]"""))
+        server.enqueue(ok("""[{"symbol":"BTCUSDT","openPrice":"1","highPrice":"90000.5","lowPrice":"85000.25","lastPrice":"88000","volume":"5","quoteVolume":"440000000.5","count":785501}]"""))
         val c = client()
         assertEquals(listOf(SpotSymbol("BTCUSDT", "BTC", "USDT", "TRADING"), SpotSymbol("OLDUSDT", "OLD", "USDT", "BREAK")), c.spotSymbols())
-        assertEquals(Ticker24h("BTCUSDT", 88000.0, 90000.5, 85000.25, 440000000.5), c.tickers24h().single())
+        assertEquals(Ticker24h("BTCUSDT", 88000.0, 90000.5, 85000.25, 440000000.5, open = 1.0, trades = 785_501), c.tickers24h().single())
         assertEquals("SPOT", server.takeRequest().url.queryParameter("permissions"))
         assertEquals("MINI", server.takeRequest().url.queryParameter("type"))
+    }
+
+    @Test
+    fun aTickerWithoutAnOpeningPriceOrTradeCountStillReadsAndSaysZeroForThem() = runTest {
+        server.enqueue(ok("""[{"symbol":"BTCUSDT","highPrice":"2","lowPrice":"1","lastPrice":"1.5","quoteVolume":"10"}]"""))
+        assertEquals(Ticker24h("BTCUSDT", 1.5, 2.0, 1.0, 10.0, open = 0.0, trades = 0), client().tickers24h().single())
+    }
+
+    @Test
+    fun aRollingWindowAsksInBatchesOfAHundredAndReadsTheChangeOverIt() = runTest {
+        server.enqueue(ok("""[{"symbol":"AAAUSDT","openPrice":"100","lastPrice":"110"},{"symbol":"BBBUSDT","openPrice":"50","lastPrice":"45"},
+            {"symbol":"ZEROUSDT","openPrice":"0","lastPrice":"3"}]"""))
+        server.enqueue(ok("""[{"symbol":"LASTUSDT","openPrice":"2","lastPrice":"3"}]"""))
+        val symbols = listOf("AAAUSDT", "BBBUSDT", "ZEROUSDT") + (1..97).map { "X${it}USDT" } + "LASTUSDT" // 101 in all
+        val changes = client().rollingChange(symbols, "1h")
+        assertEquals(setOf("AAAUSDT", "BBBUSDT", "LASTUSDT"), changes.keys, "a symbol with no opening price has no change")
+        assertEquals(0.1, changes.getValue("AAAUSDT"), 1e-9)
+        assertEquals(-0.1, changes.getValue("BBBUSDT"), 1e-9)
+        assertEquals(0.5, changes.getValue("LASTUSDT"), 1e-9)
+        val first = server.takeRequest().url
+        val second = server.takeRequest().url
+        assertEquals("/api/v3/ticker", first.encodedPath)
+        assertEquals("1h", first.queryParameter("windowSize")); assertEquals("MINI", first.queryParameter("type"))
+        assertEquals(100, org.json.JSONArray(first.queryParameter("symbols")).length())
+        assertEquals(1, org.json.JSONArray(second.queryParameter("symbols")).length())
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun noSymbolsMeansNoRequest() = runTest {
+        assertEquals(emptyMap(), client().rollingChange(emptyList(), "7d"))
+        assertEquals(0, server.requestCount)
     }
 
     @Test

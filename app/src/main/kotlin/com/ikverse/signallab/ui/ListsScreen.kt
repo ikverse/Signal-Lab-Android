@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -26,61 +25,75 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
-/** Your lists: make them, switch them on and off, choose the charts and the coins. On a wide screen the list of lists sits beside the one being edited. */
+/**
+ * Your lists: make them, switch them on and off, choose the charts and the coins. On a wide screen the list of lists sits beside the
+ * one being edited, and the divider between them can be dragged or the list hidden.
+ */
 @Composable
-fun ListsScreen(model: ListsModel, wide: Boolean, modifier: Modifier = Modifier) {
+fun ListsScreen(model: ListsModel, panels: PanelPrefs, wide: Boolean, modifier: Modifier = Modifier) {
     val lists by model.lists.collectAsStateWithLifecycle()
     val download by model.download.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableStateOf<Long?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
+    var adding by rememberSaveable { mutableStateOf(false) }
     val current = lists.firstOrNull { it.id == selected } ?: if (wide) lists.firstOrNull() else null
 
-    BackHandler(enabled = creating || (!wide && selected != null)) {
-        if (creating) creating = false else selected = null
+    BackHandler(enabled = creating || adding || (!wide && selected != null)) {
+        when {
+            creating -> creating = false
+            adding -> adding = false
+            else -> selected = null
+        }
     }
     if (creating) {
         SetupScreen(model, modifier, title = "New list", intro = false, onDone = { creating = false }, onCancel = { creating = false })
         return
     }
+    val listOfLists = @Composable {
+        Column(Modifier.fillMaxSize()) {
+            ScreenTitle("Lists")
+            LazyColumn(Modifier.weight(1f)) {
+                items(lists, key = { it.id }) { l ->
+                    TouchRow({ selected = l.id; adding = false }, selected = current?.id == l.id) {
+                        Column(Modifier.weight(1f)) {
+                            Text(l.name, style = Type.BodyStrong)
+                            Text("${l.coins.size} ${if (l.coins.size == 1) "coin" else "coins"} · ${l.timeframes.joinToString(" ")}", style = Type.Small)
+                        }
+                        Text(if (l.active) "watching" else "off", style = Type.Small.copy(color = if (l.active) Palette.Up else Palette.Muted))
+                    }
+                    HRule()
+                }
+            }
+            TextAction("New list", { creating = true }, Modifier.fillMaxWidth().testTag("new-list"))
+        }
+    }
+    val detail = @Composable {
+        if (current != null && (wide || selected != null)) {
+            ListDetail(
+                model, current, adding, { adding = it },
+                onBack = if (wide) null else ({ selected = null; adding = false }), modifier = Modifier.fillMaxSize(),
+            )
+        } else if (wide) {
+            EmptyState("No list chosen", "Choose a list on the left, or make a new one.", Modifier.fillMaxSize())
+        }
+    }
     Column(modifier.fillMaxSize().testTag("lists")) {
         DownloadBanner(download)
-        Row(Modifier.fillMaxSize()) {
-            if (wide || selected == null) {
-                Column(Modifier.then(if (wide) Modifier.width(320.dp) else Modifier.weight(1f))) {
-                    ScreenTitle("Lists")
-                    LazyColumn(Modifier.weight(1f)) {
-                        items(lists, key = { it.id }) { l ->
-                            TouchRow({ selected = l.id }, selected = current?.id == l.id) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(l.name, style = Type.BodyStrong)
-                                    Text("${l.coins.size} ${if (l.coins.size == 1) "coin" else "coins"} · ${l.timeframes.joinToString(" ")}", style = Type.Small)
-                                }
-                                Text(if (l.active) "watching" else "off", style = Type.Small.copy(color = if (l.active) Palette.Up else Palette.Muted))
-                            }
-                            HRule()
-                        }
-                    }
-                    TextAction("New list", { creating = true }, Modifier.fillMaxWidth().testTag("new-list"))
-                }
-                if (wide) VRule()
-            }
-            if (current != null && (wide || selected != null)) {
-                ListDetail(model, current, onBack = if (wide) null else ({ selected = null }), modifier = Modifier.weight(1f))
-            } else if (wide) {
-                EmptyState("No list chosen", "Choose a list on the left, or make a new one.", Modifier.weight(1f))
-            }
+        when {
+            wide -> SplitPane(panels, "lists", "lists", 320f, listOfLists, detail, Modifier.weight(1f))
+            selected == null -> Column(Modifier.weight(1f)) { listOfLists() }
+            else -> Column(Modifier.weight(1f)) { detail() }
         }
     }
 }
 
 @Composable
-private fun ListDetail(model: ListsModel, list: ListUi, onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+private fun ListDetail(model: ListsModel, list: ListUi, adding: Boolean, setAdding: (Boolean) -> Unit, onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var message by remember(list.id) { mutableStateOf<String?>(null) }
     var renaming by rememberSaveable(list.id) { mutableStateOf(false) }
     var newName by rememberSaveable(list.id) { mutableStateOf(list.name) }
     var confirmDelete by remember(list.id) { mutableStateOf(false) }
-    var adding by rememberSaveable(list.id) { mutableStateOf(false) }
     LaunchedEffect(list.name) { newName = list.name }
 
     fun run(block: suspend () -> Outcome) {
@@ -90,6 +103,21 @@ private fun ListDetail(model: ListsModel, list: ListUi, onBack: (() -> Unit)?, m
                 is Outcome.Refused -> r.message
             }
         }
+    }
+
+    if (adding) {
+        // The picker gets the whole pane to itself: it is a list that scrolls, and it cannot live inside the page that scrolls.
+        Column(modifier.fillMaxSize().testTag("add-coins-pane")) {
+            ScreenTitle("Add coins to “${list.name}”")
+            message?.let { ProblemState(it) }
+            CoinPicker(
+                model, emptySet(), MAX_COINS_PER_LIST, { run { model.addCoin(list.id, it) } }, Modifier.weight(1f),
+                alreadyIn = list.coins.toSet(), countText = "${list.coins.size} of $MAX_COINS_PER_LIST in this list",
+            )
+            HRule()
+            TextAction("Done", { setAdding(false) }, Modifier.fillMaxWidth().testTag("add-done"))
+        }
+        return
     }
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("list-detail")) {
@@ -122,8 +150,7 @@ private fun ListDetail(model: ListsModel, list: ListUi, onBack: (() -> Unit)?, m
             }
             HRule()
         }
-        TextAction(if (adding) "Done adding" else "Add coins", { adding = !adding }, Modifier.testTag("add-coins"))
-        if (adding) CoinPicker(model, emptySet(), MAX_COINS_PER_LIST, { run { model.addCoin(list.id, it) } }, Modifier.fillMaxWidth().padding(bottom = 12.dp), alreadyIn = list.coins.toSet())
+        TextAction("Add coins", { setAdding(true) }, Modifier.testTag("add-coins"))
         HRule()
         TextAction(
             if (confirmDelete) "Tap again to delete “${list.name}”" else "Delete this list",

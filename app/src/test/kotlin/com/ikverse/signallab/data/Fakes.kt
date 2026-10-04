@@ -33,6 +33,17 @@ class FakeMarket(var now: Long) : MarketData {
 
     override suspend fun tickers24h() = tickers
 
+    /** What [rollingChange] answers (symbol to change), every request it was asked, and a failure to raise instead. */
+    var rolling: Map<String, Double> = emptyMap()
+    val rollingCalls = ArrayList<Pair<List<String>, String>>()
+    var failRolling: BinanceException? = null
+
+    override suspend fun rollingChange(symbols: List<String>, window: String): Map<String, Double> {
+        rollingCalls.add(symbols to window)
+        failRolling?.let { throw it }
+        return rolling.filterKeys { it in symbols }
+    }
+
     override suspend fun klines(symbol: String, tf: Timeframe, startTime: Long, limit: Int): List<Kline> {
         klineCalls.add(Triple(symbol, tf, startTime))
         onKlines?.invoke(symbol, tf)
@@ -60,5 +71,5 @@ const val DAY = 86_400_000L
 /** A start time that falls on a day boundary, so every timeframe lines up. */
 const val EPOCH_START = 1_704_067_200_000L // 1 Jan 2024 00:00 UTC
 
-fun pair(base: String, volume: Double, high: Double = 2.0, low: Double = 1.0, status: String = "TRADING") =
-    Triple(SpotSymbol("${base}USDT", base, "USDT", status), Ticker24h("${base}USDT", (high + low) / 2, high, low, volume), base)
+fun pair(base: String, volume: Double, high: Double = 2.0, low: Double = 1.0, status: String = "TRADING", open: Double = 0.0, trades: Long = 0, last: Double = (high + low) / 2) =
+    Triple(SpotSymbol("${base}USDT", base, "USDT", status), Ticker24h("${base}USDT", last, high, low, volume, open, trades), base)

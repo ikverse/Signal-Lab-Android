@@ -90,8 +90,8 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
         Dest.Trades -> TradesScreen(model.trades, onOpenCoin = { s, tf -> nav.openCoin(s, tf) }, onOpenLearn = openVariant)
         Dest.Scorecard -> ScorecardScreen(model.scorecard, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact)
         Dest.Alerts -> AlertsScreen(model.alerts, onOpenCoin = { s, tf -> nav.openCoin(s, tf) })
-        Dest.Learn -> LearnScreen(model.learn, nav.learnPage, { nav.learnPage = it }, wide = layout != LayoutClass.Compact)
-        Dest.Lists -> ListsScreen(model.lists, wide = layout != LayoutClass.Compact)
+        Dest.Learn -> LearnScreen(model.learn, model.panels, nav.learnPage, { nav.learnPage = it }, wide = layout != LayoutClass.Compact)
+        Dest.Lists -> ListsScreen(model.lists, model.panels, wide = layout != LayoutClass.Compact)
         Dest.Settings -> SettingsScreen(model.settings, hasDebug = debug && model.debug != null, onOpenDebug = { nav.showDebug = true })
     }
 }
