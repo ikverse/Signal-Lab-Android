@@ -17,10 +17,12 @@ import com.ikverse.signallab.ui.SettingsModel
 import com.ikverse.signallab.ui.TradesModel
 import com.ikverse.signallab.ui.parseLink
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /** The screens' whole view of the app, built on the real data layer. Made once, by the application. */
 class LiveAppModel(graph: AppGraph, context: Context, scope: CoroutineScope, debugState: DebugState) : AppModel {
@@ -40,6 +42,18 @@ class LiveAppModel(graph: AppGraph, context: Context, scope: CoroutineScope, deb
     override val prompts: PermissionPrompts = graph.permissions
     override val panels: PanelPrefs = LivePanelPrefs(graph, scope)
     override val debug: DebugState? = if (BuildConfig.DEBUG) debugState else null
+
+    init {
+        // The Learn pages are read from the assets and filled in once, here in the background, so the first tap on Learn finds them ready
+        // instead of reading sixteen files on the main thread.
+        scope.launch(Dispatchers.Default) {
+            try {
+                learn.pages.size
+            } catch (_: Exception) {
+                // A page that cannot be built fails again, loudly, where it is opened; there is nothing to do about it here.
+            }
+        }
+    }
 
     private val link = MutableStateFlow<Link?>(null)
     override val pendingLink: StateFlow<Link?> = link

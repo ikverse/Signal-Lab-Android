@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -20,6 +21,7 @@ import com.ikverse.signallab.scan.Notifier
 import com.ikverse.signallab.ui.DimLevel
 import com.ikverse.signallab.ui.PermissionPrompt
 import com.ikverse.signallab.ui.SignalLabApp
+import com.ikverse.signallab.ui.WebPool
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -27,6 +29,9 @@ import kotlinx.coroutines.launch
 /** The one screen. It holds the app's frame and the system hand-offs the frame cannot do itself: permissions, and opening a coin from a notification. */
 class MainActivity : ComponentActivity() {
     private val app get() = application as SignalLabApplication
+
+    /** The chart's and Learn's web views, built once and kept while this screen lives; see [WebPool]. */
+    private val webPool by lazy { WebPool(this) }
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         lifecycleScope.launch { app.graph.permissions.evaluate() }
@@ -38,7 +43,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = dark, navigationBarStyle = dark)
         // A notification tap that starts the app opens its coin. Not again after the system restores the screen.
         if (savedInstanceState == null) app.model.open(intent.getStringExtra(Notifier.EXTRA_LINK))
-        setContent { SignalLabApp(app.model, debug = BuildConfig.DEBUG) }
+        setContent { SignalLabApp(app.model, debug = BuildConfig.DEBUG, webPool = webPool) }
         lifecycleScope.launch {
             app.graph.permissions.accepted.collect { openSystemPrompt(it) }
         }
@@ -61,6 +66,28 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Once the screen has drawn and nothing is being touched, start Android's web engine, so that the first chart or Learn page
+        // does not pay for it on a tap.
+        Looper.myQueue().addIdleHandler {
+            webPool.warmUp()
+            false
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Away from the screen: give back the memory of the web views that are not on show. The ones on show stay, because they are
+        // still part of the screen that will be there when the app comes back.
+        webPool.releaseIdle()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        webPool.releaseAll()
     }
 
     /**

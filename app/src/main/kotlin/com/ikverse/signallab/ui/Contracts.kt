@@ -128,6 +128,8 @@ data class SettingsUi(
     /** Keep the screen on, and dim it to [dimLevel], while Signal Lab is showing. */
     val dimScreen: Boolean = false,
     val dimLevel: DimLevel = DimLevel.DIM,
+    /** Where the side bar sits when there is one: on the right edge instead of the left. */
+    val railOnRight: Boolean = false,
 )
 
 /** How dim the screen goes when it is kept on. [brightness] is a fraction of full, never 0, because 0 turns some screens off. */
@@ -228,6 +230,7 @@ interface SettingsModel {
     suspend fun setBinanceUs(on: Boolean)
     suspend fun setDimScreen(on: Boolean)
     suspend fun setDimLevel(level: DimLevel)
+    suspend fun setRailOnRight(on: Boolean)
 
     val update: StateFlow<UpdateUi>
 

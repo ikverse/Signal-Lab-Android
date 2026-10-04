@@ -11,7 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import kotlin.test.fail
 
-/** What the app sends the chart page and keeps for it, and the page's own behaviour (run in Node, against a stand-in for the chart library). */
+/** What the app sends the chart page and keeps for it, and the pages' own behaviour (the chart and Learn pages, run in Node against stand-ins for their libraries). */
 class ChartPageTest {
     private val chart = ChartUi("BTCUSDT", "1h", listOf(CandleUi(1000, 1.0, 2.0, 0.5, 1.5, 10.0)), emptyList())
 
@@ -89,16 +89,18 @@ class ChartPageTest {
     }
 
     @Test
-    fun `the chart page resizes with its box, builds its indicators and drawings, and keeps them per chart`() {
-        val script = File("src/test/js/chart-page.test.mjs")
-        assertTrue("run from the app module: ${script.absolutePath}", script.isFile)
+    fun `the chart page and the Learn page do what the app relies on`() {
+        val dir = File("src/test/js")
+        assertTrue("run from the app module: ${dir.absolutePath}", dir.isDirectory)
+        val scripts = dir.listFiles { f -> f.name.endsWith(".test.mjs") }!!.map { it.path }.sorted()
+        assertEquals(listOf("src/test/js/chart-page.test.mjs", "src/test/js/learn-page.test.mjs"), scripts.map { it.replace(File.separatorChar, '/') })
         val node = node()
         // A machine without Node skips this; the build server has it, and fails rather than skips if it somehow does not.
-        if (node == null && System.getenv("CI") != null) fail("Node is needed to test the chart page and was not found")
-        assumeTrue("Node is not installed, so the chart page was not tested", node != null)
-        val p = ProcessBuilder(node, "--test", script.path).redirectErrorStream(true).start()
+        if (node == null && System.getenv("CI") != null) fail("Node is needed to test the chart and Learn pages and was not found")
+        assumeTrue("Node is not installed, so the chart and Learn pages were not tested", node != null)
+        val p = ProcessBuilder(listOf(node, "--test") + scripts).redirectErrorStream(true).start()
         val out = p.inputStream.bufferedReader().readText()
-        assertTrue("the chart page tests did not finish", p.waitFor(120, TimeUnit.SECONDS))
+        assertTrue("the page tests did not finish", p.waitFor(120, TimeUnit.SECONDS))
         assertFalse("exit ${p.exitValue()}\n$out", p.exitValue() != 0)
     }
 }

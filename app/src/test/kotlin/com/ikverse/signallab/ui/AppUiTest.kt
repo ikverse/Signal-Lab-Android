@@ -24,6 +24,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.printToString
@@ -1409,5 +1410,102 @@ class AppUiTest {
         openSettings(FakeApp.full())
         rule.onNodeWithText("Your usual brightness comes back", substring = true).performScrollTo().assertExists()
         rule.onNodeWithText("Scanning does not depend on it", substring = true).performScrollTo().assertExists()
+    }
+
+    // --- the side bar on the right --------------------------------------------------------------------------------
+
+    private fun appWithRail(onRight: Boolean) = FakeApp.full().also { it.settings.state.value = it.settings.state.value.copy(railOnRight = onRight) }
+
+    private fun left(t: String) = tag(t).getBoundsInRoot().left.value
+
+    private fun right(t: String) = tag(t).getBoundsInRoot().right.value
+
+    private fun rootWidth() = rule.onRoot().getBoundsInRoot().width.value
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `the side bar is on the left unless the setting says otherwise`() {
+        show(appWithRail(false))
+        assertTrue("rail at ${left("rail")}", left("rail") < 20f)
+        assertTrue(right("rail") < left("pane-chart"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `with the setting on the side bar is on the right edge and the panels are on its left`() {
+        show(appWithRail(true))
+        assertTrue("rail ends at ${right("rail")} of ${rootWidth()}", right("rail") > rootWidth() - 20f)
+        assertTrue(right("pane-chart") < left("rail"))
+        assertTrue(right("pane-details") < left("rail"))
+        assertTrue("the coin list is now the leftmost thing", left("pane-coins") < 20f)
+        assertEquals("the bar keeps its width", 112f, widthOf("rail").value, 0.6f)
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `a small phone held sideways moves its side bar too`() {
+        show(appWithRail(true))
+        assertTrue(right("rail") > rootWidth() - 20f)
+        assertTrue(right("pane-chart") < left("rail"))
+        for (d in Dest.entries) assertTrue("nav-${d.name}", exists("nav-${d.name}"))
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `every place is still reached from the side bar on the right`() {
+        show(appWithRail(true))
+        click("nav-Alerts")
+        assertTrue(exists("alerts"))
+        click("nav-Lists")
+        assertTrue(exists("lists"))
+        click("nav-Markets")
+        assertTrue(exists("markets-medium"))
+        assertTrue(right("rail") > rootWidth() - 20f)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `held upright the bar stays along the bottom whatever the setting`() {
+        show(appWithRail(true))
+        assertTrue(exists("bottom-bar"))
+        assertTrue(!exists("rail"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `the switch in Settings moves the bar as soon as it is touched, and back`() {
+        val app = appWithRail(false)
+        show(app)
+        click("nav-Settings")
+        assertTrue(left("rail") < 20f)
+        rule.onNodeWithContentDescription("Side bar on the right, off").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.contains("rail right true") }
+        rule.waitForIdle()
+        assertTrue("rail now at ${left("rail")}", left("rail") > rootWidth() - 130f)
+        assertTrue(exists("settings"))
+        rule.onNodeWithContentDescription("Side bar on the right, on").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.contains("rail right false") }
+        rule.waitForIdle()
+        assertTrue(left("rail") < 20f)
+        assertEquals(listOf("rail right true", "rail right false"), app.settings.log)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the side bar switch says what it does and when`() {
+        openSettings(FakeApp.full())
+        rule.onNodeWithText("under your right thumb", substring = true).performScrollTo().assertExists()
+        rule.onNodeWithText("Held upright, the bar along the bottom stays where it is", substring = true).performScrollTo().assertExists()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `every touchable thing is still 48 dp tall with the side bar on the right`() {
+        show(appWithRail(true))
+        everyTouchTargetIsBigEnough()
+        click("nav-Learn")
+        everyTouchTargetIsBigEnough()
+        click("nav-Settings")
+        everyTouchTargetIsBigEnough()
     }
 }

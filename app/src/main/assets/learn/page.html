@@ -31,19 +31,39 @@
 <body>
 <div id="content"></div>
 <script src="marked.min.js"></script>
-<script src="mermaid.min.js"></script>
 <script>
-  mermaid.initialize({
-    startOnLoad: false, securityLevel: 'strict', theme: 'base',
-    themeVariables: {
-      background: '#050505', primaryColor: '#0d0f14', primaryTextColor: '#d1d4dc', primaryBorderColor: '#2a2e39',
-      lineColor: '#868993', secondaryColor: '#0d0f14', tertiaryColor: '#050505', fontFamily: 'Roboto, Arial, sans-serif', fontSize: '14px'
-    },
-    flowchart: { htmlLabels: true, curve: 'basis' }
-  });
+  // The diagram library is 3.3 MB and only 4 of the pages have a diagram, so it is loaded the first time a page needs it, not with the
+  // page. Until then the page is ready as soon as the small Markdown reader has loaded.
+  var diagrams = null;
+  function loadDiagrams() {
+    if (!diagrams) {
+      diagrams = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = 'mermaid.min.js';
+        s.onload = function () {
+          mermaid.initialize({
+            startOnLoad: false, securityLevel: 'strict', theme: 'base',
+            themeVariables: {
+              background: '#050505', primaryColor: '#0d0f14', primaryTextColor: '#d1d4dc', primaryBorderColor: '#2a2e39',
+              lineColor: '#868993', secondaryColor: '#0d0f14', tertiaryColor: '#050505', fontFamily: 'Roboto, Arial, sans-serif', fontSize: '14px'
+            },
+            flowchart: { htmlLabels: true, curve: 'basis' }
+          });
+          resolve();
+        };
+        s.onerror = function () { diagrams = null; reject(new Error('the diagram library did not load')); };
+        document.head.appendChild(s);
+      });
+    }
+    return diagrams;
+  }
 
-  // The app calls this with a page's Markdown. Mermaid blocks become diagrams; a diagram that will not draw says so and shows nothing else.
+  var latest = 0;
+
+  // The app calls this with a page's Markdown. The text shows at once; Mermaid blocks become diagrams a moment later, and a diagram that
+  // will not draw says so and shows nothing else.
   window.render = async function (markdown) {
+    var mine = ++latest;
     var host = document.getElementById('content');
     host.innerHTML = marked.parse(markdown, { gfm: true });
     var blocks = host.querySelectorAll('pre > code.language-mermaid');
@@ -55,12 +75,16 @@
       code.parentElement.replaceWith(div);
       nodes.push(div);
     });
-    try {
-      if (nodes.length) await mermaid.run({ nodes: nodes });
-    } catch (e) {
-      nodes.forEach(function (n) { if (!n.querySelector('svg')) { n.className = 'failed'; n.textContent = 'This diagram could not be drawn.'; } });
-    }
     window.scrollTo(0, 0);
+    if (nodes.length) {
+      try {
+        await loadDiagrams();
+        if (mine !== latest) return 0; // another page was opened while this one's diagrams were loading
+        await mermaid.run({ nodes: nodes });
+      } catch (e) {
+        nodes.forEach(function (n) { if (!n.querySelector('svg')) { n.className = 'failed'; n.textContent = 'This diagram could not be drawn.'; } });
+      }
+    }
     return host.querySelectorAll('svg').length;
   };
 </script>

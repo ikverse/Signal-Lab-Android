@@ -177,6 +177,11 @@ class FakeSettings(initial: SettingsUi = defaultSettings()) : SettingsModel {
         state.value = state.value.copy(dimLevel = level)
     }
 
+    override suspend fun setRailOnRight(on: Boolean) {
+        log += "rail right $on"
+        state.value = state.value.copy(railOnRight = on)
+    }
+
     val updateState = MutableStateFlow(UpdateUi())
     override val update: StateFlow<UpdateUi> = updateState
 
