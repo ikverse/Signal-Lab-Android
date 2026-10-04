@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -16,8 +17,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ikverse.signallab.scan.Notifier
+import com.ikverse.signallab.ui.DimLevel
 import com.ikverse.signallab.ui.PermissionPrompt
 import com.ikverse.signallab.ui.SignalLabApp
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** The one screen. It holds the app's frame and the system hand-offs the frame cannot do itself: permissions, and opening a coin from a notification. */
@@ -42,6 +46,12 @@ class MainActivity : ComponentActivity() {
             app.model.openSystemScreen.collect { openSettingsScreen(it) }
         }
         lifecycleScope.launch {
+            // While the app is on screen: keep the screen on and dim if the user asked for that.
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                app.model.settings.settings.map { it.dimScreen to it.dimLevel }.distinctUntilChanged().collect { (on, level) -> applyDim(on, level) }
+            }
+        }
+        lifecycleScope.launch {
             // While the app is on screen: keep the background service in step with the active lists, and ask for what
             // scanning needs once there is something to scan.
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -50,6 +60,17 @@ class MainActivity : ComponentActivity() {
                     app.graph.permissions.evaluate()
                 }
             }
+        }
+    }
+
+    /**
+     * Keeps the screen on and turns this window's brightness down to [level], or gives both back. It only touches this window, so
+     * the phone's own brightness setting is untouched and returns the moment the app is left.
+     */
+    private fun applyDim(on: Boolean, level: DimLevel) {
+        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.attributes = window.attributes.also {
+            it.screenBrightness = if (on) level.brightness else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
     }
 

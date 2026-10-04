@@ -17,7 +17,24 @@ class FakeLists(initial: List<ListUi> = emptyList(), loaded: Boolean = true) : L
     val log = mutableListOf<String>()
     private var nextId = 1L
 
-    override suspend fun offers(query: String) = offered.filter { query.isBlank() || it.base.contains(query, ignoreCase = true) }
+    /** What each ranking offers when it differs from [offered], a problem to answer with instead, and every request made. */
+    val offeredBy = mutableMapOf<PickSource, List<OfferUi>>()
+    var offerProblem: String? = null
+    val offerCalls = mutableListOf<Triple<String, PickSource, PickWindow>>()
+
+    val check = MutableStateFlow(ListingCheckUi())
+    var listingChecks = 0
+    override val listingCheck: StateFlow<ListingCheckUi> = check
+
+    override fun checkListings() {
+        listingChecks++
+    }
+
+    override suspend fun offers(query: String, source: PickSource, window: PickWindow): OffersUi {
+        offerCalls += Triple(query, source, window)
+        val coins = (offeredBy[source] ?: offered).filter { query.isBlank() || it.base.contains(query, ignoreCase = true) }
+        return OffersUi(coins, offerProblem)
+    }
 
     private fun answer(what: String): Outcome? {
         log += what
@@ -148,6 +165,16 @@ class FakeSettings(initial: SettingsUi = defaultSettings()) : SettingsModel {
     override suspend fun setBinanceUs(on: Boolean) {
         log += "us $on"
         state.value = state.value.copy(binanceUs = on)
+    }
+
+    override suspend fun setDimScreen(on: Boolean) {
+        log += "dim $on"
+        state.value = state.value.copy(dimScreen = on)
+    }
+
+    override suspend fun setDimLevel(level: DimLevel) {
+        log += "dim level ${level.name}"
+        state.value = state.value.copy(dimLevel = level)
     }
 
     val updateState = MutableStateFlow(UpdateUi())

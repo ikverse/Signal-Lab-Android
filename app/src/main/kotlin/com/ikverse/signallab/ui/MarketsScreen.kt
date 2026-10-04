@@ -27,6 +27,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+/** Where the chart's indicator choice is kept in the panel preferences. */
+const val CHART_KEY = "chart"
+
 /** The chart a coin opens on: an hour if it has one, else the next best, so a coin never opens on a chart it is not watched on. */
 fun defaultChart(timeframes: List<String>): String? =
     listOf("1h", "15m", "4h", "30m", "5m", "1d", "1m").firstOrNull { it in timeframes } ?: timeframes.firstOrNull()
@@ -53,6 +56,9 @@ fun MarketsScreen(
     val allTrades by trades.trades.collectAsStateWithLifecycle()
     val allAlerts by alerts.alerts.collectAsStateWithLifecycle()
     val pane = rememberPaneLayout(panels, "markets")
+    // The indicators the user picked on the chart, kept between runs; an empty choice is kept too (volume alone until one is made).
+    val saved by panels.saved.collectAsStateWithLifecycle()
+    val indicators = saved?.get(CHART_KEY)?.let { text -> text.split(',').filter { it.isNotBlank() } } ?: DefaultIndicators
 
     val symbols = coins.map { it.symbol }.toSet()
     DisposableEffect(symbols) {
@@ -73,7 +79,9 @@ fun MarketsScreen(
     val live = prices[coin.symbol]
 
     val list = @Composable { CoinList(coins, prices, coin.symbol, { nav.symbol = it.symbol; nav.timeframe = null; if (layout == LayoutClass.Compact) nav.marketsTab = MarketsTab.Chart }, Modifier.fillMaxSize()) }
-    val chartPane = @Composable { ChartPane(coin, tf, chart, live, { nav.timeframe = it }, Modifier.fillMaxSize()) }
+    val chartPane = @Composable {
+        ChartPane(coin, tf, chart, live, { nav.timeframe = it }, indicators, { panels.save(CHART_KEY, it.joinToString(",")) }, Modifier.fillMaxSize())
+    }
     val details = @Composable { Details(coin, live, allTrades.filter { it.symbol == coin.symbol }, allAlerts.filter { it.symbol == coin.symbol && it.kind == "warning" }, onOpenLearn, Modifier.fillMaxSize()) }
 
     when (layout) {
@@ -162,7 +170,16 @@ private fun CoinList(coins: List<CoinUi>, prices: Map<String, Double>, selected:
 }
 
 @Composable
-private fun ChartPane(coin: CoinUi, tf: String?, chart: ChartUi?, live: Double?, onChoose: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun ChartPane(
+    coin: CoinUi,
+    tf: String?,
+    chart: ChartUi?,
+    live: Double?,
+    onChoose: (String) -> Unit,
+    indicators: List<String>,
+    onIndicators: (List<String>) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(coin.base, style = Type.Title)
@@ -183,7 +200,7 @@ private fun ChartPane(coin: CoinUi, tf: String?, chart: ChartUi?, live: Double?,
                 "No candles yet on the ${Fmt.chartName(tf)} chart",
                 "The history for this chart is still downloading, or Binance has none for this coin yet.",
             )
-            else -> ChartView(chart, live, Modifier.weight(1f))
+            else -> ChartView(chart, live, Modifier.weight(1f), indicators, onIndicators)
         }
     }
 }

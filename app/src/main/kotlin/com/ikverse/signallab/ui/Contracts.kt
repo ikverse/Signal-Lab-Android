@@ -30,7 +30,26 @@ data class ChartUi(val symbol: String, val timeframe: String, val candles: List<
 
 data class ListUi(val id: Long, val name: String, val active: Boolean, val coins: List<String>, val timeframes: List<String>)
 
-data class OfferUi(val symbol: String, val base: String, val quoteVolume: Double)
+/** How the coin picker ranks the coins it offers. */
+enum class PickSource(val label: String) {
+    VOLUME("Volume"), GAINERS("Gainers"), LOSERS("Losers"), ACTIVE("Most trades"), VOLATILE("Volatile"), NEW("New"),
+}
+
+/** Over how long gainers and losers are measured. */
+enum class PickWindow(val label: String) { H1("1h"), H24("24h"), D7("7d") }
+
+/**
+ * A coin the picker offers. [value] is the number it was ranked by, and means what the source says: the change as a fraction
+ * (gainers, losers), the day's high-to-low range as a fraction (volatile), the trades in a day (most trades), the listing
+ * time in milliseconds (new). Null for plain volume.
+ */
+data class OfferUi(val symbol: String, val base: String, val quoteVolume: Double, val value: Double? = null)
+
+/** What the picker got for a request: the coins, and a sentence if Binance could not answer. */
+data class OffersUi(val coins: List<OfferUi>, val problem: String? = null)
+
+/** How far the lookup of when each coin was listed has got, for the "New" source. */
+data class ListingCheckUi(val running: Boolean = false, val done: Int = 0, val total: Int = 0, val failed: String? = null)
 
 data class DownloadUi(val total: Int = 0, val ready: Int = 0, val current: String? = null, val running: Boolean = false, val failures: Map<String, String> = emptyMap())
 
@@ -106,7 +125,15 @@ data class SettingsUi(
     val version: String,
     /** Where the data lives, in plain words. */
     val dataNote: String,
+    /** Keep the screen on, and dim it to [dimLevel], while Signal Lab is showing. */
+    val dimScreen: Boolean = false,
+    val dimLevel: DimLevel = DimLevel.DIM,
 )
+
+/** How dim the screen goes when it is kept on. [brightness] is a fraction of full, never 0, because 0 turns some screens off. */
+enum class DimLevel(val label: String, val brightness: Float) {
+    VERY_DIM("Very dim", 0.02f), DIM("Dim", 0.1f), SOFT("Soft", 0.25f),
+}
 
 enum class UpdateStatus { IDLE, CHECKING, UP_TO_DATE, AVAILABLE, DOWNLOADING, NEEDS_PERMISSION, INSTALLER_OPEN, FAILED }
 
@@ -134,8 +161,17 @@ interface ListsModel {
     val loaded: StateFlow<Boolean>
     val download: StateFlow<DownloadUi>
 
-    /** The coins the picker offers for [query], biggest 24-hour volume first. Empty query: the biggest. */
-    suspend fun offers(query: String): List<OfferUi>
+    /**
+     * The coins the picker offers for [query], ranked by [source] (plain volume lists the biggest first; [window] matters only to
+     * gainers and losers). The day's figures are refreshed first if they are over five minutes old.
+     */
+    suspend fun offers(query: String, source: PickSource = PickSource.VOLUME, window: PickWindow = PickWindow.H24): OffersUi
+
+    /** The lookup of listing days that "New" needs: idle until [checkListings] starts it, and the picker asks again as it progresses. */
+    val listingCheck: StateFlow<ListingCheckUi>
+
+    /** Starts the lookup of when each coin was listed, if some are missing. Does nothing while one is already running. */
+    fun checkListings()
 
     suspend fun create(name: String, symbols: List<String>, timeframes: Set<String>, activate: Boolean): Outcome
     suspend fun rename(id: Long, name: String): Outcome
@@ -190,6 +226,8 @@ interface SettingsModel {
     suspend fun setBackgroundScanning(on: Boolean)
     suspend fun setFollowFastCharts(on: Boolean)
     suspend fun setBinanceUs(on: Boolean)
+    suspend fun setDimScreen(on: Boolean)
+    suspend fun setDimLevel(level: DimLevel)
 
     val update: StateFlow<UpdateUi>
 

@@ -45,6 +45,18 @@ object DataConfig {
 
     const val UNIVERSE_REFRESH_MS = 24 * 3_600_000L
 
+    /** The picker's day figures (gainers, losers, trades) are refreshed when it opens if they are older than this. */
+    const val PICKER_REFRESH_MS = 5 * 60_000L
+
+    /** Gainers, losers and the most volatile skip coins that traded less than this in 24 hours (USDT): the top of those lists is otherwise thin junk. */
+    const val MIN_MOVER_VOLUME = 1_000_000.0
+
+    /** A 1-hour or 7-day mover list is kept this long before Binance is asked again. */
+    const val ROLLING_CACHE_MS = 2 * 60_000L
+
+    /** How many first-candle lookups for listing days run at once. */
+    const val LISTING_LOOKUPS_AT_ONCE = 4
+
     /** After a candle closes, wait this long before scanning, so the exchange has published it and the next one's first trade. */
     const val SCAN_SETTLE_MS = 5_000L
 

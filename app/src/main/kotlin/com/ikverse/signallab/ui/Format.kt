@@ -54,6 +54,39 @@ object Fmt {
         else -> Palette.Down
     }
 
+    /** How long ago a coin was listed, in whole days: "listed today", "listed 1 day ago", "listed 12 days ago". */
+    fun listedAgo(listedAt: Long, now: Long): String {
+        val days = ((now - listedAt) / 86_400_000L).coerceAtLeast(0).toInt()
+        return when (days) {
+            0 -> "listed today"
+            1 -> "listed 1 day ago"
+            else -> "listed $days days ago"
+        }
+    }
+
+    /** The line under a coin in the picker: the number it was ranked by, then its volume. [now] is the phone's clock, for "new". */
+    fun offerLine(offer: OfferUi, source: PickSource, window: PickWindow, now: Long): String {
+        val volume = "volume ${compact(offer.quoteVolume)} USDT"
+        val v = offer.value
+        return when {
+            v == null || source == PickSource.VOLUME -> "24h $volume"
+            source == PickSource.GAINERS || source == PickSource.LOSERS -> "${signedPercent(v)} in ${window.label} · $volume"
+            source == PickSource.ACTIVE -> "${compact(v)} trades in 24h · $volume"
+            source == PickSource.VOLATILE -> "${percent(v, 1)} range in 24h · $volume"
+            else -> "${listedAgo(v.toLong(), now)} · $volume"
+        }
+    }
+
+    /** What a picker source means, in one sentence, shown under its chips. */
+    fun sourceNote(source: PickSource, window: PickWindow): String = when (source) {
+        PickSource.VOLUME -> "Coins with the most trading in the last 24 hours."
+        PickSource.GAINERS -> "Biggest rises over ${window.label}, among coins that traded at least 1M USDT in 24 hours."
+        PickSource.LOSERS -> "Biggest falls over ${window.label}, among coins that traded at least 1M USDT in 24 hours."
+        PickSource.ACTIVE -> "Coins with the most separate trades in the last 24 hours."
+        PickSource.VOLATILE -> "Widest high-to-low swing in the last 24 hours, among coins that traded at least 1M USDT."
+        PickSource.NEW -> "Coins Binance listed in the last 30 days, newest first."
+    }
+
     /** "1h" as "1 hour", for sentences; the labels themselves are what the lists use. */
     fun chartName(label: String): String = when (label) {
         "1m" -> "1 minute"

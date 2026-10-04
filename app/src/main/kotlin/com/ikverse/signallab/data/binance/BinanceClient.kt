@@ -67,9 +67,28 @@ class BinanceClient(
             List(arr.length()) {
                 val t = arr.getJSONObject(it)
                 Ticker24h(t.getString("symbol"), t.getString("lastPrice").toDouble(), t.getString("highPrice").toDouble(),
-                    t.getString("lowPrice").toDouble(), t.getString("quoteVolume").toDouble())
+                    t.getString("lowPrice").toDouble(), t.getString("quoteVolume").toDouble(),
+                    open = t.optString("openPrice").toDoubleOrNull() ?: 0.0, trades = t.optLong("count", 0))
             }
         }
+
+    override suspend fun rollingChange(symbols: List<String>, window: String): Map<String, Double> {
+        val out = HashMap<String, Double>()
+        // Binance answers for at most 100 symbols at a time.
+        for (batch in symbols.chunked(ROLLING_BATCH)) {
+            val names = batch.joinToString(",", "[", "]") { "\"$it\"" }
+            parse(get("/api/v3/ticker", mapOf("symbols" to names, "windowSize" to window, "type" to "MINI"))) { text ->
+                val arr = JSONArray(text)
+                for (i in 0 until arr.length()) {
+                    val t = arr.getJSONObject(i)
+                    val open = t.getString("openPrice").toDouble()
+                    val last = t.getString("lastPrice").toDouble()
+                    if (open > 0 && last > 0) out[t.getString("symbol")] = last / open - 1
+                }
+            }
+        }
+        return out
+    }
 
     override suspend fun klines(symbol: String, tf: Timeframe, startTime: Long, limit: Int): List<Kline> =
         parse(get("/api/v3/klines", mapOf("symbol" to symbol, "interval" to tf.label,
@@ -146,6 +165,8 @@ class BinanceClient(
     }
 
     companion object {
+        private const val ROLLING_BATCH = 100
+
         fun defaultHttp(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

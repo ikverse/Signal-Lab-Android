@@ -7,6 +7,7 @@ import com.ikverse.signallab.engine.Watchlist
 import com.ikverse.signallab.engine.WatchlistRules
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,6 +76,46 @@ class WatchlistRepository(
         }
         reload()
         WatchlistResult.Ok(find(id)!!)
+    }
+
+    /**
+     * Makes a list with its charts and coins, and switches it on if asked, as one step. Everything is checked first and then
+     * written in a single transaction, so [lists] never shows it half made (an empty list that is then filled coin by coin),
+     * and it is written whole even if whoever asked has gone away by then, such as a screen that was replaced.
+     */
+    suspend fun createWith(name: String, symbols: List<String>, timeframes: Set<Timeframe>, activate: Boolean): WatchlistResult<Watchlist> = lock.withLock {
+        val (clean, refusal) = WatchlistRules.cleanName(name, state.value.map { it.name })
+        if (clean == null) return@withLock WatchlistResult.Refused(refusal!!)
+        val coins = symbols.distinct()
+        if (timeframes.isEmpty()) return@withLock WatchlistResult.Refused(Refusal.NO_TIMEFRAME)
+        if (coins.size > WatchlistRules.MAX_COINS_PER_LIST) return@withLock WatchlistResult.Refused(Refusal.LIST_FULL)
+        for (s in coins) if (!universe.isOffered(s)) return@withLock WatchlistResult.Refused(Refusal.UNKNOWN_COIN)
+        if (activate) {
+            val draft = Watchlist(0, clean, coins, false, timeframes)
+            WatchlistRules.checkActivate(state.value + draft, draft)?.let { return@withLock WatchlistResult.Refused(it) }
+        }
+        withContext(NonCancellable) {
+            val id = withContext(io) {
+                val d = db.writableDatabase
+                d.beginTransaction()
+                try {
+                    val next = d.rawQuery("SELECT COALESCE(MAX(position), 0) + 1 FROM watchlists", null).use { it.moveToFirst(); it.getInt(0) }
+                    val now = clock()
+                    val made = d.insert("watchlists", null, ContentValues().apply {
+                        put("name", clean); put("name_key", clean.lowercase()); put("active", if (activate) 1 else 0); put("created_at", now); put("position", next)
+                        put("timeframes", Timeframe.formatSet(timeframes))
+                    })
+                    // One tick apart, so the list keeps the order the coins were chosen in.
+                    coins.forEachIndexed { i, s -> d.execSQL("INSERT INTO watchlist_coins VALUES (?,?,?)", arrayOf<Any?>(made, s, now + i)) }
+                    d.setTransactionSuccessful()
+                    made
+                } finally {
+                    d.endTransaction()
+                }
+            }
+            reload()
+            WatchlistResult.Ok(find(id)!!)
+        }
     }
 
     suspend fun rename(id: Long, name: String): WatchlistResult<Unit> = lock.withLock {

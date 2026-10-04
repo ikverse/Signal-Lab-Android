@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.longClick
@@ -1012,5 +1013,401 @@ class AppUiTest {
             everyTouchTargetIsBigEnough()
             click("nav-More")
         }
+    }
+
+    // --- adding coins to a list that already exists ------------------------------------------------------
+
+    private fun appWithOneCoinList() = FakeApp(
+        lists = FakeLists(listOf(ListUi(1, "My coins", true, listOf("BTCUSDT"), listOf("1h")))),
+        markets = FakeMarkets(listOf(FakeApp.btc)),
+    )
+
+    private fun openTheListAndAddCoins(app: FakeApp) {
+        show(app)
+        click("nav-More")
+        click("more-Lists")
+        rule.onNodeWithText("My coins").performClick()
+        rule.waitForIdle()
+        click("add-coins")
+    }
+
+    private fun appears(description: String) = rule.onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty()
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `add coins opens a picker whose coins are really on the screen, and touching one adds it to the list`() {
+        val app = appWithOneCoinList()
+        openTheListAndAddCoins(app)
+        assertTrue(exists("add-coins-pane"))
+        assertTrue(!exists("list-detail"))
+        rule.waitUntil(3_000) { appears("ETH, not ticked") }
+        rule.onNodeWithContentDescription("ETH, not ticked").assertIsDisplayed()
+        tag("chosen-count").assertTextEquals("1 of 30 in this list")
+        rule.onNodeWithContentDescription("BTC, ticked").assertExists() // already in the list: ticked, and touching it does nothing
+        rule.onNodeWithContentDescription("BTC, ticked").performClick()
+        rule.onNodeWithContentDescription("ETH, not ticked").performClick()
+        rule.waitUntil(3_000) { app.lists.log.contains("add 1 ETHUSDT") }
+        assertEquals(listOf("add 1 ETHUSDT"), app.lists.log)
+        rule.waitUntil(3_000) { appears("ETH, ticked") }
+        tag("chosen-count").assertTextEquals("2 of 30 in this list")
+        click("add-done")
+        assertTrue(exists("list-detail"))
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("ETH").fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a refused addition says why inside the picker and leaves the coin unticked`() {
+        val app = appWithOneCoinList()
+        app.lists.refuse = "A list holds at most 30 coins."
+        openTheListAndAddCoins(app)
+        pick("ETH")
+        rule.waitUntil(3_000) { exists("problem") }
+        tag("problem").assertTextEquals("A list holds at most 30 coins.")
+        assertTrue(exists("add-coins-pane"))
+        rule.onNodeWithContentDescription("ETH, not ticked").assertExists()
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `back from the picker returns to the list, and back again to the lists`() {
+        val app = appWithOneCoinList()
+        openTheListAndAddCoins(app)
+        back()
+        assertTrue(exists("list-detail"))
+        assertTrue(!exists("add-coins-pane"))
+        back()
+        assertTrue(!exists("list-detail"))
+        assertTrue(exists("lists"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `on a wide screen the picker takes the right-hand pane and the lists stay beside it`() {
+        val app = appWithOneCoinList()
+        show(app)
+        click("nav-Lists")
+        click("add-coins")
+        assertTrue(exists("add-coins-pane"))
+        assertTrue(exists("pane-list"))
+        rule.waitUntil(3_000) { appears("ETH, not ticked") }
+        rule.onNodeWithContentDescription("ETH, not ticked").assertIsDisplayed()
+        click("add-done")
+        assertTrue(exists("list-detail"))
+    }
+
+    // --- the coin picker's rankings ------------------------------------------------------------------------
+
+    private fun chooseSource(s: PickSource) {
+        tag("source-${s.name}").performScrollTo().performClick()
+        rule.waitForIdle()
+    }
+
+    private fun chooseWindow(w: PickWindow) {
+        tag("window-${w.name}").performScrollTo().performClick()
+        rule.waitForIdle()
+    }
+
+    private fun asked(app: FakeApp, source: PickSource, window: PickWindow? = null) =
+        app.lists.offerCalls.any { it.second == source && (window == null || it.third == window) }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the picker starts on volume and offers six rankings`() {
+        val app = FakeApp()
+        show(app)
+        rule.waitUntil(3_000) { app.lists.offerCalls.isNotEmpty() }
+        assertEquals(Triple("", PickSource.VOLUME, PickWindow.H24), app.lists.offerCalls.first())
+        for (s in PickSource.entries) assertTrue("source ${s.name}", exists("source-${s.name}"))
+        assertEquals(6, PickSource.entries.size)
+        assertTrue(!exists("windows"))
+        tag("source-note").assertTextContains("most trading", substring = true)
+        assertEquals(0, app.lists.listingChecks)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `choosing gainers asks for gainers, shows each coin's change, and the window chips come and go`() {
+        val app = FakeApp()
+        app.lists.offeredBy[PickSource.GAINERS] = listOf(OfferUi("SOLUSDT", "SOL", 5e8, 0.183))
+        show(app)
+        chooseSource(PickSource.GAINERS)
+        rule.waitUntil(3_000) { asked(app, PickSource.GAINERS, PickWindow.H24) }
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("+18.30% in 24h", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(!appears("BTC, not ticked"))
+        tag("source-note").assertTextContains("Biggest rises over 24h", substring = true)
+        assertTrue(exists("windows"))
+        chooseWindow(PickWindow.D7)
+        rule.waitUntil(3_000) { asked(app, PickSource.GAINERS, PickWindow.D7) }
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("+18.30% in 7d", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        chooseSource(PickSource.LOSERS)
+        rule.waitUntil(3_000) { asked(app, PickSource.LOSERS, PickWindow.D7) }
+        assertTrue("the window chosen is kept when switching between gainers and losers", exists("windows"))
+        chooseSource(PickSource.VOLUME)
+        rule.waitUntil(3_000) { appears("BTC, not ticked") }
+        assertTrue(!exists("windows"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `every ranking words the number it ranked by`() {
+        val app = FakeApp()
+        app.lists.offeredBy[PickSource.ACTIVE] = listOf(OfferUi("SOLUSDT", "SOL", 5e8, 12_345.0))
+        app.lists.offeredBy[PickSource.VOLATILE] = listOf(OfferUi("SOLUSDT", "SOL", 5e8, 0.444))
+        app.lists.offeredBy[PickSource.NEW] = listOf(OfferUi("SOLUSDT", "SOL", 5e8, (System.currentTimeMillis() - 3 * 86_400_000L - 1_000).toDouble()))
+        show(app)
+        chooseSource(PickSource.ACTIVE)
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("12.3K trades in 24h", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        chooseSource(PickSource.VOLATILE)
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("44.4% range in 24h", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        chooseSource(PickSource.NEW)
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("listed 3 days ago", substring = true).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `new starts the lookup of listing days once, shows how far it has got, asks again as it finds more, and offers a retry`() {
+        val app = FakeApp()
+        app.lists.check.value = ListingCheckUi(running = true, done = 40, total = 400)
+        show(app)
+        assertTrue(!exists("listing-progress"))
+        chooseSource(PickSource.NEW)
+        rule.waitUntil(3_000) { app.lists.listingChecks == 1 }
+        tag("listing-progress").assertTextEquals("Checking listing dates: 40 of 400…")
+        val before = app.lists.offerCalls.count { it.second == PickSource.NEW }
+        app.lists.check.value = ListingCheckUi(running = true, done = 50, total = 400)
+        rule.waitUntil(3_000) { app.lists.offerCalls.count { it.second == PickSource.NEW } > before }
+        app.lists.check.value = ListingCheckUi(running = false, done = 200, total = 400, failed = "Could not reach Binance")
+        rule.waitUntil(3_000) { exists("listing-failed") }
+        assertTrue(!exists("listing-progress"))
+        rule.onNodeWithText("Could not check every listing date: Could not reach Binance").assertExists()
+        rule.onNodeWithText("Try again").performScrollTo().performClick()
+        assertEquals(2, app.lists.listingChecks)
+        chooseSource(PickSource.VOLUME)
+        assertTrue(!exists("listing-failed"))
+        assertTrue(!exists("listing-progress"))
+        assertEquals("the other rankings never start it", 2, app.lists.listingChecks)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `an empty answer says why in words, and a coin ticked under one ranking stays ticked under another`() {
+        val app = FakeApp()
+        app.lists.offeredBy[PickSource.GAINERS] = listOf(OfferUi("SOLUSDT", "SOL", 5e8, 0.1))
+        app.lists.offeredBy[PickSource.LOSERS] = emptyList()
+        show(app)
+        chooseSource(PickSource.GAINERS)
+        pick("SOL")
+        tag("start").assertTextContains("1 coin", substring = true)
+        chooseSource(PickSource.LOSERS)
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("Nothing to show").fetchSemanticsNodes().isNotEmpty() }
+        app.lists.offerProblem = "Could not reach Binance"
+        chooseSource(PickSource.GAINERS)
+        chooseSource(PickSource.LOSERS)
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("Could not load this list").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Could not reach Binance").assertExists()
+        app.lists.offerProblem = null
+        chooseSource(PickSource.VOLUME)
+        rule.waitUntil(3_000) { appears("SOL, ticked") }
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `on a small phone held sideways the first-run page scrolls and the coin list still gets a usable height`() {
+        val app = FakeApp()
+        show(app)
+        rule.waitUntil(3_000) { exists("offers") }
+        tag("offers").performScrollTo()
+        assertTrue(heightOf("offers").value > 100f)
+        tag("start").assertIsDisplayed()
+    }
+
+    // --- resizable panes on Lists and Learn ---------------------------------------------------------------------
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `lists and learn start at their usual widths with a divider, and the page beside has room`() {
+        show(FakeApp.full())
+        click("nav-Lists")
+        tag("pane-list").assertWidthIsEqualTo(320.dp)
+        tag("divider-lists").assertExists()
+        assertTrue(widthOf("pane-page").value >= PaneMath.MIN_PAGE)
+        click("nav-Learn")
+        tag("pane-list").assertWidthIsEqualTo(300.dp)
+        tag("divider-learn").assertExists()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `dragging the divider on lists and on learn resizes the list the right way round`() {
+        show(FakeApp.full())
+        for ((dest, divider) in listOf("nav-Lists" to "divider-lists", "nav-Learn" to "divider-learn")) {
+            click(dest)
+            val before = widthOf("pane-list").value
+            dragBy(divider, 100f * density())
+            val wider = widthOf("pane-list").value
+            assertTrue("$dest $before -> $wider", wider > before + 50f && wider <= before + 101f)
+            dragBy(divider, -60f * density())
+            assertTrue("$dest $wider -> ${widthOf("pane-list").value}", widthOf("pane-list").value < wider - 30f)
+        }
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `the list cannot be dragged narrower than its minimum, nor so wide that the page disappears`() {
+        show(FakeApp.full())
+        for (dest in listOf("nav-Lists", "nav-Learn")) {
+            click(dest)
+            val divider = if (dest == "nav-Lists") "divider-lists" else "divider-learn"
+            dragBy(divider, -3000f * density())
+            assertEquals(PaneMath.MIN_SIDE, widthOf("pane-list").value, 0.6f)
+            dragBy(divider, 5000f * density())
+            assertTrue("$dest page ${widthOf("pane-page").value}", widthOf("pane-page").value >= PaneMath.MIN_PAGE - 0.6f)
+            assertTrue(widthOf("pane-list").value >= PaneMath.MIN_SIDE - 0.6f)
+        }
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `the arrow hides the list and brings it back at the size it had, on lists and on learn`() {
+        show(FakeApp.full())
+        for ((dest, label) in listOf("nav-Lists" to "lists", "nav-Learn" to "pages")) {
+            click(dest)
+            dragBy(if (label == "lists") "divider-lists" else "divider-learn", 40f * density())
+            val before = widthOf("pane-list").value
+            val pageBefore = widthOf("pane-page").value
+            rule.onNodeWithContentDescription("Hide $label").performClick()
+            rule.waitForIdle()
+            assertTrue(!exists("pane-list"))
+            assertTrue(widthOf("pane-page").value > pageBefore + before - 1f)
+            rule.onNodeWithContentDescription("Show $label").performClick()
+            rule.waitForIdle()
+            assertEquals(before, widthOf("pane-list").value, 0.6f)
+        }
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `lists and learn keep their sizes under their own names, and nothing is saved until the user changes something`() {
+        val panels = FakePanels()
+        show(FakeApp.full(panels))
+        click("nav-Lists")
+        click("nav-Learn")
+        assertTrue(panels.log.isEmpty())
+        click("nav-Lists")
+        dragBy("divider-lists", 60f * density())
+        click("nav-Learn")
+        rule.onNodeWithContentDescription("Hide pages").performClick()
+        rule.waitForIdle()
+        val saved = panels.state.value!!
+        assertTrue(saved.toString(), saved.getValue("lists").contains("list="))
+        assertTrue(saved.toString(), saved.getValue("learn").contains("!list"))
+        assertTrue("markets is untouched", "markets" !in saved)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `saved sizes for lists and learn are applied, and damaged ones are ignored`() {
+        show(FakeApp.full(FakePanels(mapOf("lists" to "list=200.0", "learn" to "list=250.0"))))
+        click("nav-Lists")
+        tag("pane-list").assertWidthIsEqualTo(200.dp)
+        click("nav-Learn")
+        tag("pane-list").assertWidthIsEqualTo(250.dp)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a damaged saved layout for lists is ignored`() {
+        show(FakeApp.full(FakePanels(mapOf("lists" to ";;=;list=abc;list=-5;!;list=NaN"))))
+        click("nav-Lists")
+        tag("pane-list").assertWidthIsEqualTo(320.dp)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a saved hidden list stays hidden`() {
+        show(FakeApp.full(FakePanels(mapOf("learn" to "!list"))))
+        click("nav-Learn")
+        assertTrue(!exists("pane-list"))
+        rule.onNodeWithContentDescription("Show pages").assertExists()
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `a small phone held sideways can resize lists and learn too`() {
+        show(FakeApp.full())
+        for ((dest, divider) in listOf("nav-Lists" to "divider-lists", "nav-Learn" to "divider-learn")) {
+            click(dest)
+            assertTrue("$dest", exists(divider))
+            assertTrue(widthOf("pane-page").value >= PaneMath.MIN_PAGE - 0.6f)
+            val before = widthOf("pane-list").value
+            dragBy(divider, -40f * density())
+            assertTrue("$dest $before -> ${widthOf("pane-list").value}", widthOf("pane-list").value < before - 10f)
+            dragBy(divider, 5000f * density())
+            assertTrue(widthOf("pane-page").value >= PaneMath.MIN_PAGE - 0.6f)
+        }
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `held upright lists and learn have no dividers, as before`() {
+        show(FakeApp.full())
+        click("nav-More")
+        click("more-Lists")
+        assertTrue(!exists("divider-lists"))
+        assertTrue(!exists("pane-list"))
+        click("nav-More")
+        click("more-Learn")
+        assertTrue(!exists("divider-learn"))
+        assertTrue(!exists("pane-list"))
+        click("learn-trend")
+        assertTrue(!exists("divider-learn"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `every touchable thing on lists and learn, the divider buttons too, is at least 48 dp tall`() {
+        show(FakeApp.full())
+        for (dest in listOf("nav-Lists", "nav-Learn")) {
+            click(dest)
+            everyTouchTargetIsBigEnough()
+        }
+        click("nav-Lists")
+        click("add-coins")
+        everyTouchTargetIsBigEnough()
+    }
+
+    // --- keeping the screen on and dimmed --------------------------------------------------------------------------
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the screen switch turns keeping the screen on and dimmed on and off, and the dimness choices appear only while it is on`() {
+        val app = FakeApp.full()
+        openSettings(app)
+        assertTrue(!exists("dim-levels"))
+        rule.onNodeWithContentDescription("Keep the screen on and dim it, off").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.contains("dim true") }
+        rule.waitUntil(3_000) { exists("dim-levels") }
+        rule.onNodeWithContentDescription("Dim, chosen").assertExists()
+        everyTouchTargetIsBigEnough()
+        tag("dim-VERY_DIM").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.contains("dim level VERY_DIM") }
+        rule.onNodeWithContentDescription("Very dim, chosen").assertExists()
+        rule.onNodeWithContentDescription("Dim, chosen").assertDoesNotExist()
+        tag("dim-SOFT").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.contains("dim level SOFT") }
+        assertEquals(DimLevel.SOFT, app.settings.state.value.dimLevel)
+        rule.onNodeWithContentDescription("Keep the screen on and dim it, on").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.contains("dim false") }
+        rule.waitUntil(3_000) { !exists("dim-levels") }
+        assertEquals(listOf("dim true", "dim level VERY_DIM", "dim level SOFT", "dim false"), app.settings.log)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the dim switch explains what it does and what it does not`() {
+        openSettings(FakeApp.full())
+        rule.onNodeWithText("Your usual brightness comes back", substring = true).performScrollTo().assertExists()
+        rule.onNodeWithText("Scanning does not depend on it", substring = true).performScrollTo().assertExists()
     }
 }
