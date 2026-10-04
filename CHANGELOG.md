@@ -5,6 +5,12 @@ release notes.
 
 ## Unreleased
 
+## 0.1.3 - 2026-10-05
+
+- New: Settings → Screen → "Side bar on the right". When the phone is held sideways, or the screen is wide, the side bar moves to the right edge.
+- Learn opens faster. The page text shows right away, and the diagram library loads only for the pages that have a diagram.
+- The chart and Learn pages are now kept between visits instead of being rebuilt every time you open them.
+
 ## 0.1.2 - 2026-10-04
 
 - Fixed: the first list you make now keeps its coins and is switched on. Before, it could be left empty and off, and coins could not be added to it.
