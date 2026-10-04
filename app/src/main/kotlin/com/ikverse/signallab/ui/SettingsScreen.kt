@@ -102,6 +102,11 @@ fun SettingsScreen(model: SettingsModel, hasDebug: Boolean, onOpenDebug: () -> U
                 for (level in DimLevel.entries) ChoiceText(level.label, level == s.dimLevel, { scope.launch { model.setDimLevel(level) } }, Modifier.testTag("dim-${level.name}"))
             }
         }
+        SwitchRow(
+            "Side bar on the right",
+            "When the phone is held sideways, or the screen is wide, the side bar with Markets, Trades and the other places moves to the right edge, under your right thumb. Held upright, the bar along the bottom stays where it is.",
+            s.railOnRight, { scope.launch { model.setRailOnRight(it) } }, Modifier.testTag("rail-right"),
+        )
         HRule()
 
         SectionLabel("Data source")

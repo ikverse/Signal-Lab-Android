@@ -51,6 +51,9 @@ class SettingsStore(
         /** How dim: the name of one of the three levels. */
         const val DIM_LEVEL = "dim_level"
 
+        /** Put the side bar (shown when the phone is held sideways, or the screen is wide) on the right edge. Off unless the user turns it on. */
+        const val RAIL_ON_RIGHT = "rail_on_right"
+
         /** The exchange fee one way, as a fraction. Binance's entry tier is 0.001; BNB and VIP rates are lower. */
         const val FEE_PER_SIDE = "fee_per_side"
 

@@ -280,14 +280,14 @@ class LiveSettingsModel(
     /** Where a request to open one of Android's own screens goes; the activity listens and opens it. */
     private val systemScreens: MutableSharedFlow<PermissionPrompt>,
 ) : SettingsModel {
-    private val state = MutableStateFlow(read(CostModel(), scanning = true, followFast = true, us = false, dim = false, level = DimLevel.DIM))
+    private val state = MutableStateFlow(read(CostModel(), scanning = true, followFast = true, us = false, dim = false, level = DimLevel.DIM, railRight = false))
     override val settings: StateFlow<SettingsUi> = state
 
     init {
         scope.launch { refresh() }
     }
 
-    private fun read(costs: CostModel, scanning: Boolean, followFast: Boolean, us: Boolean, dim: Boolean, level: DimLevel): SettingsUi {
+    private fun read(costs: CostModel, scanning: Boolean, followFast: Boolean, us: Boolean, dim: Boolean, level: DimLevel, railRight: Boolean): SettingsUi {
         val g = graph.permissions.grants()
         return SettingsUi(
             feePerSide = costs.feePerSide, extraMajors = costs.extraMajors, extraOthers = costs.extraOthers,
@@ -295,7 +295,7 @@ class LiveSettingsModel(
             permissions = PermissionsUi(g.notifications, g.exactAlarms, g.batteryExempt),
             version = BuildConfig.VERSION_NAME,
             dataNote = "Everything Signal Lab records stays on this phone. It downloads prices from Binance and sends nothing about you anywhere.",
-            dimScreen = dim, dimLevel = level,
+            dimScreen = dim, dimLevel = level, railOnRight = railRight,
         )
     }
 
@@ -307,7 +307,13 @@ class LiveSettingsModel(
             graph.currentHost() == DataConfig.HOST_US,
             s.getBoolean(SettingsStore.DIM_SCREEN, false),
             s.get(SettingsStore.DIM_LEVEL)?.let { name -> DimLevel.entries.firstOrNull { it.name == name } } ?: DimLevel.DIM,
+            s.getBoolean(SettingsStore.RAIL_ON_RIGHT, false),
         )
+    }
+
+    override suspend fun setRailOnRight(on: Boolean) {
+        graph.settings.setBoolean(SettingsStore.RAIL_ON_RIGHT, on)
+        refresh()
     }
 
     override suspend fun setDimScreen(on: Boolean) {

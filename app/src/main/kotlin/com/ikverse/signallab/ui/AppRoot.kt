@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -30,13 +31,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  * debug page behind a long press on the version in Settings.
  */
 @Composable
-fun SignalLabApp(model: AppModel, debug: Boolean, webViews: Boolean = true, nav: NavState = rememberNavState()) {
-    SignalLabTheme(webViews) {
-        PermissionDialogs(model.prompts)
-        // Clear of the system bars and of the notch or punch hole, whatever size and side the phone reports them on.
-        BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Background).windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))) {
-            val layout = LayoutClass.of(maxWidth.value)
-            Frame(model, debug, layout, nav)
+fun SignalLabApp(model: AppModel, debug: Boolean, webViews: Boolean = true, nav: NavState = rememberNavState(), webPool: WebPool? = null) {
+    CompositionLocalProvider(LocalWebPool provides webPool) {
+        SignalLabTheme(webViews) {
+            PermissionDialogs(model.prompts)
+            // Clear of the system bars and of the notch or punch hole, whatever size and side the phone reports them on.
+            BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Background).windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))) {
+                val layout = LayoutClass.of(maxWidth.value)
+                Frame(model, debug, layout, nav)
+            }
         }
     }
 }
@@ -47,6 +50,7 @@ private fun Frame(model: AppModel, debug: Boolean, layout: LayoutClass, nav: Nav
     val loaded by model.lists.loaded.collectAsStateWithLifecycle()
     val download by model.lists.download.collectAsStateWithLifecycle()
     val link by model.pendingLink.collectAsStateWithLifecycle()
+    val railOnRight = model.settings.settings.collectAsStateWithLifecycle().value.railOnRight
 
     // A notification (or link) opened the app: show that coin, once.
     LaunchedEffect(link) {
@@ -69,9 +73,15 @@ private fun Frame(model: AppModel, debug: Boolean, layout: LayoutClass, nav: Nav
                 BottomBar(nav)
             } else {
                 Row(Modifier.weight(1f)) {
-                    SideRail(nav)
-                    VRule()
+                    if (!railOnRight) {
+                        SideRail(nav)
+                        VRule()
+                    }
                     Column(Modifier.weight(1f)) { Content(model, debug, layout, nav) }
+                    if (railOnRight) {
+                        VRule()
+                        SideRail(nav)
+                    }
                 }
             }
         }

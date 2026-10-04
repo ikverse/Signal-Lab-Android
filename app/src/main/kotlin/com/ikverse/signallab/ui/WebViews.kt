@@ -15,11 +15,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -101,7 +98,7 @@ object ChartJson {
 }
 
 /** Only the app's own bundled pages and scripts load: anything else (the network, a file elsewhere) gets an empty answer. */
-private class LocalOnlyClient(val onLoaded: () -> Unit, val onLink: (String) -> Unit = {}) : WebViewClient() {
+internal class LocalOnlyClient(val onLoaded: () -> Unit, val onLink: (String) -> Unit = {}) : WebViewClient() {
     override fun onPageFinished(view: WebView, url: String?) = onLoaded()
 
     override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -118,7 +115,7 @@ private class LocalOnlyClient(val onLoaded: () -> Unit, val onLink: (String) -> 
 
 @Suppress("DEPRECATION")
 @SuppressLint("SetJavaScriptEnabled")
-private fun safeWebView(context: android.content.Context, client: WebViewClient): WebView = WebView(context).apply {
+internal fun safeWebView(context: android.content.Context, client: WebViewClient): WebView = WebView(context).apply {
     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     setBackgroundColor(Palette.Background.toArgb())
     overScrollMode = android.view.View.OVER_SCROLL_NEVER
@@ -163,44 +160,28 @@ fun ChartView(
         }
         return
     }
-    var view by remember { mutableStateOf<WebView?>(null) }
-    var ready by remember { mutableStateOf(false) }
-    val latestOnIndicators by rememberUpdatedState(onIndicators)
-    val bridge = remember(memory) {
-        object {
-            @JavascriptInterface
-            fun indicatorsChanged(csv: String) = latestOnIndicators(csv.split(',').filter { it.isNotBlank() })
-
-            @JavascriptInterface
-            fun drawingsChanged(json: String) = memory.rememberReport(json)
+    val pool = rememberWebPool()
+    val kept = remember(pool) { pool.keep(WebPage.Chart) }
+    SideEffect {
+        kept.memory = memory
+        kept.onIndicators = onIndicators
+    }
+    LaunchedEffect(chart, kept.loaded) {
+        if (kept.loaded && chart != null) {
+            kept.view.evaluateJavascript("signalLab.setData(${ChartJson.build(chart, memory.drawings(ChartMemory.key(chart.symbol, chart.timeframe)))})", null)
         }
     }
-    LaunchedEffect(chart, ready, view) {
-        val v = view
-        if (ready && v != null && chart != null) {
-            v.evaluateJavascript("signalLab.setData(${ChartJson.build(chart, memory.drawings(ChartMemory.key(chart.symbol, chart.timeframe)))})", null)
-        }
+    LaunchedEffect(indicators, kept.loaded) {
+        if (kept.loaded) kept.view.evaluateJavascript("signalLab.setIndicators(${org.json.JSONArray(indicators)})", null)
     }
-    LaunchedEffect(indicators, ready, view) {
-        val v = view
-        if (ready && v != null) v.evaluateJavascript("signalLab.setIndicators(${org.json.JSONArray(indicators)})", null)
+    LaunchedEffect(livePrice, chart, kept.loaded) {
+        if (kept.loaded && chart != null && livePrice != null && livePrice > 0) kept.view.evaluateJavascript("signalLab.setLastPrice($livePrice)", null)
     }
-    LaunchedEffect(livePrice, chart, ready, view) {
-        val v = view
-        if (ready && v != null && chart != null && livePrice != null && livePrice > 0) v.evaluateJavascript("signalLab.setLastPrice($livePrice)", null)
-    }
-    DisposableEffect(Unit) {
-        onDispose { view?.destroy() }
-    }
+    // The view is the pool's, built once: put on screen here, taken off when this screen goes, and kept for the next visit.
     AndroidView(
         modifier = modifier.fillMaxSize().testTag("chart"),
-        factory = { ctx ->
-            safeWebView(ctx, LocalOnlyClient(onLoaded = { ready = true })).also {
-                it.addJavascriptInterface(bridge, "Android")
-                view = it
-                it.loadUrl("file:///android_asset/chart/chart.html")
-            }
-        },
+        factory = { pool.attach(WebPage.Chart) },
+        onRelease = { pool.detach(WebPage.Chart) },
     )
 }
 
@@ -213,23 +194,20 @@ fun LearnView(page: LearnPageUi?, onOpenPage: (String) -> Unit, modifier: Modifi
         }
         return
     }
-    var view by remember { mutableStateOf<WebView?>(null) }
-    var ready by remember { mutableStateOf(false) }
-    LaunchedEffect(page, ready, view) {
-        val v = view
-        if (ready && v != null && page != null) v.evaluateJavascript("render(${JSONObject.quote(page.markdown)})", null)
-    }
-    DisposableEffect(Unit) {
-        onDispose { view?.destroy() }
+    val pool = rememberWebPool()
+    val kept = remember(pool) { pool.keep(WebPage.Learn) }
+    SideEffect { kept.onLink = onOpenPage }
+    LaunchedEffect(page, kept.loaded) {
+        // Coming back to the page already shown leaves it, and where it was scrolled to, as it was.
+        if (kept.loaded && page != null && kept.showing != page.markdown) {
+            kept.view.evaluateJavascript("render(${JSONObject.quote(page.markdown)})", null)
+            kept.showing = page.markdown
+        }
     }
     AndroidView(
         modifier = modifier.fillMaxSize().testTag("learn"),
-        factory = { ctx ->
-            safeWebView(ctx, LocalOnlyClient(onLoaded = { ready = true }, onLink = onOpenPage)).also {
-                view = it
-                it.loadUrl("file:///android_asset/learn/page.html")
-            }
-        },
+        factory = { pool.attach(WebPage.Learn) },
+        onRelease = { pool.detach(WebPage.Learn) },
     )
 }
 

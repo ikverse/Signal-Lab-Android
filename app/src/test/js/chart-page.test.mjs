@@ -9,6 +9,9 @@ import vm from 'node:vm';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+// A test that waits for something that never comes (a promise nothing resolves) fails after five seconds instead of hanging the build.
+const t = (name, fn) => test(name, { timeout: 5000 }, fn);
+
 // CHART_PAGE points the tests at another copy of the page, to check that a deliberately broken one is caught.
 const html = readFileSync(process.env.CHART_PAGE || new URL('../../main/assets/chart/chart.html', import.meta.url), 'utf8');
 // The page's own script is the one without a src; the library is the one with.
@@ -101,7 +104,7 @@ const show = (env, key, drawings = [], levels = []) => env.lab.setData({ key, ca
 
 // --- size
 
-test('the chart is told to resize whenever its box or the window changes', () => {
+t('the chart is told to resize whenever its box or the window changes', () => {
   const env = load();
   assert.equal(env.observers.length, 1);
   assert.equal(env.observers[0].target, env.el('chart'), 'it watches the box the chart lives in');
@@ -112,14 +115,14 @@ test('the chart is told to resize whenever its box or the window changes', () =>
   assert.equal(env.chart.resizes, before + 2);
 });
 
-test('a resize that fails never takes the page down', () => {
+t('a resize that fails never takes the page down', () => {
   const env = load();
   env.chart.failResize = true;
   assert.doesNotThrow(() => env.observers[0].cb([]));
   assert.doesNotThrow(() => env.fire('resize'));
 });
 
-test('without ResizeObserver the window event still resizes the chart', () => {
+t('without ResizeObserver the window event still resizes the chart', () => {
   const env = load({ observer: false });
   const before = env.chart.resizes;
   env.fire('resize');
@@ -128,12 +131,12 @@ test('without ResizeObserver the window event still resizes the chart', () => {
 
 // --- indicators
 
-test('volume alone is on until the app says otherwise, in a panel of its own', () => {
+t('volume alone is on until the app says otherwise, in a panel of its own', () => {
   const env = load();
   assert.deepEqual(env.calls.filter((c) => c[0] === 'createIndicator'), [['createIndicator', 'VOL', false, { height: 80, minHeight: 40 }]]);
 });
 
-test('the app sets the indicators and the page adds and removes exactly what changed', () => {
+t('the app sets the indicators and the page adds and removes exactly what changed', () => {
   const env = load();
   let mark = env.calls.length;
   env.lab.setIndicators(['VOL', 'MA', 'RSI']);
@@ -155,7 +158,7 @@ test('the app sets the indicators and the page adds and removes exactly what cha
   assert.deepEqual(env.since(mark), [], 'an id the page does not know is left out');
 });
 
-test('all six indicators can be on at once and each is made the way it is meant to be', () => {
+t('all six indicators can be on at once and each is made the way it is meant to be', () => {
   const env = load();
   const mark = env.calls.length;
   env.lab.setIndicators(['VOL', 'MA', 'EMA', 'BOLL', 'RSI', 'MACD']);
@@ -163,7 +166,7 @@ test('all six indicators can be on at once and each is made the way it is meant 
   assert.deepEqual(made, ['MA:price', 'EMA:price', 'BOLL:price', 'RSI:panel', 'MACD:panel']);
 });
 
-test('the Indicators menu lists them with a tick for those on, ticking one adds it and tells the app', () => {
+t('the Indicators menu lists them with a tick for those on, ticking one adds it and tells the app', () => {
   const env = load();
   env.el('btn-ind').click();
   const menu = env.el('menu');
@@ -185,7 +188,7 @@ test('the Indicators menu lists them with a tick for those on, ticking one adds 
   assert.deepEqual(env.reported.indicators, ['VOL,MA', 'MA', '']);
 });
 
-test('the menu closes when the button is touched again or anywhere outside it', () => {
+t('the menu closes when the button is touched again or anywhere outside it', () => {
   const env = load();
   env.el('btn-ind').click();
   env.el('btn-ind').click();
@@ -200,7 +203,7 @@ test('the menu closes when the button is touched again or anywhere outside it', 
   assert.equal(rowText(env.el('menu').children[0]), '|Trend line');
 });
 
-test('indicators the app sets while the menu is open are shown in it', () => {
+t('indicators the app sets while the menu is open are shown in it', () => {
   const env = load();
   env.el('btn-ind').click();
   env.lab.setIndicators(['VOL', 'RSI']);
@@ -209,7 +212,7 @@ test('indicators the app sets while the menu is open are shown in it', () => {
 
 // --- drawing
 
-test('the Draw menu offers the five tools and clearing', () => {
+t('the Draw menu offers the five tools and clearing', () => {
   const env = load();
   env.el('btn-draw').click();
   assert.deepEqual(env.el('menu').children.map(rowText), [
@@ -217,7 +220,7 @@ test('the Draw menu offers the five tools and clearing', () => {
   ]);
 });
 
-test('choosing a tool starts that drawing, shows what to tap, and finishing it reports the drawing', () => {
+t('choosing a tool starts that drawing, shows what to tap, and finishing it reports the drawing', () => {
   const env = load();
   show(env, 'BTCUSDT|1h');
   env.el('btn-draw').click();
@@ -233,7 +236,7 @@ test('choosing a tool starts that drawing, shows what to tap, and finishing it r
   assert.deepEqual(env.reported.drawings, [{ key: 'BTCUSDT|1h', drawings: [segment] }]);
 });
 
-test('each tool is the library drawing it is named for', () => {
+t('each tool is the library drawing it is named for', () => {
   const env = load();
   const names = [];
   for (let i = 0; i < 5; i++) {
@@ -247,7 +250,7 @@ test('each tool is the library drawing it is named for', () => {
   assert.deepEqual(names, ['segment', 'horizontalStraightLine', 'rayLine', 'parallelStraightLine', 'fibonacciLine']);
 });
 
-test('a tool picked and then given up for another leaves no stray drawing behind', () => {
+t('a tool picked and then given up for another leaves no stray drawing behind', () => {
   const env = load();
   show(env, 'BTCUSDT|1h');
   env.el('btn-draw').click();
@@ -259,7 +262,7 @@ test('a tool picked and then given up for another leaves no stray drawing behind
   assert.deepEqual(env.inGroup('draw').map((o) => o.name), ['rayLine']);
 });
 
-test('moving a finished drawing reports its new place', () => {
+t('moving a finished drawing reports its new place', () => {
   const env = load();
   show(env, 'BTCUSDT|1h', [segment]);
   const [o] = env.inGroup('draw');
@@ -268,7 +271,7 @@ test('moving a finished drawing reports its new place', () => {
   assert.equal(env.reported.drawings.at(-1).drawings[0].points[0].value, 1.5);
 });
 
-test('clearing removes every drawing of the chart and reports that none are left', () => {
+t('clearing removes every drawing of the chart and reports that none are left', () => {
   const env = load();
   show(env, 'BTCUSDT|1h', [segment, { ...segment, name: 'rayLine' }]);
   assert.equal(env.inGroup('draw').length, 2);
@@ -280,7 +283,7 @@ test('clearing removes every drawing of the chart and reports that none are left
 
 // --- one set of drawings per coin and chart size
 
-test('the drawings the app sends for a chart are drawn when that chart is first shown', () => {
+t('the drawings the app sends for a chart are drawn when that chart is first shown', () => {
   const env = load();
   show(env, 'BTCUSDT|1h', [segment]);
   const [o] = env.inGroup('draw');
@@ -288,7 +291,7 @@ test('the drawings the app sends for a chart are drawn when that chart is first 
   assert.deepEqual(o.points, segment.points);
 });
 
-test('a refresh of the same chart keeps what the user drew and redraws only the levels', () => {
+t('a refresh of the same chart keeps what the user drew and redraws only the levels', () => {
   const env = load();
   const levels = [{ kind: 'ENTRY', label: 'Entry', price: 1.5 }];
   show(env, 'BTCUSDT|1h', [segment], levels);
@@ -302,7 +305,7 @@ test('a refresh of the same chart keeps what the user drew and redraws only the 
   assert.equal(env.inGroup('levels').length, 2, 'the line and its tag');
 });
 
-test('another coin or chart size gets its own drawings, and the first one gets its back', () => {
+t('another coin or chart size gets its own drawings, and the first one gets its back', () => {
   const env = load();
   show(env, 'BTCUSDT|1h', [segment]);
   show(env, 'ETHUSDT|1h', []);
@@ -313,7 +316,7 @@ test('another coin or chart size gets its own drawings, and the first one gets i
   assert.deepEqual(env.inGroup('draw').map((o) => o.name), ['segment']);
 });
 
-test('changing chart abandons a half-drawn tool and clears its hint', () => {
+t('changing chart abandons a half-drawn tool and clears its hint', () => {
   const env = load();
   show(env, 'BTCUSDT|1h');
   env.el('btn-draw').click();
@@ -324,7 +327,7 @@ test('changing chart abandons a half-drawn tool and clears its hint', () => {
   assert.equal(env.inGroup('draw').length, 0);
 });
 
-test('a drawing reported after changing chart is reported under the new chart', () => {
+t('a drawing reported after changing chart is reported under the new chart', () => {
   const env = load();
   show(env, 'BTCUSDT|1h', [segment]);
   show(env, 'ETHUSDT|1h', [segment]);
@@ -334,7 +337,7 @@ test('a drawing reported after changing chart is reported under the new chart', 
 
 // --- the rest of what the app can ask
 
-test('Latest scrolls to the newest candle and closes any menu', () => {
+t('Latest scrolls to the newest candle and closes any menu', () => {
   const env = load();
   env.el('btn-ind').click();
   env.el('btn-latest').click();
@@ -342,7 +345,7 @@ test('Latest scrolls to the newest candle and closes any menu', () => {
   assert.equal(env.el('menu').style.display, 'none');
 });
 
-test('the live price is a line at the newest candle, replaced each time, and never drawn with no data or a bad price', () => {
+t('the live price is a line at the newest candle, replaced each time, and never drawn with no data or a bad price', () => {
   const env = load();
   env.lab.setLastPrice(2.5);
   assert.equal(env.inGroup('live').length, 0, 'no candles yet');
@@ -357,7 +360,7 @@ test('the live price is a line at the newest candle, replaced each time, and nev
   assert.equal(env.inGroup('live').length, 0);
 });
 
-test('an empty chart shows its message, and a chart with candles hides it', () => {
+t('an empty chart shows its message, and a chart with candles hides it', () => {
   const env = load();
   env.lab.setData({ key: 'X|1h', candles: [], levels: [] });
   assert.equal(env.el('empty').style.display, 'block');
@@ -365,13 +368,13 @@ test('an empty chart shows its message, and a chart with candles hides it', () =
   assert.equal(env.el('empty').style.display, 'none');
 });
 
-test('the calls the app and the debug page make are all still there', () => {
+t('the calls the app and the debug page make are all still there', () => {
   const env = load();
   for (const name of ['setData', 'setLastPrice', 'setIndicators', 'benchmark', 'check']) assert.equal(typeof env.lab[name], 'function', name);
   assert.doesNotThrow(() => env.lab.benchmark(50));
 });
 
-test('the page sends no report when a bridge is missing, as in the debug page', () => {
+t('the page sends no report when a bridge is missing, as in the debug page', () => {
   const env = load();
   // The debug chart check has a bridge with only `report`; the page must cope with the others being absent.
   const ctx = vm.createContext({ ...{}, document: { getElementById: () => new El('div'), createElement: () => new El('div'), createTextNode: () => ({}) },
