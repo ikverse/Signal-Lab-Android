@@ -1,6 +1,8 @@
 package com.ikverse.signallab.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,9 +23,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** How long "Tap again to delete" stays armed. */
+private const val CONFIRM_WINDOW_MS = 4_000L
 
 /**
  * Your lists: make them, switch them on and off, choose the charts and the coins. On a wide screen the list of lists sits beside the
@@ -66,7 +73,7 @@ fun ListsScreen(model: ListsModel, panels: PanelPrefs, wide: Boolean, modifier: 
                 items(lists, key = { it.id }) { l ->
                     TouchRow({ selected = l.id; adding = false }, selected = current?.id == l.id) {
                         Column(Modifier.weight(1f)) {
-                            Text(l.name, style = Type.BodyStrong)
+                            Text(l.name, style = Type.BodyStrong, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text("${l.coins.size} ${if (l.coins.size == 1) "coin" else "coins"} · ${l.timeframes.joinToString(" ")}", style = Type.Small)
                         }
                         Text(if (l.active) "watching" else "off", style = Type.Small.copy(color = if (l.active) Palette.Up else Palette.Muted))
@@ -104,6 +111,16 @@ private fun ListDetail(model: ListsModel, list: ListUi, adding: Boolean, setAddi
     var renaming by rememberSaveable(list.id) { mutableStateOf(false) }
     var newName by rememberSaveable(list.id) { mutableStateOf(list.name) }
     var confirmDelete by remember(list.id) { mutableStateOf(false) }
+    // "Tap again" does not wait forever: a tap long after the first is not a confirmation.
+    LaunchedEffect(confirmDelete) {
+        if (confirmDelete) {
+            delay(CONFIRM_WINDOW_MS)
+            confirmDelete = false
+        }
+    }
+    val deleteColor by animateColorAsState(
+        if (confirmDelete) Palette.Down else Palette.Down.copy(alpha = 0.75f), tween(Motion.FADE_MS, easing = Motion.EaseOut), label = "delete",
+    )
     LaunchedEffect(list.name) { newName = list.name }
 
     fun run(block: suspend () -> Outcome) {
@@ -140,7 +157,7 @@ private fun ListDetail(model: ListsModel, list: ListUi, adding: Boolean, setAddi
             }
         } else {
             Row(Modifier.fillMaxWidth().padding(end = 8.dp)) {
-                Text(list.name, style = Type.Title, modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 12.dp))
+                Text(list.name, style = Type.Title, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 12.dp))
                 TextAction("Rename", { renaming = true }, color = Palette.Muted)
             }
         }
@@ -155,7 +172,7 @@ private fun ListDetail(model: ListsModel, list: ListUi, adding: Boolean, setAddi
         SectionLabel("Coins (${list.coins.size} of $MAX_COINS_PER_LIST)")
         for (c in list.coins) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(c.removeSuffix("USDT"), style = Type.BodyStrong, modifier = Modifier.weight(1f))
+                Text(c.removeSuffix("USDT"), style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 TextAction("Remove", { run { model.removeCoin(list.id, c) } }, color = Palette.Muted)
             }
             HRule()
@@ -165,7 +182,7 @@ private fun ListDetail(model: ListsModel, list: ListUi, adding: Boolean, setAddi
         TextAction(
             if (confirmDelete) "Tap again to delete “${list.name}”" else "Delete this list",
             { if (confirmDelete) run { model.delete(list.id) } else confirmDelete = true },
-            color = Palette.Down, modifier = Modifier.testTag("delete"),
+            color = deleteColor, modifier = Modifier.testTag("delete"),
         )
         Text("Deleting a list never touches paper trades already open on its coins.", style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
     }

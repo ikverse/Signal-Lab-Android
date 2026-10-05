@@ -127,20 +127,24 @@ fun MarketsScreen(
             val coinsHidden = pane.isHidden("wide.coins")
             val detailsHidden = pane.isHidden("wide.details")
             val (c, d) = PaneMath.fit(total, pane.size("wide.coins", 280f), pane.size("wide.details", 320f), coinsHidden, detailsHidden)
+            val shownC = animatedPaneSize(c, pane.dragging)
+            val shownD = animatedPaneSize(d, pane.dragging)
             Row(Modifier.fillMaxSize()) {
-                if (!coinsHidden) Column(Modifier.width(c.dp).pane("coins")) { list() }
+                if (paneOpen(coinsHidden, shownC)) Column(Modifier.width(shownC.dp).pane("coins")) { list() }
                 PaneDivider(
                     vertical = true, hidden = coinsHidden, label = "coins", arrow = if (coinsHidden) "›" else "‹",
                     onDrag = { pane.set("wide.coins", PaneMath.dragged(c, it, max = total - 2 * PaneMath.DIVIDER - PaneMath.MIN_CHART - d)) },
                     onToggle = { pane.toggle("wide.coins") }, modifier = Modifier.testTag("divider-coins"),
+                    onDragging = { pane.dragging = it },
                 )
                 Column(Modifier.weight(1f).pane("chart")) { chartPane() }
                 PaneDivider(
                     vertical = true, hidden = detailsHidden, label = "details", arrow = if (detailsHidden) "‹" else "›",
                     onDrag = { pane.set("wide.details", PaneMath.dragged(d, -it, max = total - 2 * PaneMath.DIVIDER - PaneMath.MIN_CHART - c)) },
                     onToggle = { pane.toggle("wide.details") }, modifier = Modifier.testTag("divider-details"),
+                    onDragging = { pane.dragging = it },
                 )
-                if (!detailsHidden) Column(Modifier.width(d.dp).pane("details")) { details() }
+                if (paneOpen(detailsHidden, shownD)) Column(Modifier.width(shownD.dp).pane("details")) { details() }
             }
         }
         LayoutClass.Medium -> BoxWithConstraints(modifier.fillMaxSize().testTag("markets-medium")) {
@@ -150,12 +154,15 @@ fun MarketsScreen(
             val detailsHidden = pane.isHidden("medium.details")
             val c = PaneMath.fitOne(totalW, pane.size("medium.coins", 220f), coinsHidden, PaneMath.MIN_SIDE, PaneMath.MIN_CHART, PaneMath.DIVIDER)
             val h = PaneMath.fitOne(totalH, pane.size("medium.details", 190f), detailsHidden, PaneMath.MIN_PANE_HEIGHT, PaneMath.MIN_CHART_HEIGHT, PaneMath.DIVIDER)
+            val shownC = animatedPaneSize(c, pane.dragging)
+            val shownH = animatedPaneSize(h, pane.dragging)
             Row(Modifier.fillMaxSize()) {
-                if (!coinsHidden) Column(Modifier.width(c.dp).pane("coins")) { list() }
+                if (paneOpen(coinsHidden, shownC)) Column(Modifier.width(shownC.dp).pane("coins")) { list() }
                 PaneDivider(
                     vertical = true, hidden = coinsHidden, label = "coins", arrow = if (coinsHidden) "›" else "‹",
                     onDrag = { pane.set("medium.coins", PaneMath.dragged(c, it, max = totalW - PaneMath.DIVIDER - PaneMath.MIN_CHART)) },
                     onToggle = { pane.toggle("medium.coins") }, modifier = Modifier.testTag("divider-coins"),
+                    onDragging = { pane.dragging = it },
                 )
                 Column(Modifier.weight(1f)) {
                     Column(Modifier.weight(1f).pane("chart")) { chartPane() }
@@ -165,8 +172,9 @@ fun MarketsScreen(
                             pane.set("medium.details", PaneMath.dragged(h, -it, max = totalH - PaneMath.DIVIDER - PaneMath.MIN_CHART_HEIGHT, min = PaneMath.MIN_PANE_HEIGHT))
                         },
                         onToggle = { pane.toggle("medium.details") }, modifier = Modifier.testTag("divider-details"),
+                        onDragging = { pane.dragging = it },
                     )
-                    if (!detailsHidden) Column(Modifier.height(h.dp).pane("details")) { details() }
+                    if (paneOpen(detailsHidden, shownH)) Column(Modifier.height(shownH.dp).pane("details")) { details() }
                 }
             }
         }
@@ -193,7 +201,7 @@ private fun CoinList(coins: List<CoinUi>, prices: Map<String, Double>, selected:
             val price = prices[c.symbol] ?: c.price
             TouchRow({ onSelect(c) }, selected = c.symbol == selected, modifier = Modifier.testTag("coin-${c.symbol}")) {
                 Column(Modifier.weight(1f)) {
-                    Text(c.base, style = Type.BodyStrong)
+                    Text(c.base, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(if (c.openTrades > 0) "${c.openTrades} open" else c.timeframes.joinToString(" "), style = Type.Small, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Column(horizontalAlignment = Alignment.End) {

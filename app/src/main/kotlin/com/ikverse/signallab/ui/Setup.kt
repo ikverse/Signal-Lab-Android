@@ -16,6 +16,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -148,11 +154,22 @@ fun DownloadBanner(download: DownloadUi, modifier: Modifier = Modifier) {
     val text = when {
         download.running -> "Downloading history: coin ${download.ready + 1} of ${download.total}" + (download.current?.let { " ($it)" } ?: "")
         download.failures.isNotEmpty() -> "Could not download ${download.failures.size} ${if (download.failures.size == 1) "coin" else "coins"}: ${download.failures.values.first()}"
-        else -> return
+        else -> null
     }
-    Column(modifier.fillMaxWidth().testTag("download-banner")) {
-        Text(text, style = Type.Small.copy(color = if (download.running) Palette.Muted else Palette.Warn), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-        HRule()
+    // The last thing said is kept, so the banner has its words to show while it closes.
+    var last by remember { mutableStateOf("" to false) }
+    val now = text?.let { it to download.running }
+    LaunchedEffect(now) { if (now != null) last = now }
+    val (shown, running) = now ?: last
+    AnimatedVisibility(
+        visible = text != null,
+        enter = expandVertically(tween(Motion.ENTER_MS, easing = Motion.EaseOut)) + fadeIn(tween(Motion.ENTER_MS, easing = Motion.EaseOut)),
+        exit = shrinkVertically(tween(Motion.EXIT_MS, easing = Motion.EaseOut)) + fadeOut(tween(Motion.EXIT_MS, easing = Motion.EaseOut)),
+    ) {
+        Column(modifier.fillMaxWidth().testTag("download-banner")) {
+            Text(shown, style = Type.Small.copy(color = if (running) Palette.Muted else Palette.Warn), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            HRule()
+        }
     }
 }
 
