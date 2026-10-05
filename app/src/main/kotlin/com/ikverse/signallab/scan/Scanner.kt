@@ -182,7 +182,7 @@ class Scanner(
                 )
                 if (!log.close(lt.id, exit)) continue
                 closed++
-                val text = AlertText.closed(lt.trade.variant, lt.trade.symbol, tf, result.reason, result.net, result.randomMean)
+                val text = AlertText.closed(lt.trade.variant, lt.trade.symbol, tf, result.reason, result.net, result.randomMean, lt.id)
                 log.record(AlertText.KIND_EXIT, text.title, text.body, lt.trade.symbol, tf.label, text.link).also { alerts.add(it); notify.add(it) }
             }
         }

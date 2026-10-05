@@ -36,9 +36,19 @@ fun ListsScreen(model: ListsModel, panels: PanelPrefs, wide: Boolean, modifier: 
     var selected by rememberSaveable { mutableStateOf<Long?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
     var adding by rememberSaveable { mutableStateOf(false) }
-    val current = lists.firstOrNull { it.id == selected } ?: if (wide) lists.firstOrNull() else null
+    // The open list is looked up by its id every time. A list that has gone (deleted here, or any other way) is simply not open: the screen
+    // never waits on a list that is not there, which left a narrow phone showing neither the lists nor a list.
+    val open = lists.firstOrNull { it.id == selected }
+    val current = open ?: if (wide) lists.firstOrNull() else null
+    val editing = adding && current != null
+    LaunchedEffect(open == null, selected) {
+        if (selected != null && open == null) {
+            selected = null
+            adding = false
+        }
+    }
 
-    BackHandler(enabled = creating || adding || (!wide && selected != null)) {
+    BackHandler(enabled = creating || editing || (!wide && open != null)) {
         when {
             creating -> creating = false
             adding -> adding = false
@@ -68,9 +78,9 @@ fun ListsScreen(model: ListsModel, panels: PanelPrefs, wide: Boolean, modifier: 
         }
     }
     val detail = @Composable {
-        if (current != null && (wide || selected != null)) {
+        if (current != null && (wide || open != null)) {
             ListDetail(
-                model, current, adding, { adding = it },
+                model, current, editing, { adding = it },
                 onBack = if (wide) null else ({ selected = null; adding = false }), modifier = Modifier.fillMaxSize(),
             )
         } else if (wide) {
@@ -81,7 +91,7 @@ fun ListsScreen(model: ListsModel, panels: PanelPrefs, wide: Boolean, modifier: 
         DownloadBanner(download)
         when {
             wide -> SplitPane(panels, "lists", "lists", 320f, listOfLists, detail, Modifier.weight(1f))
-            selected == null -> Column(Modifier.weight(1f)) { listOfLists() }
+            open == null -> Column(Modifier.weight(1f)) { listOfLists() }
             else -> Column(Modifier.weight(1f)) { detail() }
         }
     }

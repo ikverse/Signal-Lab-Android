@@ -7,13 +7,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,28 +40,37 @@ fun tradesSummary(trades: List<TradeUi>): String {
     return "$open open · ${closed.size} closed" + (mean?.let { " · average ${Fmt.signedPercent(it)} after costs" } ?: "")
 }
 
-/** Every paper trade, newest first, with what each one did. */
+/**
+ * Every paper trade, newest first, with what each one did. The filter, the search and the opened trade live in [nav], so a notification
+ * can set them and they are still there after another tab has been on show.
+ */
 @Composable
-fun TradesScreen(model: TradesModel, onOpenCoin: (String, String) -> Unit, onOpenLearn: (String) -> Unit, modifier: Modifier = Modifier) {
+fun TradesScreen(model: TradesModel, nav: NavState, onOpenCoin: (String, String) -> Unit, onOpenLearn: (String) -> Unit, modifier: Modifier = Modifier) {
     val all by model.trades.collectAsStateWithLifecycle()
-    var status by rememberSaveable { mutableStateOf(TradeFilter.All) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var expanded by rememberSaveable { mutableStateOf<Long?>(null) }
+    val status = nav.tradesStatus
+    val query = nav.tradesQuery
+    val expanded = nav.tradesExpanded
     val shown = filterTrades(all, status, query)
+    val list = rememberLazyListState()
+    // A trade a link asked to be opened is brought into view once it has arrived in the list; one already on screen (a row just touched) stays put.
+    LaunchedEffect(expanded, shown.size) {
+        val at = shown.indexOfFirst { it.id == expanded }
+        if (expanded != null && at >= 0 && list.layoutInfo.visibleItemsInfo.none { it.index == at }) list.animateScrollToItem(at)
+    }
     Column(modifier.fillMaxSize().testTag("trades")) {
         ScreenTitle("Paper trades")
         Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
-            for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { status = f })
+            for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { nav.tradesStatus = f })
         }
-        PlainField(query, { query = it }, "Filter by coin, pattern or chart")
+        PlainField(query, { nav.tradesQuery = it }, "Filter by coin, pattern or chart")
         Text(tradesSummary(shown), style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("trades-summary"))
         HRule()
         when {
             all.isEmpty() -> EmptyState("No paper trades yet", "When a pattern appears on a coin you are watching, a pretend trade is recorded here. No real money is used.")
             shown.isEmpty() -> EmptyState("Nothing matches", "Change the filter or the search.")
-            else -> LazyColumn(Modifier.weight(1f)) {
+            else -> LazyColumn(Modifier.weight(1f), state = list) {
                 items(shown, key = { it.id }) { t ->
-                    TradeRow(t, expanded == t.id, { expanded = if (expanded == t.id) null else t.id }, onOpenCoin, onOpenLearn)
+                    TradeRow(t, expanded == t.id, { nav.tradesExpanded = if (expanded == t.id) null else t.id }, onOpenCoin, onOpenLearn)
                     HRule()
                 }
             }

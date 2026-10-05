@@ -264,7 +264,7 @@ class LiveScorecardModel(private val graph: AppGraph, scope: CoroutineScope) : S
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ScorecardUi())
 }
 
-internal fun Alert.toUi() = AlertUi(id, ts, kind, title, body, symbol, tf)
+internal fun Alert.toUi() = AlertUi(id, ts, kind, title, body, symbol, tf, link)
 
 class LiveAlertsModel(private val graph: AppGraph, scope: CoroutineScope) : AlertsModel {
     @OptIn(ExperimentalCoroutinesApi::class)

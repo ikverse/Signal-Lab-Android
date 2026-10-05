@@ -48,7 +48,7 @@ By the number of closed trades behind it: under {{TIER_1}} **No verdict**, {{TIE
 
 ## Why most rows say "No verdict" for a long time
 
-Every pattern, on every chart size, is another test. Test enough and a few will look good by pure luck. So the bar for **Edge** rises with the number of patterns ever tried, shown at the bottom of the Scorecard. The honest outcome of a fair test is often "no edge", and that is useful to know.
+Every pattern, on every chart size, is another test. Test enough and a few will look good by pure luck. So the bar for **Edge** rises with the number of patterns ever tried, shown at the bottom of the [Scorecard](go:scorecard). The honest outcome of a fair test is often "no edge", and that is useful to know.
 
 ## Treat an Edge as perishable
 

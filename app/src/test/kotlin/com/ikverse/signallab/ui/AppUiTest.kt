@@ -31,6 +31,7 @@ import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
+import com.ikverse.signallab.scan.AlertText
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.core.graphics.Insets
@@ -1507,5 +1508,376 @@ class AppUiTest {
         everyTouchTargetIsBigEnough()
         click("nav-Settings")
         everyTouchTargetIsBigEnough()
+    }
+
+    // --- the navigation review: links, notes, Back, kept state, a deleted list ----------------------------------------
+
+    private fun noteText() = tag("coin-note")
+
+    private fun chosen(label: String) = rule.onNodeWithContentDescription("$label, chosen")
+
+    private fun twoLists() = FakeLists(
+        listOf(
+            ListUi(1, "First", true, listOf("BTCUSDT"), listOf("1h")),
+            ListUi(2, "Second", false, listOf("ETHUSDT"), listOf("1h")),
+        ),
+    )
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a coin in no switched-on list opens as itself with a note, never as the first coin`() {
+        val nav = NavState()
+        show(FakeApp.full(), nav = nav)
+        rule.runOnUiThread { nav.openCoin("ADAUSDT", "1h") }
+        rule.waitForIdle()
+        tag("chart-placeholder").assertTextContains("ADAUSDT 1h", substring = true)
+        noteText().assertTextContains("ADA is not in a list that is switched on, so it is not being watched", substring = true)
+        rule.onNodeWithText("Open Lists").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("lists"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the note is on Details too, and a watched coin has none`() {
+        val nav = NavState()
+        show(FakeApp.full(), nav = nav)
+        rule.runOnUiThread { nav.openLink(Link("ADAUSDT", null, LinkPlace.DETAILS), fromApp = false) }
+        rule.waitForIdle()
+        assertTrue(exists("details"))
+        noteText().assertTextContains("ADA is not in a list", substring = true)
+        rule.runOnUiThread { nav.go(Dest.Markets); nav.symbol = "ETHUSDT"; nav.timeframe = null; nav.marketsTab = MarketsTab.Chart }
+        rule.waitForIdle()
+        tag("chart-placeholder").assertTextContains("ETHUSDT 1h", substring = true)
+        assertTrue(!exists("coin-note"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a chart size the coin is not watched on says so and shows the one it is`() {
+        val nav = NavState()
+        show(FakeApp.full(), nav = nav)
+        rule.runOnUiThread { nav.openCoin("BTCUSDT", "1d") }
+        rule.waitForIdle()
+        tag("chart-placeholder").assertTextContains("BTCUSDT 1h", substring = true)
+        noteText().assertTextContains("BTC is not watched on the 1-day chart, so this shows the 1-hour chart.", substring = true)
+        assertTrue("it is watched, so there is no way to the lists offered", rule.onAllNodesWithText("Open Lists").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `with no list switched on a coin that was asked for still opens, and with none asked for the page says nothing is watched`() {
+        val nav = NavState()
+        show(FakeApp(lists = FakeLists(listOf(FakeApp.list)), markets = FakeMarkets(emptyList())), nav = nav)
+        assertTrue(exists("markets-empty"))
+        rule.runOnUiThread { nav.openCoin("ADAUSDT", "1h") }
+        rule.waitForIdle()
+        assertTrue(!exists("markets-empty"))
+        tag("chart-placeholder").assertTextContains("ADAUSDT 1h", substring = true)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `on a wide screen the coin asked for is charted and the list beside it is still the watched coins`() {
+        val nav = NavState()
+        show(FakeApp.full(), nav = nav)
+        rule.runOnUiThread { nav.openCoin("ADAUSDT", "1h") }
+        rule.waitForIdle()
+        tag("chart-placeholder").assertTextContains("ADAUSDT 1h", substring = true)
+        assertEquals("one note over the chart and one over Details, since both are on show", 2, rule.onAllNodesWithTag("coin-note").fetchSemanticsNodes().size)
+        assertTrue(exists("coin-BTCUSDT"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `Show on chart for a trade of a switched-off list shows that coin, and Back returns to the trade`() {
+        val app = FakeApp(
+            markets = FakeMarkets(listOf(FakeApp.btc)), lists = FakeLists(listOf(FakeApp.list)),
+            trades = FakeTrades(listOf(FakeApp.trade(3, "ETHUSDT", net = -0.01))),
+        )
+        show(app)
+        click("nav-Trades")
+        click("trade-3")
+        rule.onNodeWithText("Show on chart").performClick()
+        rule.waitForIdle()
+        tag("chart-placeholder").assertTextContains("ETHUSDT", substring = true)
+        noteText().assertTextContains("ETH is not in a list", substring = true)
+        back()
+        assertTrue(exists("trades"))
+        rule.onNodeWithText("Show on chart").assertExists() // the trade is still opened out
+    }
+
+    // links from notifications
+
+    private fun openLink(app: FakeApp, link: Link) {
+        app.link.value = link
+        rule.waitUntil(3_000) { app.link.value == null }
+        rule.waitForIdle()
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a closed-trade notification opens Trades for that coin with that trade opened out`() {
+        val app = FakeApp.full()
+        show(app)
+        openLink(app, Link("BTCUSDT", null, LinkPlace.TRADES, tradeId = 2))
+        assertTrue(exists("trades"))
+        rule.onNodeWithContentDescription("Filter by coin, pattern or chart").assertTextContains("BTC")
+        tag("trades-summary").assertTextContains("1 open · 1 closed", substring = true)
+        rule.onNodeWithText("Result after costs").assertExists()
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the opened and closed summaries open Trades on that filter`() {
+        val app = FakeApp.full()
+        show(app)
+        openLink(app, Link(null, null, LinkPlace.TRADES, status = "open"))
+        chosen("Open").assertExists()
+        tag("trades-summary").assertTextContains("1 open · 0 closed", substring = true)
+        openLink(app, Link(null, null, LinkPlace.TRADES, status = "closed"))
+        chosen("Closed").assertExists()
+        tag("trades-summary").assertTextContains("0 open · 2 closed", substring = true)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a warning notification opens the coin on its Details tab`() {
+        val app = FakeApp.full()
+        show(app)
+        openLink(app, Link("BTCUSDT", "1h", LinkPlace.DETAILS))
+        assertTrue(exists("details"))
+        assertTrue(!exists("chart-placeholder"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a problem notification opens Alerts on Problems, and the blocked one opens Settings`() {
+        val app = FakeApp.full()
+        app.alerts.state.value = app.alerts.state.value + FakeApp.alert(9, "problem", symbol = null, tf = null)
+        show(app)
+        openLink(app, Link(null, null, LinkPlace.ALERTS, group = "problems"))
+        assertTrue(exists("alerts"))
+        chosen("Problems").assertExists()
+        openLink(app, Link(null, null, LinkPlace.SETTINGS))
+        assertTrue(exists("settings"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `an alert in the inbox goes where its notification goes`() {
+        val app = FakeApp.full()
+        val at = 1_700_000_000_000L
+        app.alerts.state.value = listOf(
+            AlertUi(1, at, "exit", "Closed one", "b", "BTCUSDT", "1h", AlertText.tradesLink("BTCUSDT", 2)),
+            AlertUi(2, at, "warning", "A warning", "b", "BTCUSDT", "1h", AlertText.detailsLink("BTCUSDT", com.ikverse.signallab.engine.Timeframe.H1)),
+            AlertUi(3, at, "problem", "Blocked", "b", null, null, AlertText.SETTINGS_LINK),
+            AlertUi(4, at, "problem", "Nothing to open", "b", null, null, null),
+        )
+        show(app)
+        click("nav-Alerts")
+        click("alert-1")
+        assertTrue(exists("trades"))
+        rule.onNodeWithText("Result after costs").assertExists()
+        back()
+        assertTrue("Back returns to Alerts", exists("alerts"))
+        click("alert-2")
+        assertTrue(exists("details"))
+        back()
+        click("alert-3")
+        assertTrue(exists("settings"))
+        back()
+        click("alert-4")
+        assertTrue("a problem with nowhere to go stays where it is", exists("alerts"))
+    }
+
+    // Back
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `on a wide screen one Back leaves after a notification opened a coin`() {
+        val app = FakeApp.full()
+        show(app)
+        openLink(app, Link("ETHUSDT", "1h"))
+        back()
+        assertTrue(rule.activity.isFinishing)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `on a wide screen Back from a Learn page leaves Learn instead of jumping to another page`() {
+        val nav = NavState()
+        show(FakeApp.full(), nav = nav)
+        click("nav-Learn")
+        click("learn-scorecard")
+        back()
+        assertEquals(Dest.Markets, nav.dest)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `Back from a jump returns to the tab that was left, with its filter, and a tab chosen from the bar forgets the trail`() {
+        val nav = NavState()
+        show(FakeApp.full(), nav = nav)
+        click("nav-Trades")
+        rule.onNodeWithContentDescription("Open").performClick()
+        rule.waitForIdle()
+        click("trade-1")
+        rule.onNodeWithText("Show on chart").performClick()
+        rule.waitForIdle()
+        assertEquals(Dest.Markets, nav.dest)
+        back()
+        assertEquals(Dest.Trades, nav.dest)
+        chosen("Open").assertExists()
+        rule.onNodeWithText("What is this pattern?").performClick()
+        rule.waitForIdle()
+        assertEquals(Dest.Learn, nav.dest)
+        back()
+        assertEquals(Dest.Trades, nav.dest)
+        rule.onNodeWithText("Show on chart").performClick()
+        rule.waitForIdle()
+        click("nav-Alerts")
+        back()
+        assertEquals("tapping a tab forgets the way back to Trades", Dest.Markets, nav.dest)
+    }
+
+    // kept state
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `Trades keeps its filter and search, and Alerts its group, while another tab is on show`() {
+        val app = FakeApp.full()
+        show(app)
+        click("nav-Trades")
+        rule.onNodeWithContentDescription("Closed").performClick()
+        rule.onNodeWithContentDescription("Filter by coin, pattern or chart").performTextReplacement("ETH")
+        rule.waitForIdle()
+        click("nav-Scorecard")
+        click("nav-Trades")
+        chosen("Closed").assertExists()
+        rule.onNodeWithContentDescription("Filter by coin, pattern or chart").assertTextContains("ETH")
+        click("nav-Alerts")
+        rule.onNodeWithContentDescription("Warnings").performClick()
+        rule.waitForIdle()
+        click("nav-Trades")
+        click("nav-Alerts")
+        chosen("Warnings").assertExists()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a half-filled New list is still there after another tab has been on show`() {
+        show(FakeApp.full())
+        click("nav-Lists")
+        click("new-list")
+        rule.onNodeWithContentDescription("List name").performTextReplacement("Mine")
+        rule.waitForIdle()
+        click("nav-Settings")
+        assertTrue(!exists("setup"))
+        click("nav-Lists")
+        assertTrue(exists("setup"))
+        rule.onNodeWithContentDescription("List name").assertTextContains("Mine")
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the open list in Lists is still open after another tab has been on show`() {
+        show(FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc))))
+        click("nav-More")
+        click("more-Lists")
+        rule.onNodeWithText("Second").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("list-detail"))
+        click("nav-Alerts")
+        click("nav-More")
+        click("more-Lists")
+        assertTrue(exists("list-detail"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a link's filters survive the screen being rebuilt`() {
+        val restore = StateRestorationTester(rule)
+        val app = FakeApp.full()
+        restore.setContent { SignalLabApp(app, debug = false, webViews = false) }
+        rule.waitForIdle()
+        openLink(app, Link(null, null, LinkPlace.TRADES, status = "closed"))
+        chosen("Closed").assertExists()
+        restore.emulateSavedInstanceStateRestore()
+        rule.waitForIdle()
+        assertTrue(exists("trades"))
+        chosen("Closed").assertExists()
+    }
+
+    // a deleted list
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `deleting one of two lists on a narrow phone returns to the lists and never to a blank screen`() {
+        val nav = NavState()
+        val app = FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc)))
+        show(app, nav = nav)
+        click("nav-More")
+        click("more-Lists")
+        rule.onNodeWithText("Second").performClick()
+        rule.waitForIdle()
+        click("delete")
+        click("delete")
+        rule.waitUntil(3_000) { app.lists.log.contains("delete 2") }
+        rule.waitUntil(3_000) { !exists("list-detail") }
+        assertTrue("the list of lists is showing", exists("new-list"))
+        rule.onNodeWithText("First").assertIsDisplayed()
+        back()
+        assertEquals("Back is not swallowed by a screen that is no longer there", Dest.Markets, nav.dest)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a list that disappears under an open one, from outside the screen, returns to the lists`() {
+        val app = FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc)))
+        show(app)
+        click("nav-More")
+        click("more-Lists")
+        rule.onNodeWithText("Second").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("list-detail"))
+        app.lists.state.value = app.lists.state.value.filter { it.id != 2L }
+        rule.waitForIdle()
+        assertTrue(!exists("list-detail"))
+        assertTrue(exists("new-list"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the picker closes with the list it was adding to`() {
+        val app = FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc)))
+        show(app)
+        click("nav-More")
+        click("more-Lists")
+        rule.onNodeWithText("Second").performClick()
+        rule.waitForIdle()
+        click("add-coins")
+        assertTrue(exists("add-coins-pane"))
+        app.lists.state.value = app.lists.state.value.filter { it.id != 2L }
+        rule.waitForIdle()
+        assertTrue(!exists("add-coins-pane"))
+        assertTrue(exists("new-list"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `on a wide screen deleting the open list shows the next one`() {
+        val app = FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc)))
+        show(app)
+        click("nav-Lists")
+        rule.onAllNodesWithText("Second")[0].performClick()
+        rule.waitForIdle()
+        click("delete")
+        click("delete")
+        rule.waitUntil(3_000) { app.lists.log.contains("delete 2") }
+        rule.waitForIdle()
+        assertTrue(exists("list-detail"))
+        assertTrue(rule.onAllNodesWithText("First").fetchSemanticsNodes().size >= 2) // in the list and as the title of the open one
+        assertTrue(rule.onAllNodesWithText("Second").fetchSemanticsNodes().isEmpty())
     }
 }

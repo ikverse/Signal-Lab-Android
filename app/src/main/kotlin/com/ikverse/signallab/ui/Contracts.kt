@@ -107,7 +107,8 @@ data class ScoreRowUi(
 
 data class ScorecardUi(val rows: List<ScoreRowUi> = emptyList(), val patternsTested: Int = 0)
 
-data class AlertUi(val id: Long, val time: Long, val kind: String, val title: String, val body: String, val symbol: String?, val timeframe: String?)
+/** One alert. [link] is where touching it goes (see [parseLink]); null for one that goes nowhere. */
+data class AlertUi(val id: Long, val time: Long, val kind: String, val title: String, val body: String, val symbol: String?, val timeframe: String?, val link: String? = null)
 
 data class LearnPageUi(val id: String, val group: String, val title: String, val markdown: String)
 
@@ -244,16 +245,61 @@ interface SettingsModel {
     fun openSystemScreen(prompt: PermissionPrompt)
 }
 
-/** Where a notification or a link points: a coin, and optionally one of its charts. */
-data class Link(val symbol: String, val timeframe: String?)
+/** Where a [Link] leads. */
+enum class LinkPlace { CHART, DETAILS, TRADES, ALERTS, SETTINGS }
 
-/** Reads "signallab://coin/SOLUSDT?tf=1h". Anything else is not a link to a coin. */
+/**
+ * Where a notification (or an alert in the inbox) leads. A coin's chart or its Details need [symbol] (and optionally the chart
+ * size); the Trades tab takes a coin to filter by, a trade to open and a status; Alerts takes a group; Settings takes nothing.
+ */
+data class Link(
+    val symbol: String?,
+    val timeframe: String? = null,
+    val place: LinkPlace = LinkPlace.CHART,
+    val tradeId: Long? = null,
+    /** "open" or "closed", for the Trades tab. */
+    val status: String? = null,
+    /** An alerts group by name ("problems"), for the Alerts tab. */
+    val group: String? = null,
+)
+
+private fun queryValue(query: String, name: String): String? =
+    query.split('&').firstNotNullOfOrNull { part -> part.takeIf { it.substringBefore('=') == name }?.substringAfter('=', "")?.takeIf { it.isNotBlank() } }
+
+/**
+ * Reads the addresses alerts carry:
+ * "signallab://coin/SOLUSDT?tf=1h" (the chart; add "&show=details" for the Details tab),
+ * "signallab://trades?coin=SOLUSDT&id=12&status=closed", "signallab://alerts?group=problems" and "signallab://settings".
+ * Anything else is not a link.
+ */
 fun parseLink(text: String?): Link? {
-    if (text == null || !text.startsWith("signallab://coin/")) return null
-    val rest = text.removePrefix("signallab://coin/")
-    val symbol = rest.substringBefore('?').takeIf { it.isNotBlank() } ?: return null
-    val tf = rest.substringAfter("tf=", "").substringBefore('&').takeIf { it.isNotBlank() }
-    return Link(symbol, tf)
+    if (text == null || !text.startsWith("signallab://")) return null
+    val rest = text.removePrefix("signallab://")
+    val path = rest.substringBefore('?')
+    val query = rest.substringAfter('?', "")
+    return when {
+        path.startsWith("coin/") -> {
+            val symbol = path.removePrefix("coin/").takeIf { it.isNotBlank() } ?: return null
+            Link(symbol, queryValue(query, "tf"), if (queryValue(query, "show") == "details") LinkPlace.DETAILS else LinkPlace.CHART)
+        }
+        path == "trades" -> Link(queryValue(query, "coin"), null, LinkPlace.TRADES, queryValue(query, "id")?.toLongOrNull(), queryValue(query, "status"))
+        path == "alerts" -> Link(null, null, LinkPlace.ALERTS, group = queryValue(query, "group"))
+        path == "settings" -> Link(null, null, LinkPlace.SETTINGS)
+        else -> null
+    }
+}
+
+/** What a link inside a Learn page asks for: another page ("learn:scorecard") or a place in the app ("go:settings"). */
+sealed interface WebLink {
+    data class Page(val id: String) : WebLink
+    data class Place(val name: String) : WebLink
+}
+
+/** Reads a link tapped inside a Learn page; anything else (a web address, an empty target) is null and goes nowhere. */
+fun parseWebLink(url: String): WebLink? = when {
+    url.startsWith("learn:") -> url.removePrefix("learn:").takeIf { it.isNotBlank() }?.let { WebLink.Page(it) }
+    url.startsWith("go:") -> url.removePrefix("go:").takeIf { it.isNotBlank() }?.let { WebLink.Place(it) }
+    else -> null
 }
 
 /** Where panel sizes are kept between runs: one piece of text per screen, and null until what was saved has been read. */

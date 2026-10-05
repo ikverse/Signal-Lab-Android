@@ -44,7 +44,12 @@ enum class MarketsTab(val label: String) { Coins("Coins"), Chart("Chart"), Detai
 
 /**
  * Where the user is and what they were looking at: kept across rotation and a restart of the screen. Opening a notification (or a link)
- * moves it to that coin and chart.
+ * moves it to where the link leads.
+ *
+ * [trail] is the tabs the user jumped away from, most recent last, so Back from a jump (Show on chart, What is this pattern?) returns to
+ * the tab it left. Tapping a tab in the bar forgets the trail. [narrow] says whether the screen is a phone held upright; what only a narrow
+ * screen shows (the Coins/Chart/Details tabs, the Learn page opening over its list) is never counted as something Back has to step out of
+ * on a wide one, where it would be an invisible press.
  */
 class NavState(
     dest: Dest = Dest.Markets,
@@ -54,6 +59,11 @@ class NavState(
     marketsTab: MarketsTab = MarketsTab.Coins,
     showMore: Boolean = false,
     showDebug: Boolean = false,
+    tradesStatus: TradeFilter = TradeFilter.All,
+    tradesQuery: String = "",
+    tradesExpanded: Long? = null,
+    alertsGroup: AlertGroup = AlertGroup.All,
+    trail: List<Dest> = emptyList(),
 ) {
     var dest by mutableStateOf(dest)
     var symbol by mutableStateOf(symbol)
@@ -63,47 +73,120 @@ class NavState(
     var showMore by mutableStateOf(showMore)
     var showDebug by mutableStateOf(showDebug)
 
-    /** Opens a coin on one of its charts. */
-    fun openCoin(symbol: String, timeframe: String? = null) {
-        dest = Dest.Markets
-        this.symbol = symbol
-        this.timeframe = timeframe
-        marketsTab = MarketsTab.Chart
-        showMore = false
-    }
+    /** The Trades tab's filter, search and opened trade: kept here so a link can set them and they survive leaving the tab. */
+    var tradesStatus by mutableStateOf(tradesStatus)
+    var tradesQuery by mutableStateOf(tradesQuery)
+    var tradesExpanded by mutableStateOf(tradesExpanded)
+    var alertsGroup by mutableStateOf(alertsGroup)
 
-    fun openLearn(page: String?) {
-        dest = Dest.Learn
-        learnPage = page
-        showMore = false
-    }
+    var trail by mutableStateOf(trail)
+        private set
 
-    fun go(to: Dest) {
+    /** True on a phone held upright. Set by the screen each time it is laid out; not saved. */
+    var narrow by mutableStateOf(true)
+
+    /** Moves to [to]. A jump made inside the app leaves a mark to come back to; one from outside (a notification) starts a fresh trail. */
+    private fun jump(to: Dest, fromApp: Boolean) {
+        trail = if (fromApp && dest != to) (trail + dest).takeLast(MAX_TRAIL) else if (fromApp) trail else emptyList()
         dest = to
         showMore = false
     }
 
+    /** Opens a coin on one of its charts, or on its Details. */
+    fun openCoin(symbol: String, timeframe: String? = null, tab: MarketsTab = MarketsTab.Chart, fromApp: Boolean = false) {
+        jump(Dest.Markets, fromApp)
+        this.symbol = symbol
+        this.timeframe = timeframe
+        marketsTab = tab
+    }
+
+    fun openLearn(page: String?, fromApp: Boolean = true) {
+        jump(Dest.Learn, fromApp)
+        learnPage = page
+    }
+
+    /** Opens the Trades tab with a coin to filter by (by its short name), a status, and a trade to open. */
+    fun openTrades(coin: String?, status: TradeFilter, expanded: Long?, fromApp: Boolean = false) {
+        jump(Dest.Trades, fromApp)
+        tradesQuery = coin?.removeSuffix("USDT") ?: ""
+        tradesStatus = status
+        tradesExpanded = expanded
+    }
+
+    fun openAlerts(group: AlertGroup, fromApp: Boolean = false) {
+        jump(Dest.Alerts, fromApp)
+        alertsGroup = group
+    }
+
+    /** Goes to wherever [link] leads. */
+    fun openLink(link: Link, fromApp: Boolean) {
+        when (link.place) {
+            LinkPlace.CHART, LinkPlace.DETAILS -> {
+                val symbol = link.symbol ?: return
+                openCoin(symbol, link.timeframe, if (link.place == LinkPlace.DETAILS) MarketsTab.Details else MarketsTab.Chart, fromApp)
+            }
+            LinkPlace.TRADES -> openTrades(
+                link.symbol, TradeFilter.entries.firstOrNull { it.name.equals(link.status, ignoreCase = true) } ?: TradeFilter.All, link.tradeId, fromApp,
+            )
+            LinkPlace.ALERTS -> openAlerts(AlertGroup.entries.firstOrNull { it.name.equals(link.group, ignoreCase = true) } ?: AlertGroup.All, fromApp)
+            LinkPlace.SETTINGS -> jump(Dest.Settings, fromApp)
+        }
+    }
+
+    /** A place named inside a Learn page ("settings", "alerts"…): opened as a jump, so Back returns to the page. */
+    fun openPlace(name: String): Boolean {
+        val to = Dest.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return false
+        jump(to, fromApp = true)
+        return true
+    }
+
+    /** A tab chosen from the bar: no trail to go back along. */
+    fun go(to: Dest) {
+        dest = to
+        showMore = false
+        trail = emptyList()
+    }
+
     /** True while [back] has somewhere to go, so the system back button is only taken over when it matters. */
     val canBack: Boolean
-        get() = showDebug || showMore || (dest == Dest.Learn && learnPage != null) || (dest == Dest.Markets && marketsTab != MarketsTab.Coins) || dest != Dest.Markets
+        get() = showDebug || showMore || trail.isNotEmpty() ||
+            (narrow && dest == Dest.Learn && learnPage != null) || (narrow && dest == Dest.Markets && marketsTab != MarketsTab.Coins) || dest != Dest.Markets
 
-    /** Back: one step towards Markets. Returns false when already there and there is nothing to step out of. */
+    /** Back: out of the debug page and More, then along the trail of jumps, then one step towards Markets. Returns false when there is nothing to step out of. */
     fun back(): Boolean = when {
         showDebug -> { showDebug = false; true }
         showMore -> { showMore = false; true }
-        dest == Dest.Learn && learnPage != null -> { learnPage = null; true }
-        dest == Dest.Markets && marketsTab != MarketsTab.Coins -> { marketsTab = MarketsTab.Coins; true }
+        trail.isNotEmpty() -> {
+            val to = trail.last()
+            trail = trail.dropLast(1)
+            // Leaving Learn behind: its page is closed, so Learn opens on its list next time.
+            if (dest == Dest.Learn) learnPage = null
+            dest = to
+            true
+        }
+        narrow && dest == Dest.Learn && learnPage != null -> { learnPage = null; true }
+        narrow && dest == Dest.Markets && marketsTab != MarketsTab.Coins -> { marketsTab = MarketsTab.Coins; true }
         dest != Dest.Markets -> { dest = Dest.Markets; true }
         else -> false
     }
 
     companion object {
+        private const val MAX_TRAIL = 6
+
         val Saver: Saver<NavState, Any> = mapSaver(
-            save = { mapOf("dest" to it.dest.name, "symbol" to it.symbol, "tf" to it.timeframe, "learn" to it.learnPage, "tab" to it.marketsTab.name, "more" to it.showMore, "debug" to it.showDebug) },
+            save = {
+                mapOf(
+                    "dest" to it.dest.name, "symbol" to it.symbol, "tf" to it.timeframe, "learn" to it.learnPage, "tab" to it.marketsTab.name,
+                    "more" to it.showMore, "debug" to it.showDebug, "ts" to it.tradesStatus.name, "tq" to it.tradesQuery, "te" to it.tradesExpanded,
+                    "ag" to it.alertsGroup.name, "trail" to it.trail.joinToString(",") { d -> d.name },
+                )
+            },
             restore = {
                 NavState(
                     Dest.valueOf(it["dest"] as String), it["symbol"] as String?, it["tf"] as String?, it["learn"] as String?,
                     MarketsTab.valueOf(it["tab"] as String), it["more"] as Boolean, it["debug"] as Boolean,
+                    TradeFilter.valueOf(it["ts"] as String), it["tq"] as String, it["te"] as Long?, AlertGroup.valueOf(it["ag"] as String),
+                    (it["trail"] as String).split(',').filter { s -> s.isNotEmpty() }.map { s -> Dest.valueOf(s) },
                 )
             },
         )

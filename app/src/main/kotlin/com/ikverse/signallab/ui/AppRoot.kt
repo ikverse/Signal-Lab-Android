@@ -19,6 +19,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,10 +54,13 @@ private fun Frame(model: AppModel, debug: Boolean, layout: LayoutClass, nav: Nav
     val link by model.pendingLink.collectAsStateWithLifecycle()
     val railOnRight = model.settings.settings.collectAsStateWithLifecycle().value.railOnRight
 
-    // A notification (or link) opened the app: show that coin, once.
+    // What a phone held upright shows that a wide screen does not, so Back knows which of its steps are real.
+    SideEffect { nav.narrow = layout == LayoutClass.Compact }
+
+    // A notification (or link) opened the app: go where it leads, once.
     LaunchedEffect(link) {
         link?.let {
-            nav.openCoin(it.symbol, it.timeframe)
+            nav.openLink(it, fromApp = false)
             model.linkUsed()
         }
     }
@@ -91,18 +96,20 @@ private fun Frame(model: AppModel, debug: Boolean, layout: LayoutClass, nav: Nav
 @Composable
 private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: NavState) {
     val openVariant = { variant: String -> nav.openLearn(model.learn.pageForVariant(variant)) }
-    if (nav.showMore) {
-        MoreScreen(nav)
-        return
-    }
-    when (nav.dest) {
-        Dest.Markets -> MarketsScreen(model.markets, model.trades, model.alerts, model.panels, layout, nav, onOpenLearn = openVariant, onOpenLists = { nav.go(Dest.Lists) })
-        Dest.Trades -> TradesScreen(model.trades, onOpenCoin = { s, tf -> nav.openCoin(s, tf) }, onOpenLearn = openVariant)
-        Dest.Scorecard -> ScorecardScreen(model.scorecard, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact)
-        Dest.Alerts -> AlertsScreen(model.alerts, onOpenCoin = { s, tf -> nav.openCoin(s, tf) })
-        Dest.Learn -> LearnScreen(model.learn, model.panels, nav.learnPage, { nav.learnPage = it }, wide = layout != LayoutClass.Compact)
-        Dest.Lists -> ListsScreen(model.lists, model.panels, wide = layout != LayoutClass.Compact)
-        Dest.Settings -> SettingsScreen(model.settings, hasDebug = debug && model.debug != null, onOpenDebug = { nav.showDebug = true })
+    // Each place keeps what the user had set in it (a filter, a half-filled form) while another place is on show.
+    val holder = rememberSaveableStateHolder()
+    holder.SaveableStateProvider(if (nav.showMore) "more" else nav.dest.name) {
+        if (nav.showMore) {
+            MoreScreen(nav)
+        } else when (nav.dest) {
+            Dest.Markets -> MarketsScreen(model.markets, model.trades, model.alerts, model.panels, layout, nav, onOpenLearn = openVariant, onOpenLists = { nav.go(Dest.Lists) })
+            Dest.Trades -> TradesScreen(model.trades, nav, onOpenCoin = { s, tf -> nav.openCoin(s, tf, fromApp = true) }, onOpenLearn = openVariant)
+            Dest.Scorecard -> ScorecardScreen(model.scorecard, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact)
+            Dest.Alerts -> AlertsScreen(model.alerts, nav, onOpen = { nav.openLink(it, fromApp = true) })
+            Dest.Learn -> LearnScreen(model.learn, model.panels, nav.learnPage, { nav.learnPage = it }, wide = layout != LayoutClass.Compact, onGo = { nav.openPlace(it) })
+            Dest.Lists -> ListsScreen(model.lists, model.panels, wide = layout != LayoutClass.Compact)
+            Dest.Settings -> SettingsScreen(model.settings, hasDebug = debug && model.debug != null, onOpenDebug = { nav.showDebug = true })
+        }
     }
 }
 
