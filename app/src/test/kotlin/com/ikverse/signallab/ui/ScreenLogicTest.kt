@@ -50,6 +50,18 @@ class ScreenLogicTest {
         assertEquals("0 open · 0 closed", tradesSummary(emptyList()))
     }
 
+    @Test
+    fun `trades are grouped by pattern, newest first within a group, the pattern that fired last first`() {
+        val a1 = FakeApp.trade(1).copy(label = "A")
+        val b2 = FakeApp.trade(2).copy(label = "B")
+        val a3 = FakeApp.trade(3).copy(label = "A")
+        val c4 = FakeApp.trade(4).copy(label = "C")
+        val groups = groupTrades(listOf(a1, b2, a3, c4))
+        assertEquals(listOf("C", "A", "B"), groups.map { it.first })
+        assertEquals(listOf(3L, 1L), groups[1].second.map { it.id })
+        assertEquals(emptyList<Pair<String, List<TradeUi>>>(), groupTrades(emptyList()))
+    }
+
     private fun row(variant: String, tf: String, closed: Int, open: Int = 0, label: String = variant) =
         ScoreRowUi(variant, label, tf, open, closed, null, null, null, null, null, "No verdict", "No verdict", false)
 
@@ -185,13 +197,6 @@ class ScreenLogicTest {
     }
 
     @Test
-    fun `every place is in the bottom bar or behind More, and none is in both`() {
-        assertEquals(Dest.entries.toSet(), (Dest.Primary + Dest.More).toSet())
-        assertTrue(Dest.Primary.intersect(Dest.More.toSet()).isEmpty())
-        assertEquals(4, Dest.Primary.size)
-    }
-
-    @Test
     fun `back steps towards Markets one place at a time and then lets the app close`() {
         val nav = NavState()
         assertFalse(nav.canBack)
@@ -227,15 +232,11 @@ class ScreenLogicTest {
         assertEquals(Dest.Settings, nav.dest)
         assertTrue(nav.back())
         assertEquals(Dest.Markets, nav.dest)
-
-        nav.showMore = true
-        assertTrue(nav.back())
-        assertFalse(nav.showMore)
     }
 
     @Test
     fun `where the user is survives being saved and restored`() {
-        val nav = NavState(Dest.Learn, "SOLUSDT", "4h", "scorecard", MarketsTab.Details, showMore = true, showDebug = true)
+        val nav = NavState(Dest.Learn, "SOLUSDT", "4h", "scorecard", MarketsTab.Details, showDebug = true)
         val saved = with(NavState.Saver) { SaverScope { true }.save(nav) }
         assertNotNull(saved)
         val back = NavState.Saver.restore(saved!!)!!
@@ -244,7 +245,6 @@ class ScreenLogicTest {
         assertEquals("4h", back.timeframe)
         assertEquals("scorecard", back.learnPage)
         assertEquals(MarketsTab.Details, back.marketsTab)
-        assertTrue(back.showMore)
         assertTrue(back.showDebug)
 
         val plain = NavState.Saver.restore(with(NavState.Saver) { SaverScope { true }.save(NavState()) }!!)!!
@@ -254,17 +254,14 @@ class ScreenLogicTest {
     }
 
     @Test
-    fun `opening a coin or a page from anywhere goes there and closes More`() {
-        val nav = NavState(Dest.Settings, showMore = true)
+    fun `opening a coin or a page from anywhere goes there`() {
+        val nav = NavState(Dest.Settings)
         nav.openCoin("ETHUSDT", null)
         assertEquals(Dest.Markets, nav.dest)
         assertEquals("ETHUSDT", nav.symbol)
         assertNull(nav.timeframe)
-        assertFalse(nav.showMore)
-        nav.showMore = true
         nav.openLearn(null)
         assertEquals(Dest.Learn, nav.dest)
-        assertFalse(nav.showMore)
     }
 
     @Test

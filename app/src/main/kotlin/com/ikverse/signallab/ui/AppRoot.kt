@@ -14,7 +14,12 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.remember
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -98,10 +103,8 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
     val openVariant = { variant: String -> nav.openLearn(model.learn.pageForVariant(variant)) }
     // Each place keeps what the user had set in it (a filter, a half-filled form) while another place is on show.
     val holder = rememberSaveableStateHolder()
-    holder.SaveableStateProvider(if (nav.showMore) "more" else nav.dest.name) {
-        if (nav.showMore) {
-            MoreScreen(nav)
-        } else when (nav.dest) {
+    holder.SaveableStateProvider(nav.dest.name) {
+        when (nav.dest) {
             Dest.Markets -> MarketsScreen(model.markets, model.trades, model.alerts, model.panels, layout, nav, onOpenLearn = openVariant, onOpenLists = { nav.go(Dest.Lists) })
             Dest.Trades -> TradesScreen(model.trades, nav, onOpenCoin = { s, tf -> nav.openCoin(s, tf, fromApp = true) }, onOpenLearn = openVariant)
             Dest.Scorecard -> ScorecardScreen(model.scorecard, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact)
@@ -109,18 +112,6 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
             Dest.Learn -> LearnScreen(model.learn, model.panels, nav.learnPage, { nav.learnPage = it }, wide = layout != LayoutClass.Compact, onGo = { nav.openPlace(it) })
             Dest.Lists -> ListsScreen(model.lists, model.panels, wide = layout != LayoutClass.Compact)
             Dest.Settings -> SettingsScreen(model.settings, hasDebug = debug && model.debug != null, onOpenDebug = { nav.showDebug = true })
-        }
-    }
-}
-
-/** The places behind "More" on a narrow screen. */
-@Composable
-private fun MoreScreen(nav: NavState) {
-    Column(Modifier.fillMaxSize().testTag("more")) {
-        ScreenTitle("More")
-        for (d in Dest.More) {
-            TouchRow({ nav.go(d) }, modifier = Modifier.testTag("more-${d.name}")) { Text(d.label, style = Type.Heading) }
-            HRule()
         }
     }
 }
@@ -136,17 +127,23 @@ private fun SideRail(nav: NavState) {
     }
 }
 
+/** Every place in one row that scrolls sideways; the place on show is kept in view, so a link or Back that lands on a far one reveals it. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BottomBar(nav: NavState) {
-    Row(Modifier.fillMaxWidth().testTag("bottom-bar")) {
-        for (d in Dest.Primary) BarItem(d.label, !nav.showMore && nav.dest == d, "nav-${d.name}") { nav.go(d) }
-        BarItem("More", nav.showMore || nav.dest in Dest.More, "nav-More") { nav.showMore = true }
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("bottom-bar")) {
+        for (d in Dest.entries) {
+            val inView = remember { BringIntoViewRequester() }
+            val selected = nav.dest == d
+            LaunchedEffect(selected) { if (selected) inView.bringIntoView() }
+            BarItem(d.label, selected, "nav-${d.name}", Modifier.bringIntoViewRequester(inView)) { nav.go(d) }
+        }
     }
 }
 
 @Composable
-private fun RowScope.BarItem(label: String, selected: Boolean, tag: String, onClick: () -> Unit) {
-    TouchRow(onClick, modifier = Modifier.weight(1f).testTag(tag)) {
+private fun BarItem(label: String, selected: Boolean, tag: String, modifier: Modifier, onClick: () -> Unit) {
+    TouchRow(onClick, modifier = modifier.width(96.dp).testTag(tag)) {
         Text(
             label, style = if (selected) Type.BodyStrong.copy(color = Palette.Accent) else Type.Small.copy(color = Palette.Muted),
             modifier = Modifier.weight(1f), maxLines = 1, textAlign = androidx.compose.ui.text.style.TextAlign.Center,

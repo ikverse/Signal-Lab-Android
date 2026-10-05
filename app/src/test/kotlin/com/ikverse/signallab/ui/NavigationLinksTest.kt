@@ -253,14 +253,12 @@ class NavigationLinksTest {
     }
 
     @Test
-    fun `back leaves the debug page and More before anything else`() {
+    fun `back leaves the debug page before anything else`() {
         val nav = NavState()
         nav.go(Dest.Trades)
         nav.openCoin("BTCUSDT", null, fromApp = true)
-        nav.showMore = true
         nav.showDebug = true
         assertTrue(nav.back()); assertFalse(nav.showDebug)
-        assertTrue(nav.back()); assertFalse(nav.showMore)
         assertTrue(nav.back()); assertEquals(Dest.Trades, nav.dest)
     }
 
