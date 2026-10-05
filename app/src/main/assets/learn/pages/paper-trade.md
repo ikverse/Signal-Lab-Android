@@ -22,12 +22,12 @@ flowchart LR
 2. **A pattern shows up** on a coin in one of your lists, on one of the chart sizes you chose for that list.
 3. **The pretend trade enters at the open of the next candle.** That is the first price you could actually have had.
 4. **It ends** in one of the ways below.
-5. **Costs are charged** (see *What costs are charged*).
-6. **The result is compared** with trades entered at random times (see *How the scorecard judges*).
+5. **Costs are charged** (see [What costs are charged](learn:costs)).
+6. **The result is compared** with trades entered at random times (see [How the scorecard judges](learn:scorecard)).
 
 ## Missed signals
 
-If Signal Lab notices a pattern after the entry candle has already ended, nobody could have acted on it. It is listed under **Missed** in Alerts and is never counted as a trade. Whether it was noticed in time depends only on the clock, never on how the trade would have turned out, so skipping them cannot flatter the scorecard.
+If Signal Lab notices a pattern after the entry candle has already ended, nobody could have acted on it. It is listed under **Missed** in [Alerts](go:alerts) and is never counted as a trade. Whether it was noticed in time depends only on the clock, never on how the trade would have turned out, so skipping them cannot flatter the scorecard.
 
 ## How a trade ends
 

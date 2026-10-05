@@ -2,7 +2,7 @@
 
 A chart size is how much time one candle covers: 1 minute, 5 minutes, 15 minutes, 30 minutes, 1 hour, 4 hours or 1 day. You choose which sizes each list is watched on.
 
-**A chart size is not how long a trade lasts.** It is the size of the candles the pattern is looked for in. A trade can end in minutes or in days; each pattern's exit decides (see *What a paper trade is*).
+**A chart size is not how long a trade lasts.** It is the size of the candles the pattern is looked for in. A trade can end in minutes or in days; each pattern's exit decides (see [What a paper trade is](learn:paper-trade)).
 
 ## Which patterns run where
 
@@ -27,7 +27,7 @@ Faster charts mean more signals and quicker results, and more data and battery.
 - **1m**: at most {{MAX_1M}} coins across your active lists.
 - **5m**: at most {{MAX_5M}} coins.
 - **15m and up**: only the overall limit of {{MAX_COINS_ACTIVE}} coins across active lists ({{MAX_COINS_LIST}} in one list).
-- Charts under an hour are followed by a service that stays awake. Turn **Follow charts under an hour** off in Settings to save battery; most of their signals are then missed.
+- Charts under an hour are followed by a service that stays awake. Turn **Follow charts under an hour** off in [Settings](go:settings) to save battery; most of their signals are then missed.
 
 ## How much history is kept
 

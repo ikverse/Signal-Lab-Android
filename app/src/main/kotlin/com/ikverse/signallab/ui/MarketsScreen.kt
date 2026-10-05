@@ -27,6 +27,37 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+/** The chart sizes in the order the app lists them. */
+private val CHART_ORDER = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d")
+
+/** A coin shown because it was asked for, not because a switched-on list has it: its open trades are counted, its chart sizes are the one asked for and those its trades used. */
+internal fun unwatchedCoin(symbol: String, requested: String?, trades: List<TradeUi>): CoinUi {
+    val mine = trades.filter { it.symbol == symbol }
+    val sizes = (listOfNotNull(requested) + mine.map { it.timeframe }).distinct().sortedBy { CHART_ORDER.indexOf(it) }
+    return CoinUi(symbol, symbol.removeSuffix("USDT"), null, null, mine.count { it.closed == null }, sizes.ifEmpty { listOf("1h") })
+}
+
+/**
+ * What to tell the user when the coin or chart size shown is not what was asked for or not what is being watched: a coin in no
+ * switched-on list, or a chart size the coin is not watched on (so another one is shown). Null when there is nothing to say.
+ */
+internal fun coinNote(coin: CoinUi, unwatched: Boolean, requestedChart: String?, shownChart: String?): String? = when {
+    unwatched -> "${coin.base} is not in a list that is switched on, so it is not being watched and its chart may be out of date."
+    requestedChart != null && shownChart != null && shownChart != requestedChart ->
+        "${coin.base} is not watched on the ${Fmt.chartAdjective(requestedChart)} chart, so this shows the ${Fmt.chartAdjective(shownChart)} chart."
+    else -> null
+}
+
+/** The line above a coin's chart (and its Details) saying it is not quite what was asked for, with a way to the lists when the coin is not watched. */
+@Composable
+private fun CoinNote(note: String?, unwatched: Boolean, onOpenLists: () -> Unit) {
+    if (note == null) return
+    Column(Modifier.fillMaxWidth()) {
+        Text(note, style = Type.Small.copy(color = Palette.Warn), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).testTag("coin-note"))
+        if (unwatched) TextAction("Open Lists", onOpenLists)
+    }
+}
+
 /** Where the chart's indicator choice is kept in the panel preferences. */
 const val CHART_KEY = "chart"
 
@@ -65,7 +96,9 @@ fun MarketsScreen(
         val handle = markets.watchPrices(symbols)
         onDispose { handle.close() }
     }
-    if (coins.isEmpty()) {
+    val requested = nav.symbol
+    val listed = coins.firstOrNull { it.symbol == requested }
+    if (coins.isEmpty() && requested == null) {
         EmptyState(
             "Nothing is being watched", "Switch a list on, or make one, and its coins appear here.",
             modifier.testTag("markets-empty"),
@@ -73,16 +106,20 @@ fun MarketsScreen(
         )
         return
     }
-    val coin = coins.firstOrNull { it.symbol == nav.symbol } ?: coins.first()
-    val tf = nav.timeframe?.takeIf { it in coin.timeframes } ?: defaultChart(coin.timeframes)
+    // A coin that was asked for (by a notification, or Show on chart) but is in no list that is switched on is shown as itself, from what is
+    // stored, and says so; it is never swapped for the first coin of the list.
+    val unwatched = requested != null && listed == null
+    val coin = listed ?: requested?.let { unwatchedCoin(it, nav.timeframe, allTrades) } ?: coins.first()
+    val tf = if (unwatched) nav.timeframe ?: defaultChart(coin.timeframes) else nav.timeframe?.takeIf { it in coin.timeframes } ?: defaultChart(coin.timeframes)
+    val note = coinNote(coin, unwatched, nav.timeframe, tf)
     val chart by produceState<ChartUi?>(null, coin.symbol, tf, changes) { value = tf?.let { markets.chart(coin.symbol, it) } }
     val live = prices[coin.symbol]
 
     val list = @Composable { CoinList(coins, prices, coin.symbol, { nav.symbol = it.symbol; nav.timeframe = null; if (layout == LayoutClass.Compact) nav.marketsTab = MarketsTab.Chart }, Modifier.fillMaxSize()) }
     val chartPane = @Composable {
-        ChartPane(coin, tf, chart, live, { nav.timeframe = it }, indicators, { panels.save(CHART_KEY, it.joinToString(",")) }, Modifier.fillMaxSize())
+        ChartPane(coin, tf, chart, live, { nav.timeframe = it }, indicators, { panels.save(CHART_KEY, it.joinToString(",")) }, note, unwatched, onOpenLists, Modifier.fillMaxSize())
     }
-    val details = @Composable { Details(coin, live, allTrades.filter { it.symbol == coin.symbol }, allAlerts.filter { it.symbol == coin.symbol && it.kind == "warning" }, onOpenLearn, Modifier.fillMaxSize()) }
+    val details = @Composable { Details(coin, live, allTrades.filter { it.symbol == coin.symbol }, allAlerts.filter { it.symbol == coin.symbol && it.kind == "warning" }, onOpenLearn, note, unwatched, onOpenLists, Modifier.fillMaxSize()) }
 
     when (layout) {
         LayoutClass.Wide -> BoxWithConstraints(modifier.fillMaxSize().testTag("markets-wide")) {
@@ -178,6 +215,9 @@ private fun ChartPane(
     onChoose: (String) -> Unit,
     indicators: List<String>,
     onIndicators: (List<String>) -> Unit,
+    note: String?,
+    unwatched: Boolean,
+    onOpenLists: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier) {
@@ -192,6 +232,7 @@ private fun ChartPane(
         Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
             for (t in coin.timeframes) ChoiceText(t, t == tf, { onChoose(t) })
         }
+        CoinNote(note, unwatched, onOpenLists)
         HRule()
         when {
             tf == null -> EmptyState("No chart chosen", "This coin is not watched on any chart.")
@@ -207,10 +248,11 @@ private fun ChartPane(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Details(coin: CoinUi, live: Double?, trades: List<TradeUi>, warnings: List<AlertUi>, onOpenLearn: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun Details(coin: CoinUi, live: Double?, trades: List<TradeUi>, warnings: List<AlertUi>, onOpenLearn: (String) -> Unit, note: String?, unwatched: Boolean, onOpenLists: () -> Unit, modifier: Modifier = Modifier) {
     val open = trades.filter { it.closed == null }
     val recent = trades.filter { it.closed != null }.take(5)
     Column(modifier.verticalScroll(rememberScrollState()).testTag("details")) {
+        CoinNote(note, unwatched, onOpenLists)
         SectionLabel("Open paper trades")
         if (open.isEmpty()) Text("None on ${coin.base} right now.", style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         for (t in open) {

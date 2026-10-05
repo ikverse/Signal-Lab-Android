@@ -30,7 +30,7 @@ A trailing stop (see *What a paper trade is*).
 
 ## Honest limits
 
-- The research supports being **above** the average (a state). Signal Lab signals the **moment of crossing**, which no study tested. The scorecard will tell.
+- The research supports being **above** the average (a state). Signal Lab signals the **moment of crossing**, which no study tested. The [scorecard](go:scorecard) will tell.
 - Rules picked on 2017 to 2021 data failed in 2022 to 2023.
 - Much of the benefit is avoiding crashes, not picking winners.
 

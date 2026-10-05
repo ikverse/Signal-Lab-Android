@@ -52,29 +52,32 @@ class Notifier(private val context: Context) : AlertSink {
         if (alerts.isEmpty() || !enabled()) return
         val posted = HashMap<String, Int>()
         for (c in compose(alerts)) {
+            val id = notificationId(c.ids.first())
             val n = NotificationCompat.Builder(context, c.channel)
                 .setSmallIcon(R.drawable.ic_stat_signal)
                 .setContentTitle(c.title)
                 .setContentText(c.body.lineSequence().first())
                 .setStyle(NotificationCompat.BigTextStyle().bigText(c.body))
-                .setContentIntent(open(c.link, c.ids.first().toInt()))
+                .setContentIntent(open(c.link, id))
                 .setAutoCancel(true)
                 .setGroup(c.channel)
                 .setOnlyAlertOnce(true)
                 .build()
-            notify(c.ids.first().toInt(), n)
+            notify(id, n)
             posted.merge(c.channel, 1, Int::plus)
         }
         for ((channel, count) in posted) {
             if (channel == CH_PROBLEMS || channel == CH_WARNINGS || count < 2) continue
             val id = if (channel == CH_SIGNALS) SUMMARY_SIGNALS else SUMMARY_RESULTS
+            // Touching the summary shows the trades it counts: those opened, or those closed.
+            val link = AlertText.tradesLink(status = if (channel == CH_SIGNALS) "open" else "closed")
             val n = NotificationCompat.Builder(context, channel)
                 .setSmallIcon(R.drawable.ic_stat_signal)
                 .setContentTitle(if (channel == CH_SIGNALS) "$count paper trades opened" else "$count paper trades closed")
                 .setGroup(channel)
                 .setGroupSummary(true)
                 .setAutoCancel(true)
-                .setContentIntent(open(null, id))
+                .setContentIntent(open(link, id))
                 .build()
             notify(id, n)
         }
@@ -148,8 +151,16 @@ class Notifier(private val context: Context) : AlertSink {
         const val STATUS_ID = 1
         const val TEST_ID = 2
         const val RESUME_ID = 3
-        const val SUMMARY_SIGNALS = 9_001
-        const val SUMMARY_RESULTS = 9_002
+        const val SUMMARY_SIGNALS = 4
+        const val SUMMARY_RESULTS = 5
+
+        /**
+         * Alert notifications are numbered from here, so none can ever share a number (or a PendingIntent request code, which is the
+         * same number) with the scanning status, the test, the resume prompt or the summaries, which hold 1 to 5.
+         */
+        const val ALERT_ID_BASE = 100
+
+        fun notificationId(alertId: Long): Int = ALERT_ID_BASE + alertId.toInt()
 
         private fun channelOf(kind: String) = when (kind) {
             AlertText.KIND_SIGNAL -> CH_SIGNALS
@@ -158,6 +169,10 @@ class Notifier(private val context: Context) : AlertSink {
             AlertText.KIND_WARNING -> CH_WARNINGS
             else -> null
         }
+
+        /** Where a grouped notification leads: several closed at once go to the Trades tab for the coin, not to one trade opened out of them. */
+        private fun groupLink(first: Alert): String? =
+            if (first.kind == AlertText.KIND_EXIT && first.symbol != null) AlertText.tradesLink(first.symbol) else first.link
 
         /**
          * Folds alerts into notifications: one per coin, timeframe and kind, in the order they first
@@ -180,7 +195,7 @@ class Notifier(private val context: Context) : AlertSink {
                     val coin = AlertText.coin(first.symbol ?: "")
                     val verb = if (first.kind == AlertText.KIND_SIGNAL) "opened" else "closed"
                     Composed(channel, key, "${list.size} paper trades $verb: $coin ${first.tf}",
-                        list.joinToString("\n") { it.body }, first.link, list.map { it.id })
+                        list.joinToString("\n") { it.body }, groupLink(first), list.map { it.id })
                 }
             }
         }

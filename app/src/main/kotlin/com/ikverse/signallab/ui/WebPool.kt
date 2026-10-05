@@ -72,6 +72,9 @@ class KeptWeb(context: Context, val page: WebPage) {
     var onLink: (String) -> Unit = {}
 
     @Volatile
+    var onGo: (String) -> Unit = {}
+
+    @Volatile
     var onIndicators: (List<String>) -> Unit = {}
 
     @Volatile
@@ -80,7 +83,7 @@ class KeptWeb(context: Context, val page: WebPage) {
     /** What the Learn page was last told to show, so coming back to the same page leaves it, and where it was scrolled to, alone. */
     var showing: String? = null
 
-    val view: WebView = safeWebView(context, LocalOnlyClient(onLoaded = { loaded = true }, onLink = { onLink(it) })).also { v ->
+    val view: WebView = safeWebView(context, LocalOnlyClient(onLoaded = { loaded = true }, onLink = { onLink(it) }, onGo = { onGo(it) })).also { v ->
         if (page == WebPage.Chart) {
             v.addJavascriptInterface(
                 object {

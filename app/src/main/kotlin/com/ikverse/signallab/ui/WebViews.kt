@@ -98,7 +98,7 @@ object ChartJson {
 }
 
 /** Only the app's own bundled pages and scripts load: anything else (the network, a file elsewhere) gets an empty answer. */
-internal class LocalOnlyClient(val onLoaded: () -> Unit, val onLink: (String) -> Unit = {}) : WebViewClient() {
+internal class LocalOnlyClient(val onLoaded: () -> Unit, val onLink: (String) -> Unit = {}, val onGo: (String) -> Unit = {}) : WebViewClient() {
     override fun onPageFinished(view: WebView, url: String?) = onLoaded()
 
     override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -107,8 +107,11 @@ internal class LocalOnlyClient(val onLoaded: () -> Unit, val onLink: (String) ->
     }
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-        val url = request.url.toString()
-        if (url.startsWith("learn:")) onLink(url.removePrefix("learn:"))
+        when (val link = parseWebLink(request.url.toString())) {
+            is WebLink.Page -> onLink(link.id)
+            is WebLink.Place -> onGo(link.name)
+            null -> {} // a web address or anything else goes nowhere
+        }
         return true // never navigate away from the bundled page
     }
 }
@@ -187,7 +190,7 @@ fun ChartView(
 
 /** One Learn page: the Markdown shown by the marked and Mermaid libraries bundled in the app. A link written as learn:id opens that page. */
 @Composable
-fun LearnView(page: LearnPageUi?, onOpenPage: (String) -> Unit, modifier: Modifier = Modifier) {
+fun LearnView(page: LearnPageUi?, onOpenPage: (String) -> Unit, modifier: Modifier = Modifier, onGo: (String) -> Unit = {}) {
     if (!LocalWebViews.current) {
         Box(modifier.fillMaxSize().background(Palette.Background).testTag("learn-placeholder")) {
             Text(page?.markdown ?: "Choose a page.", style = Type.Body, modifier = Modifier.testTag("learn-text"))
@@ -196,7 +199,10 @@ fun LearnView(page: LearnPageUi?, onOpenPage: (String) -> Unit, modifier: Modifi
     }
     val pool = rememberWebPool()
     val kept = remember(pool) { pool.keep(WebPage.Learn) }
-    SideEffect { kept.onLink = onOpenPage }
+    SideEffect {
+        kept.onLink = onOpenPage
+        kept.onGo = onGo
+    }
     LaunchedEffect(page, kept.loaded) {
         // Coming back to the page already shown leaves it, and where it was scrolled to, as it was.
         if (kept.loaded && page != null && kept.showing != page.markdown) {

@@ -4,11 +4,11 @@ Every paper trade pays what a real one would: the exchange's fee, once to open a
 
 ## The default
 
-Binance's fee on its entry tier is **{{FEE_PCT}}% each way**, so **{{ROUND_TRIP_PCT}}% for a round trip**. That is all Signal Lab charges by default. If you pay less (for example with BNB, or a higher volume tier), lower it in **Settings**.
+Binance's fee on its entry tier is **{{FEE_PCT}}% each way**, so **{{ROUND_TRIP_PCT}}% for a round trip**. That is all Signal Lab charges by default. If you pay less (for example with BNB, or a higher volume tier), lower it in [Settings](go:settings).
 
 ## An optional extra cost
 
-On thin coins the price can move against you between deciding and being filled. Signal Lab can charge an extra cost for that, one setting for Bitcoin and Ether and one for every other coin. **It starts switched off (0%).** You can turn it on in Settings if you want the scorecard to be stricter.
+On thin coins the price can move against you between deciding and being filled. Signal Lab can charge an extra cost for that, one setting for Bitcoin and Ether and one for every other coin. **It starts switched off (0%).** You can turn it on in [Settings](go:settings) if you want the scorecard to be stricter.
 
 ## Changing a setting
 

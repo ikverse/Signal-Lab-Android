@@ -24,7 +24,7 @@ Every chart size. The published test used 1-hour charts.
 
 ## How a paper trade ends
 
-Learned: a target and time limit from what this pattern did before (see *What a paper trade is*).
+Learned: a target and time limit from what this pattern did before (see [What a paper trade is](learn:paper-trade)).
 
 ## What the research says
 

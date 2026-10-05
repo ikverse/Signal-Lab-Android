@@ -18,7 +18,7 @@ The 1-hour chart only.
 
 ## How a paper trade ends
 
-- **Fade 1h** (and 2h, 4h): the exit is **learned** from what this pattern did before (see *What a paper trade is*).
+- **Fade 1h** (and 2h, 4h): the exit is **learned** from what this pattern did before (see [What a paper trade is](learn:paper-trade)).
 - **Fade 1h, held 24 candles**: the same entry, held for 24 candles with no target or stop. It was added after an early look at the data hinted at a 24-hour bounce, so a backtest cannot promote it. Only its live trades count towards its verdict.
 
 ## What the research says
@@ -30,6 +30,6 @@ The 1-hour chart only.
 
 - One study, old data, no costs. The effect per candle is small.
 - On a thin coin, a sharp fall can be news and keep going.
-- It is here to be tested, and the scorecard will say whether it holds.
+- It is here to be tested, and the [scorecard](go:scorecard) will say whether it holds.
 
 > Research, not financial advice. No real money is ever traded.

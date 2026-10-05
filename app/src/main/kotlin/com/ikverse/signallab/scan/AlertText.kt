@@ -36,8 +36,23 @@ object AlertText {
 
     fun percent(fraction: Double): String = "%+.2f%%".format(Locale.ROOT, fraction * 100)
 
-    /** The in-app address of a coin's chart. M5's screens resolve it; until then it only travels with the alert. */
+    /** The in-app address of a coin's chart. The screens read it (see `parseLink`); it travels with the alert and is what a touch on it follows. */
     fun link(symbol: String, tf: Timeframe): String = "signallab://coin/$symbol?tf=${tf.label}"
+
+    /** The address of a coin's Details tab, where its warnings are shown. */
+    fun detailsLink(symbol: String, tf: Timeframe): String = "signallab://coin/$symbol?tf=${tf.label}&show=details"
+
+    /** The address of the Trades tab: optionally for one coin, with one trade opened, or showing only "open" or "closed" trades. */
+    fun tradesLink(symbol: String? = null, tradeId: Long? = null, status: String? = null): String {
+        val query = listOfNotNull(symbol?.let { "coin=$it" }, tradeId?.let { "id=$it" }, status?.let { "status=$it" })
+        return "signallab://trades" + if (query.isEmpty()) "" else query.joinToString("&", "?")
+    }
+
+    /** The address of the Alerts tab on its Problems filter. */
+    const val PROBLEMS_LINK = "signallab://alerts?group=problems"
+
+    /** The address of Settings. */
+    const val SETTINGS_LINK = "signallab://settings"
 
     /** The line added to alerts about a coin Binance listed less than a month ago. */
     fun newCoinLine(symbol: String): String =
@@ -61,7 +76,7 @@ object AlertText {
         return Text("Paper trade opened: ${coin(p.symbol)} ${p.tf.label}", "${VariantLabels.describe(p.variant)}. $levels$note", link(p.symbol, p.tf))
     }
 
-    fun closed(variant: String, symbol: String, tf: Timeframe, reason: ExitReason, net: Double, randomMean: Double): Text {
+    fun closed(variant: String, symbol: String, tf: Timeframe, reason: ExitReason, net: Double, randomMean: Double, tradeId: Long? = null): Text {
         val how = when (reason) {
             ExitReason.TARGET -> "target hit"
             ExitReason.STOP -> "stopped out"
@@ -71,7 +86,7 @@ object AlertText {
         return Text(
             "Paper trade closed: ${coin(symbol)} ${tf.label}, $how",
             "${VariantLabels.describe(variant)}. Net ${percent(net)} after costs$baseline.",
-            link(symbol, tf),
+            tradesLink(symbol, tradeId),
         )
     }
 
@@ -86,7 +101,7 @@ object AlertText {
         "${coin(symbol)} rose ${"%.1f".format(Locale.ROOT, pump.rise * 100)}% in ${pump.minutes} minutes on ${"%.0f".format(Locale.ROOT, pump.volumeMultiple)} times its usual volume. " +
             "Pumps like this usually peak within about a minute, and late buyers lose. No paper trade is opened." +
             if (newCoin) " ${newCoinLine(symbol)}" else "",
-        link(symbol, tf),
+        detailsLink(symbol, tf),
     )
 
     fun volumeSpike(symbol: String, multiple: Double, newCoin: Boolean): Text = Text(
@@ -94,19 +109,19 @@ object AlertText {
         "${coin(symbol)} traded ${"%.1f".format(Locale.ROOT, multiple)} times its usual daily volume. " +
             "On Binance a day like this has usually been followed by lower prices the next day. No paper trade is opened." +
             if (newCoin) " ${newCoinLine(symbol)}" else "",
-        link(symbol, Timeframe.D1),
+        detailsLink(symbol, Timeframe.D1),
     )
 
     fun blocked(): Text = Text(
         "Binance is not available from this network",
         "Binance refused the connection (HTTP 451), so nothing can be scanned. Choose Binance.US in settings, or use another network.",
-        null,
+        SETTINGS_LINK,
     )
 
     fun unreachable(failed: Int, total: Int, why: String): Text = Text(
         "Could not update $failed of $total coins",
         "The latest candles could not be downloaded ($why). The next close will try again.",
-        null,
+        PROBLEMS_LINK,
     )
 
     fun clockSkew(skewMs: Long): Text = Text(
@@ -120,7 +135,7 @@ object AlertText {
         return Text(
             "Scanning has stalled on ${tf.label}",
             "No ${tf.label} scan has completed for ${"%.1f".format(Locale.ROOT, hours)} hours. Open the app to resume, and check that Signal Lab is allowed to run in the background.",
-            null,
+            PROBLEMS_LINK,
         )
     }
 }

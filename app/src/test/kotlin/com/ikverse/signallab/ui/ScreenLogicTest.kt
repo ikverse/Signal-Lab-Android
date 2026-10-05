@@ -204,7 +204,16 @@ class ScreenLogicTest {
         assertEquals(MarketsTab.Coins, nav.marketsTab)
         assertFalse(nav.canBack)
 
+        // A page opened by a jump from Markets (What is this pattern?): Back returns to Markets, and Learn's page is closed behind it.
         nav.openLearn("trend")
+        assertTrue(nav.back())
+        assertEquals(Dest.Markets, nav.dest)
+        assertNull(nav.learnPage)
+        assertFalse(nav.canBack)
+
+        // A page chosen inside Learn on a narrow screen: Back closes the page first, then leaves Learn.
+        nav.go(Dest.Learn)
+        nav.learnPage = "trend"
         assertTrue(nav.back())
         assertEquals(Dest.Learn, nav.dest)
         assertNull(nav.learnPage)

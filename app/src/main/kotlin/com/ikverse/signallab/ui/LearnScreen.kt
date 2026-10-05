@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.testTag
  * the page, with a divider that can be dragged or the list hidden.
  */
 @Composable
-fun LearnScreen(model: LearnModel, panels: PanelPrefs, selected: String?, onSelect: (String?) -> Unit, wide: Boolean, modifier: Modifier = Modifier) {
+fun LearnScreen(model: LearnModel, panels: PanelPrefs, selected: String?, onSelect: (String?) -> Unit, wide: Boolean, modifier: Modifier = Modifier, onGo: (String) -> Unit = {}) {
     val page = model.pages.firstOrNull { it.id == selected }
     val current = page ?: if (wide) model.pages.firstOrNull() else null
     val index = @Composable {
@@ -38,7 +38,7 @@ fun LearnScreen(model: LearnModel, panels: PanelPrefs, selected: String?, onSele
         if (current != null) {
             Column(Modifier.fillMaxSize()) {
                 if (!wide) TextAction("‹ Learn", { onSelect(null) }, color = Palette.Muted)
-                LearnView(current, onOpenPage = { onSelect(it) }, modifier = Modifier.weight(1f))
+                LearnView(current, onOpenPage = { onSelect(it) }, modifier = Modifier.weight(1f), onGo = onGo)
             }
         }
     }

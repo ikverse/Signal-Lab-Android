@@ -87,6 +87,18 @@ object Fmt {
         PickSource.NEW -> "Coins Binance listed in the last 30 days, newest first."
     }
 
+    /** "1h" as "1-hour", for a chart named before a noun: "the 1-hour chart". */
+    fun chartAdjective(label: String): String = when (label) {
+        "1m" -> "1-minute"
+        "5m" -> "5-minute"
+        "15m" -> "15-minute"
+        "30m" -> "30-minute"
+        "1h" -> "1-hour"
+        "4h" -> "4-hour"
+        "1d" -> "1-day"
+        else -> label
+    }
+
     /** "1h" as "1 hour", for sentences; the labels themselves are what the lists use. */
     fun chartName(label: String): String = when (label) {
         "1m" -> "1 minute"
