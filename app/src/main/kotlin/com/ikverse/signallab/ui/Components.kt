@@ -1,7 +1,12 @@
 package com.ikverse.signallab.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,20 +23,29 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** The smallest a touch target gets: 48 dp, as Android's own guidelines ask. */
 val MinTouch = 48.dp
+
+/** A width that grows with the phone's text-size setting (never below [base]), so a label in a fixed slot is not clipped at large sizes. */
+@Composable
+fun scaledWithText(base: Dp): Dp = base * LocalDensity.current.fontScale.coerceAtLeast(1f)
 
 @Composable
 fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
@@ -43,11 +57,22 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(text.uppercase(), style = Type.Label, modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp))
 }
 
+/** Press feedback for a small control: it shrinks a touch while held and comes back the moment it is let go. */
+@Composable
+fun Modifier.pressScale(source: MutableInteractionSource): Modifier {
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) Motion.PRESSED_SCALE else 1f, tween(Motion.PRESS_MS, easing = Motion.EaseOut), label = "press")
+    return graphicsLayer { scaleX = scale; scaleY = scale }
+}
+
 /** Plain coloured text that does something when touched. No box, no outline. */
 @Composable
 fun TextAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, color: Color = Palette.Accent) {
+    val source = remember { MutableInteractionSource() }
     Box(
-        modifier.heightIn(min = MinTouch).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 12.dp),
+        modifier.pressScale(source).heightIn(min = MinTouch)
+            .clickable(interactionSource = source, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = Type.BodyStrong.copy(color = if (enabled) color else Palette.Muted))

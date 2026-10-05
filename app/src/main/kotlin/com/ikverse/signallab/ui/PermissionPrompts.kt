@@ -43,7 +43,7 @@ interface PermissionPrompts {
 @Composable
 fun PermissionDialogs(prompts: PermissionPrompts) {
     val prompt = prompts.pending.collectAsStateWithLifecycle().value ?: return
-    MaterialTheme(colorScheme = darkColorScheme(surface = Color(0xFF131722), onSurface = Color(0xFFD1D4DC), primary = Color(0xFF2962FF))) {
+    MaterialTheme(colorScheme = darkColorScheme(surface = Color(0xFF131722), onSurface = Color(0xFFD1D4DC), primary = Palette.Accent)) {
         AlertDialog(
             onDismissRequest = { prompts.decline(prompt) },
             title = { Text(prompt.title) },

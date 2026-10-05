@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
@@ -43,7 +44,7 @@ fun SignalLabApp(model: AppModel, debug: Boolean, webViews: Boolean = true, nav:
         SignalLabTheme(webViews) {
             PermissionDialogs(model.prompts)
             // Clear of the system bars and of the notch or punch hole, whatever size and side the phone reports them on.
-            BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Background).windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))) {
+            BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Background).windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout)).imePadding()) {
                 val layout = LayoutClass.of(maxWidth.value)
                 Frame(model, debug, layout, nav)
             }
@@ -118,7 +119,7 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
 
 @Composable
 private fun SideRail(nav: NavState) {
-    Column(Modifier.width(112.dp).fillMaxHeight().testTag("rail")) {
+    Column(Modifier.width(scaledWithText(112.dp)).fillMaxHeight().testTag("rail")) {
         for (d in Dest.entries) {
             TouchRow({ nav.go(d) }, selected = nav.dest == d, modifier = Modifier.testTag("nav-${d.name}")) {
                 Text(d.label, style = if (nav.dest == d) Type.BodyStrong else Type.Body.copy(color = Palette.Muted))
@@ -143,7 +144,7 @@ private fun BottomBar(nav: NavState) {
 
 @Composable
 private fun BarItem(label: String, selected: Boolean, tag: String, modifier: Modifier, onClick: () -> Unit) {
-    TouchRow(onClick, modifier = modifier.width(96.dp).testTag(tag)) {
+    TouchRow(onClick, modifier = modifier.width(scaledWithText(96.dp)).testTag(tag)) {
         Text(
             label, style = if (selected) Type.BodyStrong.copy(color = Palette.Accent) else Type.Small.copy(color = Palette.Muted),
             modifier = Modifier.weight(1f), maxLines = 1, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
