@@ -1,8 +1,13 @@
 package com.ikverse.signallab.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
@@ -20,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
@@ -78,6 +86,9 @@ class PaneLayout {
     private val sizes = mutableStateMapOf<String, Float>()
     private val hidden = mutableStateMapOf<String, Boolean>()
 
+    /** True while a divider is held: the panels follow the finger exactly then, and ease only when a button hides or shows one. */
+    var dragging by mutableStateOf(false)
+
     fun size(key: String, default: Float): Float = sizes[key] ?: default
 
     fun set(key: String, value: Float) {
@@ -114,6 +125,19 @@ class PaneLayout {
 }
 
 /**
+ * [target] size of a panel, eased there by a critically damped spring (no overshoot) when a button hides or shows it, and followed
+ * exactly while a divider is being dragged. A panel is still drawn while it closes, so draw it while [paneOpen] says so.
+ */
+@Composable
+fun animatedPaneSize(target: Float, dragging: Boolean): Float {
+    val size by animateFloatAsState(target, if (dragging) snap() else spring(dampingRatio = 1f, stiffness = 400f), label = "pane")
+    return size
+}
+
+/** Whether a panel with this eased [size] is still on screen: on while it is shown, and until it has finished closing. */
+fun paneOpen(hidden: Boolean, size: Float): Boolean = !hidden || size > 0.5f
+
+/**
  * The layout for the screen called [key]: kept across rotation, filled from what was saved on an earlier run once that has been read,
  * and written back whenever the user changes it.
  */
@@ -144,20 +168,25 @@ fun PaneDivider(
     onDrag: (Float) -> Unit,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    onDragging: (Boolean) -> Unit = {},
 ) {
     val density = LocalDensity.current.density
     val drag = rememberDraggableState { px -> onDrag(px / density) }
+    val source = remember { MutableInteractionSource() }
     Box(
         modifier.then(if (vertical) Modifier.width(PaneMath.DIVIDER.dp).fillMaxHeight() else Modifier.height(PaneMath.DIVIDER.dp).fillMaxWidth())
             .background(Palette.Background)
-            .draggable(drag, if (vertical) Orientation.Horizontal else Orientation.Vertical, enabled = !hidden),
+            .draggable(
+                drag, if (vertical) Orientation.Horizontal else Orientation.Vertical, enabled = !hidden,
+                onDragStarted = { onDragging(true) }, onDragStopped = { onDragging(false) },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         if (vertical) VRule() else HRule()
         // The button is the full 48 dp to touch even where the strip is thinner.
         Box(
-            Modifier.requiredSize(if (vertical) PaneMath.DIVIDER.dp else 64.dp, MinTouch).background(Palette.Raised)
-                .clickable(role = Role.Button, onClick = onToggle)
+            Modifier.requiredSize(if (vertical) PaneMath.DIVIDER.dp else 64.dp, MinTouch).pressScale(source).background(Palette.Raised)
+                .clickable(interactionSource = source, indication = LocalIndication.current, role = Role.Button, onClick = onToggle)
                 .semantics { contentDescription = "${if (hidden) "Show" else "Hide"} $label" },
             contentAlignment = Alignment.Center,
         ) {
@@ -185,13 +214,15 @@ fun SplitPane(
     BoxWithConstraints(modifier.fillMaxSize().testTag("split-$key")) {
         val total = maxWidth.value
         val hidden = pane.isHidden("list")
-        val w = PaneMath.fitOne(total, pane.size("list", defaultWidth), hidden, PaneMath.MIN_SIDE, PaneMath.MIN_PAGE, PaneMath.DIVIDER)
+        val target = PaneMath.fitOne(total, pane.size("list", defaultWidth), hidden, PaneMath.MIN_SIDE, PaneMath.MIN_PAGE, PaneMath.DIVIDER)
+        val w = animatedPaneSize(target, pane.dragging)
         Row(Modifier.fillMaxSize()) {
-            if (!hidden) Column(Modifier.width(w.dp).pane("list")) { list() }
+            if (paneOpen(hidden, w)) Column(Modifier.width(w.dp).pane("list")) { list() }
             PaneDivider(
                 vertical = true, hidden = hidden, label = label, arrow = if (hidden) "›" else "‹",
-                onDrag = { pane.set("list", PaneMath.dragged(w, it, max = total - PaneMath.DIVIDER - PaneMath.MIN_PAGE)) },
+                onDrag = { pane.set("list", PaneMath.dragged(target, it, max = total - PaneMath.DIVIDER - PaneMath.MIN_PAGE)) },
                 onToggle = { pane.toggle("list") }, modifier = Modifier.testTag("divider-$key"),
+                onDragging = { pane.dragging = it },
             )
             Column(Modifier.weight(1f).pane("page")) { page() }
         }
