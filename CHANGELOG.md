@@ -5,6 +5,15 @@ release notes.
 
 ## Unreleased
 
+## 0.1.6 - 2026-10-06
+
+- Text actions such as "Rename" and "Add coins" use a brighter blue, so small text is easier to read.
+- "Tap again to delete" now expires after 4 seconds, so a later stray tap does not delete the list.
+- The keyboard no longer covers a text field (Android 11 and later), and the bottom bar and side rail get wider when the phone's text size is raised.
+- Long list names and coin names are cut off with an ellipsis instead of wrapping over the row.
+- Titles have tighter line spacing, and small text has slightly looser letter spacing.
+- The download banner slides in and out, small buttons shrink a little while pressed, and hiding or showing a panel now eases instead of snapping.
+
 ## 0.1.5 - 2026-10-06
 
 - New: the bar along the bottom of a narrow phone scrolls sideways and shows every place, so "More" is gone. The place you are on is kept in view.
