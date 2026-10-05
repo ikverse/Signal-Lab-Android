@@ -64,6 +64,8 @@ class AppUiTest {
     private fun tag(t: String) = rule.onNodeWithTag(t)
 
     private fun click(t: String) {
+        // A place far along the bottom bar is scrolled to before it is touched; the side rail does not scroll.
+        if (t.startsWith("nav-") && exists("bottom-bar")) tag(t).performScrollTo()
         tag(t).performClick()
         rule.waitForIdle()
     }
@@ -142,13 +144,11 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `a phone held upright has a bottom bar with four places and More, and one panel at a time`() {
+    fun `a phone held upright has a bottom bar that scrolls through every place, and one panel at a time`() {
         show(FakeApp.full())
         assertTrue(exists("bottom-bar"))
         assertTrue(!exists("rail"))
-        for (d in Dest.Primary) assertTrue(exists("nav-${d.name}"))
-        assertTrue(exists("nav-More"))
-        assertTrue(!exists("nav-Learn"))
+        for (d in Dest.entries) assertTrue(exists("nav-${d.name}"))
         assertTrue(exists("markets-compact"))
         assertTrue(exists("coin-list"))
         assertTrue(!exists("details"))
@@ -293,31 +293,22 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `More holds Learn, Lists and Settings and each opens`() {
+    fun `the bar reaches Learn, Lists and Settings and each opens`() {
         show(FakeApp.full())
-        click("nav-More")
-        assertTrue(exists("more"))
-        for (d in Dest.More) assertTrue(exists("more-${d.name}"))
-        click("more-Settings")
+        click("nav-Settings")
         assertTrue(exists("settings"))
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         assertTrue(exists("lists"))
-        click("nav-More")
-        click("more-Learn")
+        click("nav-Learn")
         assertTrue(exists("learn-screen"))
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `back from a place goes to Markets, from More goes to where it was, and Markets lets the app close`() {
+    fun `back from a place goes to Markets, and Markets lets the app close`() {
         show(FakeApp.full())
         click("nav-Trades")
         back()
-        assertTrue(exists("markets-compact"))
-        click("nav-More")
-        back()
-        assertTrue(!exists("more"))
         assertTrue(exists("markets-compact"))
         click("coin-BTCUSDT")
         back()
@@ -362,8 +353,7 @@ class AppUiTest {
         restore.setContent { SignalLabApp(app, debug = false, webViews = false) }
         rule.waitForIdle()
         click("coin-ETHUSDT")
-        click("nav-More")
-        click("more-Learn")
+        click("nav-Learn")
         click("learn-scorecard")
         rule.onNodeWithTag("learn-text").assertTextContains("Text of the scorecard page.", substring = true)
         restore.emulateSavedInstanceStateRestore()
@@ -412,7 +402,7 @@ class AppUiTest {
         rule.onNodeWithText("Result after costs").assertIsDisplayed()
         rule.onAllNodes(hasText("+3.00%", substring = true)).assertCountEquals(2)
         rule.onNodeWithText("Held for").assertIsDisplayed()
-        rule.onAllNodes(hasText("What is this pattern?")).onFirst().performClick()
+        rule.onAllNodes(hasText("What is this pattern?")).onFirst().performScrollTo().performClick()
         rule.waitForIdle()
         assertTrue(exists("learn-screen"))
     }
@@ -492,8 +482,7 @@ class AppUiTest {
     @Test
     fun `the learn list shows every group and a page opens, with back to the list`() {
         show(FakeApp.full())
-        click("nav-More")
-        click("more-Learn")
+        click("nav-Learn")
         rule.onNodeWithText("HOW IT WORKS").assertExists()
         rule.onNodeWithText("PATTERNS").assertExists()
         click("learn-trend")
@@ -518,8 +507,7 @@ class AppUiTest {
     fun `a list can be switched off and back on, and a refusal is shown in words`() {
         val app = FakeApp.full()
         show(app)
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         rule.onNodeWithText("My coins").performClick()
         rule.waitForIdle()
         assertTrue(exists("list-detail"))
@@ -538,8 +526,7 @@ class AppUiTest {
     fun `deleting a list asks again first and then removes it`() {
         val app = FakeApp.full()
         show(app)
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         rule.onNodeWithText("My coins").performClick()
         rule.waitForIdle()
         click("delete")
@@ -555,8 +542,7 @@ class AppUiTest {
 
     private fun openSettings(app: FakeApp, debug: Boolean = false) {
         show(app, debug)
-        click("nav-More")
-        click("more-Settings")
+        click("nav-Settings")
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -663,15 +649,9 @@ class AppUiTest {
         status, version = "0.2.0", notes = "Adds the updater.", progress = progress, message = message, checkedAt = 1_700_000_000_000L, canInstall = canInstall,
     )
 
-    /** Settings sits under "More" on a narrow screen and has its own button once the rail shows every screen. */
     private fun openUpdates(app: FakeApp) {
         show(app)
-        if (exists("nav-Settings")) {
-            click("nav-Settings")
-        } else {
-            click("nav-More")
-            click("more-Settings")
-        }
+        click("nav-Settings")
         tag("updates").performScrollTo()
     }
 
@@ -1008,12 +988,10 @@ class AppUiTest {
             click(d)
             everyTouchTargetIsBigEnough()
         }
-        click("nav-More")
         everyTouchTargetIsBigEnough()
-        for (m in listOf("more-Learn", "more-Lists", "more-Settings")) {
+        for (m in listOf("nav-Learn", "nav-Lists", "nav-Settings")) {
             click(m)
             everyTouchTargetIsBigEnough()
-            click("nav-More")
         }
     }
 
@@ -1026,8 +1004,7 @@ class AppUiTest {
 
     private fun openTheListAndAddCoins(app: FakeApp) {
         show(app)
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         rule.onNodeWithText("My coins").performClick()
         rule.waitForIdle()
         click("add-coins")
@@ -1354,12 +1331,10 @@ class AppUiTest {
     @Test
     fun `held upright lists and learn have no dividers, as before`() {
         show(FakeApp.full())
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         assertTrue(!exists("divider-lists"))
         assertTrue(!exists("pane-list"))
-        click("nav-More")
-        click("more-Learn")
+        click("nav-Learn")
         assertTrue(!exists("divider-learn"))
         assertTrue(!exists("pane-list"))
         click("learn-trend")
@@ -1783,14 +1758,12 @@ class AppUiTest {
     @Test
     fun `the open list in Lists is still open after another tab has been on show`() {
         show(FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc))))
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         rule.onNodeWithText("Second").performClick()
         rule.waitForIdle()
         assertTrue(exists("list-detail"))
         click("nav-Alerts")
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         assertTrue(exists("list-detail"))
     }
 
@@ -1817,8 +1790,7 @@ class AppUiTest {
         val nav = NavState()
         val app = FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc)))
         show(app, nav = nav)
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         rule.onNodeWithText("Second").performClick()
         rule.waitForIdle()
         click("delete")
@@ -1836,8 +1808,7 @@ class AppUiTest {
     fun `a list that disappears under an open one, from outside the screen, returns to the lists`() {
         val app = FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc)))
         show(app)
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         rule.onNodeWithText("Second").performClick()
         rule.waitForIdle()
         assertTrue(exists("list-detail"))
@@ -1852,8 +1823,7 @@ class AppUiTest {
     fun `the picker closes with the list it was adding to`() {
         val app = FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc)))
         show(app)
-        click("nav-More")
-        click("more-Lists")
+        click("nav-Lists")
         rule.onNodeWithText("Second").performClick()
         rule.waitForIdle()
         click("add-coins")

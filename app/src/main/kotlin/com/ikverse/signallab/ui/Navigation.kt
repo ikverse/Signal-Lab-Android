@@ -8,15 +8,9 @@ import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 
-/** Where in the app the user is. Seven places; the side rail shows all of them, the bottom bar shows four and a "More". */
+/** Where in the app the user is. Seven places; the side rail shows all of them and the bottom bar scrolls sideways through all of them. */
 enum class Dest(val label: String) {
-    Markets("Markets"), Trades("Trades"), Scorecard("Scorecard"), Alerts("Alerts"), Learn("Learn"), Lists("Lists"), Settings("Settings");
-
-    companion object {
-        /** What the bottom bar of a narrow screen carries; the rest sit behind "More". */
-        val Primary = listOf(Markets, Trades, Scorecard, Alerts)
-        val More = listOf(Learn, Lists, Settings)
-    }
+    Markets("Markets"), Trades("Trades"), Scorecard("Scorecard"), Alerts("Alerts"), Learn("Learn"), Lists("Lists"), Settings("Settings")
 }
 
 /** How much room there is. Decided by the window's width, never by the phone's model, so rotating or resizing just switches layouts. */
@@ -57,7 +51,6 @@ class NavState(
     timeframe: String? = null,
     learnPage: String? = null,
     marketsTab: MarketsTab = MarketsTab.Coins,
-    showMore: Boolean = false,
     showDebug: Boolean = false,
     tradesStatus: TradeFilter = TradeFilter.All,
     tradesQuery: String = "",
@@ -70,7 +63,6 @@ class NavState(
     var timeframe by mutableStateOf(timeframe)
     var learnPage by mutableStateOf(learnPage)
     var marketsTab by mutableStateOf(marketsTab)
-    var showMore by mutableStateOf(showMore)
     var showDebug by mutableStateOf(showDebug)
 
     /** The Trades tab's filter, search and opened trade: kept here so a link can set them and they survive leaving the tab. */
@@ -89,7 +81,6 @@ class NavState(
     private fun jump(to: Dest, fromApp: Boolean) {
         trail = if (fromApp && dest != to) (trail + dest).takeLast(MAX_TRAIL) else if (fromApp) trail else emptyList()
         dest = to
-        showMore = false
     }
 
     /** Opens a coin on one of its charts, or on its Details. */
@@ -143,19 +134,17 @@ class NavState(
     /** A tab chosen from the bar: no trail to go back along. */
     fun go(to: Dest) {
         dest = to
-        showMore = false
         trail = emptyList()
     }
 
     /** True while [back] has somewhere to go, so the system back button is only taken over when it matters. */
     val canBack: Boolean
-        get() = showDebug || showMore || trail.isNotEmpty() ||
+        get() = showDebug || trail.isNotEmpty() ||
             (narrow && dest == Dest.Learn && learnPage != null) || (narrow && dest == Dest.Markets && marketsTab != MarketsTab.Coins) || dest != Dest.Markets
 
-    /** Back: out of the debug page and More, then along the trail of jumps, then one step towards Markets. Returns false when there is nothing to step out of. */
+    /** Back: out of the debug page, then along the trail of jumps, then one step towards Markets. Returns false when there is nothing to step out of. */
     fun back(): Boolean = when {
         showDebug -> { showDebug = false; true }
-        showMore -> { showMore = false; true }
         trail.isNotEmpty() -> {
             val to = trail.last()
             trail = trail.dropLast(1)
@@ -177,14 +166,14 @@ class NavState(
             save = {
                 mapOf(
                     "dest" to it.dest.name, "symbol" to it.symbol, "tf" to it.timeframe, "learn" to it.learnPage, "tab" to it.marketsTab.name,
-                    "more" to it.showMore, "debug" to it.showDebug, "ts" to it.tradesStatus.name, "tq" to it.tradesQuery, "te" to it.tradesExpanded,
+                    "debug" to it.showDebug, "ts" to it.tradesStatus.name, "tq" to it.tradesQuery, "te" to it.tradesExpanded,
                     "ag" to it.alertsGroup.name, "trail" to it.trail.joinToString(",") { d -> d.name },
                 )
             },
             restore = {
                 NavState(
                     Dest.valueOf(it["dest"] as String), it["symbol"] as String?, it["tf"] as String?, it["learn"] as String?,
-                    MarketsTab.valueOf(it["tab"] as String), it["more"] as Boolean, it["debug"] as Boolean,
+                    MarketsTab.valueOf(it["tab"] as String), it["debug"] as Boolean,
                     TradeFilter.valueOf(it["ts"] as String), it["tq"] as String, it["te"] as Long?, AlertGroup.valueOf(it["ag"] as String),
                     (it["trail"] as String).split(',').filter { s -> s.isNotEmpty() }.map { s -> Dest.valueOf(s) },
                 )

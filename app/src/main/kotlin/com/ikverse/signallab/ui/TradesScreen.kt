@@ -1,5 +1,7 @@
 package com.ikverse.signallab.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,10 +42,17 @@ fun tradesSummary(trades: List<TradeUi>): String {
     return "$open open · ${closed.size} closed" + (mean?.let { " · average ${Fmt.signedPercent(it)} after costs" } ?: "")
 }
 
+/** [trades] (newest first) split by pattern. The pattern that fired last comes first; each group keeps its trades newest first. */
+fun groupTrades(trades: List<TradeUi>): List<Pair<String, List<TradeUi>>> {
+    val newestFirst = trades.sortedByDescending { it.openedAt }
+    return newestFirst.groupBy { it.label }.toList()
+}
+
 /**
- * Every paper trade, newest first, with what each one did. The filter, the search and the opened trade live in [nav], so a notification
- * can set them and they are still there after another tab has been on show.
+ * Every paper trade, grouped by pattern and newest first within each group, with what each one did. The filter, the search and the opened
+ * trade live in [nav], so a notification can set them and they are still there after another tab has been on show.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TradesScreen(model: TradesModel, nav: NavState, onOpenCoin: (String, String) -> Unit, onOpenLearn: (String) -> Unit, modifier: Modifier = Modifier) {
     val all by model.trades.collectAsStateWithLifecycle()
@@ -51,10 +60,19 @@ fun TradesScreen(model: TradesModel, nav: NavState, onOpenCoin: (String, String)
     val query = nav.tradesQuery
     val expanded = nav.tradesExpanded
     val shown = filterTrades(all, status, query)
+    val groups = groupTrades(shown)
     val list = rememberLazyListState()
     // A trade a link asked to be opened is brought into view once it has arrived in the list; one already on screen (a row just touched) stays put.
     LaunchedEffect(expanded, shown.size) {
-        val at = shown.indexOfFirst { it.id == expanded }
+        // Each group adds a header row ahead of its trades.
+        var at = -1
+        var index = 0
+        for ((_, trades) in groups) {
+            index++
+            val within = trades.indexOfFirst { it.id == expanded }
+            if (within >= 0) { at = index + within; break }
+            index += trades.size
+        }
         if (expanded != null && at >= 0 && list.layoutInfo.visibleItemsInfo.none { it.index == at }) list.animateScrollToItem(at)
     }
     Column(modifier.fillMaxSize().testTag("trades")) {
@@ -69,9 +87,18 @@ fun TradesScreen(model: TradesModel, nav: NavState, onOpenCoin: (String, String)
             all.isEmpty() -> EmptyState("No paper trades yet", "When a pattern appears on a coin you are watching, a pretend trade is recorded here. No real money is used.")
             shown.isEmpty() -> EmptyState("Nothing matches", "Change the filter or the search.")
             else -> LazyColumn(Modifier.weight(1f), state = list) {
-                items(shown, key = { it.id }) { t ->
-                    TradeRow(t, expanded == t.id, { nav.tradesExpanded = if (expanded == t.id) null else t.id }, onOpenCoin, onOpenLearn)
-                    HRule()
+                for ((pattern, trades) in groups) {
+                    stickyHeader(key = "group-$pattern") {
+                        Column(Modifier.fillMaxWidth().background(Palette.Background).testTag("trades-group-$pattern")) {
+                            Text(pattern, style = Type.Heading, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp))
+                            Text(tradesSummary(trades), style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                            HRule()
+                        }
+                    }
+                    items(trades, key = { it.id }) { t ->
+                        TradeRow(t, expanded == t.id, { nav.tradesExpanded = if (expanded == t.id) null else t.id }, onOpenCoin, onOpenLearn)
+                        HRule()
+                    }
                 }
             }
         }

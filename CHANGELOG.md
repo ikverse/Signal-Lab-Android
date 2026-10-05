@@ -5,6 +5,11 @@ release notes.
 
 ## Unreleased
 
+## 0.1.5 - 2026-10-06
+
+- New: the bar along the bottom of a narrow phone scrolls sideways and shows every place, so "More" is gone. The place you are on is kept in view.
+- New: Paper trades are grouped by pattern. Each pattern has a header with its open and closed counts and the average result after costs, with the newest trades first and the pattern that fired last at the top.
+
 ## 0.1.4 - 2026-10-05
 
 - Fixed: a notification, or "Show on chart", for a coin that isn't in a switched-on list opened the chart of the first coin instead. It now opens the coin it was about, with a note that it isn't being watched.
