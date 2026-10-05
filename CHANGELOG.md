@@ -5,6 +5,16 @@ release notes.
 
 ## Unreleased
 
+## 0.1.4 - 2026-10-05
+
+- Fixed: a notification, or "Show on chart", for a coin that isn't in a switched-on list opened the chart of the first coin instead. It now opens the coin it was about, with a note that it isn't being watched.
+- Notifications now open the right place. A closed trade opens that trade in Trades. A pump or volume warning opens the coin's Details. The "opened" and "closed" summaries open Trades. A Binance problem opens Settings or Alerts.
+- Back now returns to the tab you came from, for example from a chart opened out of Trades. On a wide screen it leaves in one press.
+- Trades, Alerts and a half-filled New list keep what you set when you switch tabs.
+- Learn pages now link to the pages and settings they mention.
+- Fixed: deleting one of several lists on a narrow phone left a blank screen.
+- Fixed: the first few alerts on a new install could replace the scanning notification.
+
 ## 0.1.3 - 2026-10-05
 
 - New: Settings → Screen → "Side bar on the right". When the phone is held sideways, or the screen is wide, the side bar moves to the right edge.
