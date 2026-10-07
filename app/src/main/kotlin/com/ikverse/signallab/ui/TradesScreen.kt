@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,17 +50,28 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 enum class TradeFilter(val label: String) { All("All"), Open("Open"), Closed("Closed") }
 
-/** Which trades pass the filters: the status, and a search over the coin, the pattern and the chart. Pure, so a test can hold it to its word. */
-fun filterTrades(trades: List<TradeUi>, status: TradeFilter, query: String): List<TradeUi> {
+/**
+ * Which trades pass the filters: the status, the chart size ([timeframe], or null for any), and a search over the coin, the pattern and the
+ * chart. Pure, so a test can hold it to its word.
+ */
+fun filterTrades(trades: List<TradeUi>, status: TradeFilter, query: String, timeframe: String? = null): List<TradeUi> {
     val q = query.trim().lowercase()
     return trades.filter { t ->
         when (status) {
             TradeFilter.All -> true
             TradeFilter.Open -> t.closed == null
             TradeFilter.Closed -> t.closed != null
-        } && (q.isEmpty() || q in t.symbol.lowercase() || q in t.label.lowercase() || q in t.short.lowercase() || q in t.variant.lowercase() || q == t.timeframe.lowercase())
+        } && (timeframe == null || t.timeframe == timeframe) &&
+            (q.isEmpty() || q in t.symbol.lowercase() || q in t.label.lowercase() || q in t.short.lowercase() || q in t.variant.lowercase() || q == t.timeframe.lowercase())
     }
 }
+
+private val ChartSizes = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d")
+
+/** The chart sizes [trades] were taken on, shortest first, then any size not known by name; [keep] is included even when no trade has it. */
+fun tradeTimeframes(trades: List<TradeUi>, keep: String? = null): List<String> =
+    (trades.map { it.timeframe } + listOfNotNull(keep)).distinct()
+        .sortedWith(compareBy<String> { ChartSizes.indexOf(it).let { i -> if (i < 0) ChartSizes.size else i } }.thenBy { it })
 
 /** One line over a set of trades: how many, and the average result of the closed ones. Also what a screen reader says for the totals. */
 fun tradesSummary(trades: List<TradeUi>): String {
@@ -101,8 +113,10 @@ fun TradesScreen(
     val all by model.trades.collectAsStateWithLifecycle()
     val status = nav.tradesStatus
     val query = nav.tradesQuery
+    val timeframe = nav.tradesTimeframe
     val expanded = nav.tradesExpanded
-    val shown = filterTrades(all, status, query)
+    val shown = filterTrades(all, status, query, timeframe)
+    val sizes = tradeTimeframes(all, keep = timeframe)
     val groups = groupTrades(shown)
     var folded by rememberSaveable { mutableStateOf(listOf<String>()) }
     val list = rememberLazyListState()
@@ -130,6 +144,7 @@ fun TradesScreen(
                     for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { nav.tradesStatus = f })
                 }
                 SearchField(query, { nav.tradesQuery = it }, "Coin, pattern or chart", description = "Filter by coin, pattern or chart")
+                if (sizes.size > 1) TimeframeChips(sizes, timeframe) { nav.tradesTimeframe = it }
                 Totals(shown, oneLine = true)
             } else {
                 ScreenTitle("Paper trades")
@@ -137,12 +152,13 @@ fun TradesScreen(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp)) {
                     for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { nav.tradesStatus = f })
                 }
+                if (sizes.size > 1) TimeframeChips(sizes, timeframe) { nav.tradesTimeframe = it }
                 Totals(shown)
             }
             HRule()
             when {
                 all.isEmpty() -> EmptyState("No paper trades yet", "When a pattern appears on a coin you are watching, a pretend trade is recorded here. No real money is used.")
-                shown.isEmpty() -> EmptyState("Nothing matches", "Change the filter or the search.")
+                shown.isEmpty() -> EmptyState("Nothing matches", "Change the filters or the search.")
                 else -> LazyColumn(Modifier.weight(1f), state = list) {
                     for ((pattern, trades) in groups) {
                         val isFolded = pattern in folded
@@ -194,6 +210,15 @@ fun TradesScreen(
                 }
             }
         }
+    }
+}
+
+/** "Any chart" and one choice per chart size the trades were taken on; a row that scrolls sideways when the sizes do not fit. */
+@Composable
+private fun TimeframeChips(sizes: List<String>, chosen: String?, onChoose: (String?) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 13.dp).testTag("trades-charts")) {
+        ChoiceText("Any chart", chosen == null, { onChoose(null) })
+        for (s in sizes) ChoiceText(s, chosen == s, { onChoose(s) })
     }
 }
 

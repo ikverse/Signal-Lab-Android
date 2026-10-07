@@ -75,6 +75,7 @@ class NavState(
     trail: List<Dest> = emptyList(),
     analystReport: Long? = null,
     chartChoice: Map<Long, Boolean> = emptyMap(),
+    tradesTimeframe: String? = null,
 ) {
     var dest by mutableStateOf(dest)
     var symbol by mutableStateOf(symbol)
@@ -83,9 +84,12 @@ class NavState(
     var marketsTab by mutableStateOf(marketsTab)
     var showDebug by mutableStateOf(showDebug)
 
-    /** The Trades tab's filter, search and opened trade: kept here so a link can set them and they survive leaving the tab. */
+    /** The Trades tab's filters, search and opened trade: kept here so a link can set them and they survive leaving the tab. */
     var tradesStatus by mutableStateOf(tradesStatus)
     var tradesQuery by mutableStateOf(tradesQuery)
+
+    /** The chart size the Trades tab is narrowed to, such as "4h"; null for any. */
+    var tradesTimeframe by mutableStateOf(tradesTimeframe)
     var tradesExpanded by mutableStateOf(tradesExpanded)
     var alertsGroup by mutableStateOf(alertsGroup)
 
@@ -130,11 +134,12 @@ class NavState(
         learnPage = page
     }
 
-    /** Opens the Trades tab with a coin to filter by (by its short name), a status, and a trade to open. */
+    /** Opens the Trades tab with a coin to filter by (by its short name), a status, and a trade to open; on any chart size, so that trade is not hidden. */
     fun openTrades(coin: String?, status: TradeFilter, expanded: Long?, fromApp: Boolean = false) {
         jump(Dest.Trades, fromApp)
         tradesQuery = coin?.removeSuffix("USDT") ?: ""
         tradesStatus = status
+        tradesTimeframe = null
         tradesExpanded = expanded
     }
 
@@ -221,6 +226,7 @@ class NavState(
                     "debug" to it.showDebug, "ts" to it.tradesStatus.name, "tq" to it.tradesQuery, "te" to it.tradesExpanded,
                     "ag" to it.alertsGroup.name, "trail" to it.trail.joinToString(",") { d -> d.name }, "ar" to it.analystReport,
                     "cts" to it.chartChoice.entries.joinToString(",") { (id, on) -> "$id:${if (on) 1 else 0}" },
+                    "tt" to it.tradesTimeframe,
                 )
             },
             restore = {
@@ -231,6 +237,7 @@ class NavState(
                     (it["trail"] as String).split(',').filter { s -> s.isNotEmpty() }.map { s -> Dest.valueOf(s) },
                     it["ar"] as Long?,
                     (it["cts"] as String).split(',').filter { s -> s.isNotEmpty() }.associate { s -> s.substringBefore(':').toLong() to (s.substringAfter(':') == "1") },
+                    it["tt"] as String?,
                 )
             },
         )

@@ -44,6 +44,29 @@ class ScreenLogicTest {
     }
 
     @Test
+    fun `the chart filter keeps the trades taken on that chart size, together with the status and the search`() {
+        assertEquals(listOf(1L, 2L, 3L), filterTrades(all, TradeFilter.All, "", null).map { it.id })
+        assertEquals(listOf(1L, 2L), filterTrades(all, TradeFilter.All, "", "1h").map { it.id })
+        assertEquals(listOf(3L), filterTrades(all, TradeFilter.All, "", "4h").map { it.id })
+        assertEquals(emptyList<Long>(), filterTrades(all, TradeFilter.All, "", "1d"))
+        assertEquals(listOf(2L), filterTrades(all, TradeFilter.Closed, "", "1h").map { it.id })
+        assertEquals(emptyList<Long>(), filterTrades(all, TradeFilter.All, "eth", "1h"))
+    }
+
+    @Test
+    fun `the chart sizes on offer are the ones the trades used, shortest first, with the chosen one always kept`() {
+        val day = FakeApp.trade(4, "SOLUSDT", "1d")
+        val quarter = FakeApp.trade(5, tf = "15m")
+        val odd = FakeApp.trade(6, tf = "2h")
+        assertEquals(listOf("1h", "4h"), tradeTimeframes(all))
+        assertEquals(listOf("15m", "1h", "4h", "1d"), tradeTimeframes(all + day + quarter))
+        assertEquals(listOf("1h", "4h", "2h"), tradeTimeframes(all + odd))
+        assertEquals(listOf("15m", "1h", "4h"), tradeTimeframes(all, keep = "15m"))
+        assertEquals(listOf("1h", "4h"), tradeTimeframes(all, keep = "1h"))
+        assertEquals(emptyList<String>(), tradeTimeframes(emptyList()))
+    }
+
+    @Test
     fun `the summary counts open and closed and averages only the closed results`() {
         assertEquals("1 open · 2 closed · average +1.00% after costs", tradesSummary(all))
         assertEquals("1 open · 0 closed", tradesSummary(listOf(open)))
@@ -412,6 +435,14 @@ class ScreenLogicTest {
         assertNull(plain.symbol)
         assertNull(plain.timeframe)
         assertNull(plain.learnPage)
+    }
+
+    @Test
+    fun `the chart size chosen on Trades survives being saved and restored`() {
+        val nav = NavState(Dest.Trades, tradesTimeframe = "4h")
+        val back = NavState.Saver.restore(with(NavState.Saver) { SaverScope { true }.save(nav) }!!)!!
+        assertEquals("4h", back.tradesTimeframe)
+        assertNull(NavState.Saver.restore(with(NavState.Saver) { SaverScope { true }.save(NavState()) }!!)!!.tradesTimeframe)
     }
 
     @Test

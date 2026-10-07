@@ -171,6 +171,16 @@ class NavigationLinksTest {
     }
 
     @Test
+    fun `opening Trades clears the chart size so the trade it names is not hidden`() {
+        val nav = NavState(Dest.Trades, tradesTimeframe = "4h")
+        nav.openLink(Link("BTCUSDT", null, LinkPlace.TRADES, 2), fromApp = false)
+        assertNull(nav.tradesTimeframe)
+        nav.tradesTimeframe = "1h"
+        nav.openTrades(null, TradeFilter.Open, null, fromApp = true)
+        assertNull(nav.tradesTimeframe)
+    }
+
+    @Test
     fun `an answer shared back opens its report, and on a phone Back closes the report before leaving`() {
         val nav = NavState()
         nav.go(Dest.Trades)
