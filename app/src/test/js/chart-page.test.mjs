@@ -38,9 +38,10 @@ function load({ observer = true } = {}) {
   const reported = { indicators: [], drawings: [] };
   let overlaySeq = 0, paneSeq = 0, dataList = [];
 
+  const registered = {};
   const chart = {
-    resizes: 0, failResize: false,
-    setStyles: () => {},
+    resizes: 0, failResize: false, styles: null,
+    setStyles: (s) => { chart.styles = s; },
     resize() { chart.resizes++; if (chart.failResize) throw new Error('resize failed'); },
     applyNewData(rows) { dataList = rows; calls.push(['applyNewData', rows.length]); },
     getDataList: () => dataList,
@@ -77,7 +78,8 @@ function load({ observer = true } = {}) {
     observe(el) { this.target = el; }
   }
   const ctx = {
-    document, klinecharts: { init: () => chart }, performance: { now: () => 0 }, requestAnimationFrame: () => {}, console,
+    document, performance: { now: () => 0 }, requestAnimationFrame: () => {}, console,
+    klinecharts: { init: () => chart, registerIndicator: (d) => { registered[d.name] = d; }, registerOverlay: (o) => { registered[o.name] = o; } },
     addEventListener: (type, fn) => windowListeners.push([type, fn]),
     Android: {
       indicatorsChanged: (csv) => reported.indicators.push(csv),
@@ -90,7 +92,7 @@ function load({ observer = true } = {}) {
   vm.runInContext(pageScript, ctx);
 
   return {
-    chart, calls, overlays, observers, reported, lab: ctx.signalLab,
+    chart, calls, overlays, observers, reported, registered, lab: ctx.signalLab,
     el: (id) => document.getElementById(id),
     fire: (type) => windowListeners.filter(([t]) => t === type).forEach(([, fn]) => fn({})),
     inGroup: (g) => [...overlays.values()].filter((o) => o.groupId === g),
@@ -133,7 +135,7 @@ t('without ResizeObserver the window event still resizes the chart', () => {
 
 t('volume alone is on until the app says otherwise, in a panel of its own', () => {
   const env = load();
-  assert.deepEqual(env.calls.filter((c) => c[0] === 'createIndicator'), [['createIndicator', 'VOL', false, { height: 80, minHeight: 40 }]]);
+  assert.deepEqual(env.calls.filter((c) => c[0] === 'createIndicator'), [['createIndicator', 'VOLBARS', false, { height: 52, minHeight: 40 }]]);
 });
 
 t('the app sets the indicators and the page adds and removes exactly what changed', () => {
@@ -148,7 +150,7 @@ t('the app sets the indicators and the page adds and removes exactly what change
   env.lab.setIndicators(['VOL', 'MA', 'RSI']);
   assert.deepEqual(env.since(mark), [], 'the same list again changes nothing');
   env.lab.setIndicators(['RSI']);
-  assert.deepEqual(env.since(mark), [['removeIndicator', 'pane1', 'VOL'], ['removeIndicator', 'candle_pane', 'MA']]);
+  assert.deepEqual(env.since(mark), [['removeIndicator', 'pane1', 'VOLBARS'], ['removeIndicator', 'candle_pane', 'MA']]);
   mark = env.calls.length;
   env.lab.setIndicators([]);
   assert.deepEqual(env.since(mark), [['removeIndicator', 'pane2', 'RSI']]);
@@ -168,7 +170,7 @@ t('all six indicators can be on at once and each is made the way it is meant to 
 
 t('the Indicators menu lists them with a tick for those on, ticking one adds it and tells the app', () => {
   const env = load();
-  env.el('btn-ind').click();
+  env.lab.openIndicators();
   const menu = env.el('menu');
   assert.equal(menu.style.display, 'block');
   assert.equal(env.el('shade').style.display, 'block');
@@ -188,24 +190,24 @@ t('the Indicators menu lists them with a tick for those on, ticking one adds it 
   assert.deepEqual(env.reported.indicators, ['VOL,MA', 'MA', '']);
 });
 
-t('the menu closes when the button is touched again or anywhere outside it', () => {
+t('the menu closes when its button is touched again or anywhere outside it', () => {
   const env = load();
-  env.el('btn-ind').click();
-  env.el('btn-ind').click();
+  env.lab.openIndicators();
+  env.lab.openIndicators();
   assert.equal(env.el('menu').style.display, 'none');
   assert.equal(env.el('shade').style.display, 'none');
-  env.el('btn-draw').click();
+  env.lab.openDraw();
   assert.equal(env.el('menu').style.display, 'block');
   env.el('shade').click();
   assert.equal(env.el('menu').style.display, 'none');
-  env.el('btn-ind').click();
-  env.el('btn-draw').click(); // another button while one is open: switches
+  env.lab.openIndicators();
+  env.lab.openDraw(); // another button while one is open: switches
   assert.equal(rowText(env.el('menu').children[0]), '|Trend line');
 });
 
 t('indicators the app sets while the menu is open are shown in it', () => {
   const env = load();
-  env.el('btn-ind').click();
+  env.lab.openIndicators();
   env.lab.setIndicators(['VOL', 'RSI']);
   assert.equal(rowText(env.el('menu').children[4]), '[x]|RSI (14)');
 });
@@ -214,7 +216,7 @@ t('indicators the app sets while the menu is open are shown in it', () => {
 
 t('the Draw menu offers the five tools and clearing', () => {
   const env = load();
-  env.el('btn-draw').click();
+  env.lab.openDraw();
   assert.deepEqual(env.el('menu').children.map(rowText), [
     '|Trend line', '|Horizontal line', '|Ray', '|Parallel channel', '|Fibonacci retracement', '|Clear drawings',
   ]);
@@ -223,7 +225,7 @@ t('the Draw menu offers the five tools and clearing', () => {
 t('choosing a tool starts that drawing, shows what to tap, and finishing it reports the drawing', () => {
   const env = load();
   show(env, 'BTCUSDT|1h');
-  env.el('btn-draw').click();
+  env.lab.openDraw();
   env.el('menu').children[0].click();
   assert.equal(env.el('menu').style.display, 'none');
   assert.equal(env.el('hint').textContent, 'Tap the start, then the end');
@@ -240,7 +242,7 @@ t('each tool is the library drawing it is named for', () => {
   const env = load();
   const names = [];
   for (let i = 0; i < 5; i++) {
-    env.el('btn-draw').click();
+    env.lab.openDraw();
     env.el('menu').children[i].click();
     const [o] = env.inGroup('draw').slice(-1);
     names.push(o.name);
@@ -253,10 +255,10 @@ t('each tool is the library drawing it is named for', () => {
 t('a tool picked and then given up for another leaves no stray drawing behind', () => {
   const env = load();
   show(env, 'BTCUSDT|1h');
-  env.el('btn-draw').click();
+  env.lab.openDraw();
   env.el('menu').children[0].click();
   const first = env.inGroup('draw')[0].id;
-  env.el('btn-draw').click();
+  env.lab.openDraw();
   env.el('menu').children[2].click();
   assert.ok(env.calls.some((c) => c[0] === 'removeOverlay' && c[1] === first), 'the first, unfinished, one was removed');
   assert.deepEqual(env.inGroup('draw').map((o) => o.name), ['rayLine']);
@@ -275,7 +277,7 @@ t('clearing removes every drawing of the chart and reports that none are left', 
   const env = load();
   show(env, 'BTCUSDT|1h', [segment, { ...segment, name: 'rayLine' }]);
   assert.equal(env.inGroup('draw').length, 2);
-  env.el('btn-draw').click();
+  env.lab.openDraw();
   env.el('menu').children[5].click();
   assert.equal(env.inGroup('draw').length, 0);
   assert.deepEqual(env.reported.drawings.at(-1), { key: 'BTCUSDT|1h', drawings: [] });
@@ -302,7 +304,7 @@ t('a refresh of the same chart keeps what the user drew and redraws only the lev
   assert.equal(env.inGroup('draw')[0], drawn);
   assert.equal(env.inGroup('draw').length, 1);
   assert.ok(env.since(mark).some((c) => c[0] === 'removeOverlay' && c[1] === '{"groupId":"levels"}'), 'levels are redrawn each time');
-  assert.equal(env.inGroup('levels').length, 2, 'the line and its tag');
+  assert.equal(env.inGroup('levels').length, 1, 'one level, drawn as one line with its label');
 });
 
 t('another coin or chart size gets its own drawings, and the first one gets its back', () => {
@@ -319,7 +321,7 @@ t('another coin or chart size gets its own drawings, and the first one gets its 
 t('changing chart abandons a half-drawn tool and clears its hint', () => {
   const env = load();
   show(env, 'BTCUSDT|1h');
-  env.el('btn-draw').click();
+  env.lab.openDraw();
   env.el('menu').children[0].click();
   assert.equal(env.el('hint').textContent, 'Tap the start, then the end');
   show(env, 'ETHUSDT|1h');
@@ -339,8 +341,8 @@ t('a drawing reported after changing chart is reported under the new chart', () 
 
 t('Latest scrolls to the newest candle and closes any menu', () => {
   const env = load();
-  env.el('btn-ind').click();
-  env.el('btn-latest').click();
+  env.lab.openIndicators();
+  env.lab.latest();
   assert.ok(env.calls.some((c) => c[0] === 'scrollToRealTime'));
   assert.equal(env.el('menu').style.display, 'none');
 });
@@ -370,7 +372,9 @@ t('an empty chart shows its message, and a chart with candles hides it', () => {
 
 t('the calls the app and the debug page make are all still there', () => {
   const env = load();
-  for (const name of ['setData', 'setLastPrice', 'setIndicators', 'benchmark', 'check']) assert.equal(typeof env.lab[name], 'function', name);
+  for (const name of ['setData', 'setLastPrice', 'setIndicators', 'openIndicators', 'openDraw', 'latest', 'benchmark', 'check']) {
+    assert.equal(typeof env.lab[name], 'function', name);
+  }
   assert.doesNotThrow(() => env.lab.benchmark(50));
 });
 
@@ -378,8 +382,65 @@ t('the page sends no report when a bridge is missing, as in the debug page', () 
   const env = load();
   // The debug chart check has a bridge with only `report`; the page must cope with the others being absent.
   const ctx = vm.createContext({ ...{}, document: { getElementById: () => new El('div'), createElement: () => new El('div'), createTextNode: () => ({}) },
-    klinecharts: { init: () => env.chart }, performance: { now: () => 0 }, requestAnimationFrame: () => {}, console, addEventListener: () => {}, Android: { report: () => {} } });
+    klinecharts: { init: () => env.chart, registerIndicator: () => {}, registerOverlay: () => {} }, performance: { now: () => 0 },
+    requestAnimationFrame: () => {}, console, addEventListener: () => {}, Android: { report: () => {} } });
   ctx.window = ctx;
   vm.runInContext(pageScript, ctx);
   assert.doesNotThrow(() => ctx.signalLab.setIndicators(['VOL', 'RSI']));
+});
+
+// --- what is drawn over the candles
+
+t('the line over the candles reads O H L C Vol, with no date, figures written as the app writes them', () => {
+  const env = load();
+  const tip = env.chart.styles.candle.tooltip;
+  assert.equal(tip.showRule, 'always');
+  const legend = tip.custom({ current: { open: 2.85, high: 2.891, low: 2.83, close: 2.86, volume: 208893 } });
+  assert.deepEqual([...legend.map((l) => `${l.title}${l.value.text}`)], ['O 2.850', 'H 2.891', 'L 2.830', 'C 2.860', 'Vol 208.9K']);
+  assert.equal(tip.custom({}).length, 0, 'nothing under the finger: no line');
+});
+
+t('volume is bars in a low panel with no caption of its own', () => {
+  const env = load();
+  const vol = env.registered.VOLBARS;
+  assert.ok(vol, 'the page makes its own volume indicator');
+  assert.deepEqual(JSON.parse(JSON.stringify(vol.createTooltipDataSource())), { name: '', calcParamsText: '', values: [], icons: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(vol.calc([{ volume: 5 }, { volume: 7 }]))), [{ volume: 5 }, { volume: 7 }]);
+});
+
+t('each level is one overlay carrying its words, its colour and the prices of the other levels', () => {
+  const env = load();
+  show(env, 'BTCUSDT|1h', [], [
+    { kind: 'TARGET', label: 'Target 2.949', price: 2.949 }, { kind: 'ENTRY', label: 'Entry 2.863', price: 2.863 }, { kind: 'STOP', label: 'Stop 2.397', price: 2.397 },
+  ]);
+  const levels = env.inGroup('levels');
+  assert.deepEqual(levels.map((o) => o.name), ['level', 'level', 'level']);
+  assert.deepEqual(levels.map((o) => o.extendData.text), ['Target 2.949', 'Entry 2.863', 'Stop 2.397']);
+  assert.deepEqual(levels.map((o) => o.extendData.color), ['#089981', '#5b8dff', '#f23645']);
+  assert.deepEqual([...levels[1].extendData.others], [2.949, 2.397]);
+  assert.ok(levels.every((o) => o.lock), 'a level cannot be dragged');
+});
+
+t('a level label sits above its line, and under it when another level is just above', () => {
+  const env = load();
+  const draw = env.registered.level.createPointFigures;
+  const yAxis = { convertToPixel: (v) => 1000 - v * 100 }; // a higher price is higher on the screen
+  const label = (price, others) => draw({ coordinates: [{ x: 0, y: yAxis.convertToPixel(price) }], bounding: { width: 400 }, yAxis,
+    overlay: { extendData: { text: 'x', color: '#fff', others } } })[1].attrs.baseline;
+  assert.equal(label(2.0, []), 'bottom', 'alone: above its line');
+  assert.equal(label(2.0, [2.25]), 'bottom', 'the next level 25 px up leaves room');
+  assert.equal(label(2.0, [2.19]), 'top', 'at 19 px the lower label goes under its line');
+  assert.equal(label(2.0, [2.1]), 'top', 'and at 10 px');
+  assert.equal(label(2.1, [2.0]), 'bottom', 'the upper one stays above');
+});
+
+t('what to tap while drawing floats over the chart and goes when the drawing is done', () => {
+  const env = load();
+  show(env, 'BTCUSDT|1h');
+  assert.notEqual(env.el('hint').style.display, 'block', 'nothing to say yet');
+  env.lab.openDraw();
+  env.el('menu').children[0].click();
+  assert.equal(env.el('hint').style.display, 'block');
+  env.inGroup('draw')[0].onDrawEnd();
+  assert.equal(env.el('hint').style.display, 'none');
 });

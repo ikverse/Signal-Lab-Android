@@ -96,6 +96,29 @@ class AlertTextTest {
     }
 
     @Test
+    fun anAlertAboutATradeCarriesItsNumbersForTheInbox() {
+        val opened = org.json.JSONObject(AlertText.opened(plan(), tradeId = 7).facts!!)
+        assertEquals("donchian20_1h", opened.getString("variant"))
+        assertEquals(7L, opened.getLong("trade"))
+        assertEquals(142.35, opened.getDouble("entry"))
+        assertEquals(145.9, opened.getDouble("target"))
+        assertEquals(140.6, opened.getDouble("stop"))
+        assertFalse(opened.has("trails"))
+        val trail = org.json.JSONObject(AlertText.opened(plan(target = null, stop = 140.6, limit = 72, mode = ExitMode.TRAIL, variant = "trend_ma20_1h")).facts!!)
+        assertTrue(trail.getBoolean("trails"))
+        assertFalse(trail.has("target"))
+        assertFalse(trail.has("trade"), "no id is written when none is known")
+        val closed = org.json.JSONObject(AlertText.closed("donchian20_1h", "SOLUSDT", Timeframe.H1, ExitReason.TARGET, 0.0182, 0.002, tradeId = 9).facts!!)
+        assertEquals("target", closed.getString("reason"))
+        assertEquals(0.0182, closed.getDouble("net"))
+        assertEquals(0.002, closed.getDouble("random"))
+        assertEquals(9L, closed.getLong("trade"))
+        val noRandom = org.json.JSONObject(AlertText.closed("x", "SOLUSDT", Timeframe.H1, ExitReason.STOP, -0.01, Double.NaN).facts!!)
+        assertFalse(noRandom.has("random"), "a figure that is not a number is left out")
+        assertNull(AlertText.blocked().facts, "an alert that is not about a trade has none")
+    }
+
+    @Test
     fun aClosedTradeSaysHowItEndedAndWhatRandomEntriesDid() {
         val t = AlertText.closed("donchian20_1h", "SOLUSDT", Timeframe.H1, ExitReason.TARGET, 0.0182, 0.002)
         assertEquals("Paper trade closed: SOL 1h, target hit", t.title)

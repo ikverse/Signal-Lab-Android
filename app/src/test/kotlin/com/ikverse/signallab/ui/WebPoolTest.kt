@@ -132,6 +132,11 @@ class WebPoolScreensTest {
     private val made = mutableListOf<WebPage>()
 
     private fun click(t: String) {
+        // A place behind More is reached through it.
+        if (t.startsWith("nav-") && rule.onAllNodesWithTag(t).fetchSemanticsNodes().isEmpty()) {
+            rule.onNodeWithTag("nav-More").performClick()
+            rule.waitForIdle()
+        }
         rule.onNodeWithTag(t).performClick()
         rule.waitForIdle()
     }

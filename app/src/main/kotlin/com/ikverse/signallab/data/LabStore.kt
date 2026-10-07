@@ -45,6 +45,12 @@ object PatternLabels {
         val id = LabPatterns.idOf(variant) ?: return VariantLabels.describe(variant)
         return "Lab, forward-only: " + (labTitles[id] ?: "pattern $id")
     }
+
+    /** The name for a row: the engine's short name, or "Lab · " and the lab pattern's title. */
+    fun short(variant: String): String {
+        val id = LabPatterns.idOf(variant) ?: return VariantLabels.short(variant)
+        return "Lab · " + (labTitles[id] ?: "pattern $id")
+    }
 }
 
 /** The lab patterns being, or once, forward-tested, in the record database. Nothing in it is ever changed or removed. */

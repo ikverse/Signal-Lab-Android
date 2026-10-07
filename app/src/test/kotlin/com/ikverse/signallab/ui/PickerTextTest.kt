@@ -28,7 +28,7 @@ class PickerTextTest {
         assertEquals("24h $vol", Fmt.offerLine(offer(0.5), PickSource.VOLUME, PickWindow.H24, now), "volume ignores any number it is handed")
         assertEquals("+18.30% in 24h · $vol", Fmt.offerLine(offer(0.183), PickSource.GAINERS, PickWindow.H24, now))
         assertEquals("+3.00% in 1h · $vol", Fmt.offerLine(offer(0.03), PickSource.GAINERS, PickWindow.H1, now))
-        assertEquals("-7.25% in 7d · $vol", Fmt.offerLine(offer(-0.0725), PickSource.LOSERS, PickWindow.D7, now))
+        assertEquals("−7.25% in 7d · $vol", Fmt.offerLine(offer(-0.0725), PickSource.LOSERS, PickWindow.D7, now))
         assertEquals("12.3K trades in 24h · $vol", Fmt.offerLine(offer(12_345.0), PickSource.ACTIVE, PickWindow.H24, now))
         assertEquals("950 trades in 24h · $vol", Fmt.offerLine(offer(950.0), PickSource.ACTIVE, PickWindow.H24, now))
         assertEquals("44.4% range in 24h · $vol", Fmt.offerLine(offer(0.444), PickSource.VOLATILE, PickWindow.H24, now))

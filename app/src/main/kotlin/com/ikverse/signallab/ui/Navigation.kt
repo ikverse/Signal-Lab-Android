@@ -8,10 +8,26 @@ import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 
-/** Where in the app the user is. Eight places; the side rail shows all of them and the bottom bar scrolls sideways through all of them. */
+/** Where in the app the user is. Eight places, and More, the page that leads to the four used least. */
 enum class Dest(val label: String) {
-    Markets("Markets"), Trades("Trades"), Scorecard("Scorecard"), Analyst("Analyst"), Alerts("Alerts"), Learn("Learn"), Lists("Lists"), Settings("Settings")
+    Markets("Markets"), Trades("Trades"), Scorecard("Scorecard"), Analyst("Analyst"), Alerts("Alerts"), Learn("Learn"), Lists("Lists"), Settings("Settings"),
+    More("More"),
 }
+
+/** The places in the bar along the bottom (and the side bar): the four used most, then More. */
+val BarPlaces = listOf(Dest.Markets, Dest.Trades, Dest.Scorecard, Dest.Analyst, Dest.More)
+
+/** The places reached through More. */
+val MorePlaces = listOf(Dest.Alerts, Dest.Learn, Dest.Lists, Dest.Settings)
+
+/** The bar's place that stands for [dest]: itself, or More for the places behind it. */
+fun barPlaceOf(dest: Dest): Dest = if (dest in MorePlaces) Dest.More else dest
+
+/**
+ * Whether to hide the status bar: on a phone held sideways (wider than tall, and under 480 dp tall), where every line of height
+ * counts. A tablet held sideways keeps it.
+ */
+fun hideStatusBar(widthDp: Int, heightDp: Int): Boolean = widthDp > heightDp && heightDp < 480
 
 /** How much room there is. Decided by the window's width, never by the phone's model, so rotating or resizing just switches layouts. */
 enum class LayoutClass {
@@ -58,6 +74,7 @@ class NavState(
     alertsGroup: AlertGroup = AlertGroup.All,
     trail: List<Dest> = emptyList(),
     analystReport: Long? = null,
+    chartTrade: Long? = null,
 ) {
     var dest by mutableStateOf(dest)
     var symbol by mutableStateOf(symbol)
@@ -75,6 +92,9 @@ class NavState(
     /** The Analyst report on show; null for the questions and the list of reports. */
     var analystReport by mutableStateOf(analystReport)
 
+    /** The open trade whose levels the chart shows; null for the newest on that chart. */
+    var chartTrade by mutableStateOf(chartTrade)
+
     var trail by mutableStateOf(trail)
         private set
 
@@ -87,12 +107,13 @@ class NavState(
         dest = to
     }
 
-    /** Opens a coin on one of its charts, or on its Details. */
-    fun openCoin(symbol: String, timeframe: String? = null, tab: MarketsTab = MarketsTab.Chart, fromApp: Boolean = false) {
+    /** Opens a coin on one of its charts, or on its Details; with [trade], the chart shows that trade's levels. */
+    fun openCoin(symbol: String, timeframe: String? = null, tab: MarketsTab = MarketsTab.Chart, fromApp: Boolean = false, trade: Long? = null) {
         jump(Dest.Markets, fromApp)
         this.symbol = symbol
         this.timeframe = timeframe
         marketsTab = tab
+        chartTrade = trade
     }
 
     fun openLearn(page: String?, fromApp: Boolean = true) {
@@ -154,7 +175,10 @@ class NavState(
             (narrow && dest == Dest.Learn && learnPage != null) || (narrow && dest == Dest.Analyst && analystReport != null) ||
             (narrow && dest == Dest.Markets && marketsTab != MarketsTab.Coins) || dest != Dest.Markets
 
-    /** Back: out of the debug page, then along the trail of jumps, then one step towards Markets. Returns false when there is nothing to step out of. */
+    /**
+     * Back: out of the debug page, then along the trail of jumps, then out of a page within a place, then one step towards Markets (through
+     * More for the places behind it). Returns false when there is nothing to step out of.
+     */
     fun back(): Boolean = when {
         showDebug -> { showDebug = false; true }
         trail.isNotEmpty() -> {
@@ -169,6 +193,8 @@ class NavState(
         narrow && dest == Dest.Learn && learnPage != null -> { learnPage = null; true }
         narrow && dest == Dest.Analyst && analystReport != null -> { analystReport = null; true }
         narrow && dest == Dest.Markets && marketsTab != MarketsTab.Coins -> { marketsTab = MarketsTab.Coins; true }
+        // A place behind More steps back to More, which steps back to Markets like any other place.
+        dest in MorePlaces -> { dest = Dest.More; true }
         dest != Dest.Markets -> { dest = Dest.Markets; true }
         else -> false
     }
@@ -182,6 +208,7 @@ class NavState(
                     "dest" to it.dest.name, "symbol" to it.symbol, "tf" to it.timeframe, "learn" to it.learnPage, "tab" to it.marketsTab.name,
                     "debug" to it.showDebug, "ts" to it.tradesStatus.name, "tq" to it.tradesQuery, "te" to it.tradesExpanded,
                     "ag" to it.alertsGroup.name, "trail" to it.trail.joinToString(",") { d -> d.name }, "ar" to it.analystReport,
+                    "ct" to it.chartTrade,
                 )
             },
             restore = {
@@ -190,7 +217,7 @@ class NavState(
                     MarketsTab.valueOf(it["tab"] as String), it["debug"] as Boolean,
                     TradeFilter.valueOf(it["ts"] as String), it["tq"] as String, it["te"] as Long?, AlertGroup.valueOf(it["ag"] as String),
                     (it["trail"] as String).split(',').filter { s -> s.isNotEmpty() }.map { s -> Dest.valueOf(s) },
-                    it["ar"] as Long?,
+                    it["ar"] as Long?, it["ct"] as Long?,
                 )
             },
         )

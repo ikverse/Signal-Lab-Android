@@ -30,4 +30,22 @@ object VariantLabels {
         if (variant.startsWith("intraday_breakout_")) return "Intraday breakout: closed above the usual range around the day's open"
         return variant
     }
+
+    /**
+     * The name of what fired, short enough for a row: "Breakout · 20 high", "Bullish hikkake". Two variants share a short name only
+     * when they share a description (the same pattern on different chart sizes). Falls back to the variant's own name.
+     */
+    fun short(variant: String): String {
+        trend.matchEntire(variant)?.let { return "Trend · ${it.groupValues[1]} avg" }
+        donchian.matchEntire(variant)?.let { return "Breakout · ${it.groupValues[1]} high" }
+        tsMomentum.matchEntire(variant)?.let { return "Momentum · ${it.groupValues[1]} wk" }
+        xsMomentum.matchEntire(variant)?.let { return "Ranking · ${it.groupValues[1]} wk" }
+        if (variant.startsWith("fade1h_hold24_")) return "Drop fade · 1h, held 24"
+        fade.matchEntire(variant)?.let { return "Drop fade · ${it.groupValues[1]}h" }
+        intradayMomentum.matchEntire(variant)?.let { return "Intraday momentum · ${if (it.groupValues[1] == "30m") "30m" else "1h"}" }
+        if (variant.startsWith("bullish_harami_")) return "Bullish harami"
+        if (variant.startsWith("bullish_hikkake_")) return "Bullish hikkake"
+        if (variant.startsWith("intraday_breakout_")) return "Intraday breakout"
+        return variant
+    }
 }

@@ -22,7 +22,25 @@ object AlertText {
     /** A market warning: shown, never traded. */
     const val KIND_WARNING = "warning"
 
-    class Text(val title: String, val body: String, val link: String?)
+    /** An alert's words, where touching it goes, and for one about a trade the numbers behind it ([facts], see [facts]). */
+    class Text(val title: String, val body: String, val link: String?, val facts: String? = null)
+
+    /**
+     * The numbers behind an alert about a trade, as JSON: the pattern, the trade's id, and either its prices (opened) or how it ended
+     * (closed). The inbox shows these as figures; the notification keeps the words. Figures that are missing or not finite are left out.
+     */
+    fun facts(
+        variant: String, tradeId: Long?, entry: Double? = null, target: Double? = null, stop: Double? = null, trails: Boolean = false,
+        reason: ExitReason? = null, net: Double? = null, random: Double? = null,
+    ): String {
+        val o = org.json.JSONObject().put("variant", variant)
+        tradeId?.let { o.put("trade", it) }
+        fun num(key: String, v: Double?) { if (v != null && v.isFinite()) o.put(key, v) }
+        num("entry", entry); num("target", target); num("stop", stop); num("net", net); num("random", random)
+        if (trails) o.put("trails", true)
+        reason?.let { o.put("reason", it.label) }
+        return o.toString()
+    }
 
     fun coin(symbol: String): String = symbol.removeSuffix("USDT")
 
@@ -58,7 +76,7 @@ object AlertText {
     fun newCoinLine(symbol: String): String =
         "${coin(symbol)} was listed on Binance less than ${DataConfig.NEW_COIN_DAYS} days ago. New coins fell on average in their first month."
 
-    fun opened(p: LiveScan.Plan, newCoin: Boolean = false): Text {
+    fun opened(p: LiveScan.Plan, newCoin: Boolean = false, tradeId: Long? = null): Text {
         val levels = when {
             p.mode == ExitMode.TRAIL ->
                 "Entry ${price(p.entryPrice)}, safety stop ${price(p.stop!!)}, then a stop that follows the price up." +
@@ -73,7 +91,10 @@ object AlertText {
             else -> "Entry ${price(p.entryPrice)}, held ${p.limit} ${if (p.limit == 1) "candle" else "candles"}."
         }
         val note = if (newCoin) " ${newCoinLine(p.symbol)}" else ""
-        return Text("Paper trade opened: ${coin(p.symbol)} ${p.tf.label}", "${PatternLabels.describe(p.variant)}. $levels$note", link(p.symbol, p.tf))
+        return Text(
+            "Paper trade opened: ${coin(p.symbol)} ${p.tf.label}", "${PatternLabels.describe(p.variant)}. $levels$note", link(p.symbol, p.tf),
+            facts(p.variant, tradeId, p.entryPrice, p.target, p.stop, trails = p.mode == ExitMode.TRAIL),
+        )
     }
 
     fun closed(variant: String, symbol: String, tf: Timeframe, reason: ExitReason, net: Double, randomMean: Double, tradeId: Long? = null): Text {
@@ -87,6 +108,7 @@ object AlertText {
             "Paper trade closed: ${coin(symbol)} ${tf.label}, $how",
             "${PatternLabels.describe(variant)}. Net ${percent(net)} after costs$baseline.",
             tradesLink(symbol, tradeId),
+            facts(variant, tradeId, reason = reason, net = net, random = randomMean),
         )
     }
 

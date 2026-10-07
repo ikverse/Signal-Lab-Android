@@ -3,6 +3,7 @@ package com.ikverse.signallab
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +15,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -24,6 +28,7 @@ import com.ikverse.signallab.ui.DimLevel
 import com.ikverse.signallab.ui.PermissionPrompt
 import com.ikverse.signallab.ui.SignalLabApp
 import com.ikverse.signallab.ui.WebPool
+import com.ikverse.signallab.ui.hideStatusBar
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -52,6 +57,7 @@ class MainActivity : ComponentActivity() {
             receiveShared(intent)
         }
         setContent { SignalLabApp(app.model, debug = BuildConfig.DEBUG, webPool = webPool) }
+        applyStatusBar(resources.configuration)
         lifecycleScope.launch {
             app.graph.permissions.accepted.collect { openSystemPrompt(it) }
         }
@@ -110,6 +116,23 @@ class MainActivity : ComponentActivity() {
         window.attributes = window.attributes.also {
             it.screenBrightness = if (on) level.brightness else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
+    }
+
+    /** Turning the phone does not rebuild this screen (see the manifest), so the status bar is decided again here. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyStatusBar(newConfig)
+    }
+
+    /**
+     * Hides the status bar on a phone held sideways, where the screen is short (see [hideStatusBar]), and shows it again otherwise. A
+     * swipe down from the top edge shows it for a moment. The gesture bar at the bottom is never hidden.
+     */
+    private fun applyStatusBar(config: Configuration) {
+        val bars = WindowCompat.getInsetsController(window, window.decorView)
+        bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (hideStatusBar(config.screenWidthDp, config.screenHeightDp)) bars.hide(WindowInsetsCompat.Type.statusBars())
+        else bars.show(WindowInsetsCompat.Type.statusBars())
     }
 
     /** A notification tapped, or an answer shared, while the app is already open. */

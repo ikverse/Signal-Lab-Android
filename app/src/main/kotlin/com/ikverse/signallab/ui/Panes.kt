@@ -3,7 +3,6 @@ package com.ikverse.signallab.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -19,8 +18,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -156,15 +157,15 @@ fun rememberPaneLayout(prefs: PanelPrefs, key: String): PaneLayout {
 }
 
 /**
- * A thin line between two panels, with a grip to drag it and a small button that hides the panel beside it (or brings it back).
- * [vertical] is a line standing between panels that sit side by side. [onDrag] gets how far it moved, in dp, along the line's normal.
+ * A thin line between two panels with a small grip on it: drag the line to resize, touch the grip to hide the panel beside it (or
+ * bring it back). Nothing is drawn over either panel. [vertical] is a line standing between panels that sit side by side. [onDrag]
+ * gets how far it moved, in dp, along the line's normal.
  */
 @Composable
 fun PaneDivider(
     vertical: Boolean,
     hidden: Boolean,
     label: String,
-    arrow: String,
     onDrag: (Float) -> Unit,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
@@ -183,14 +184,17 @@ fun PaneDivider(
         contentAlignment = Alignment.Center,
     ) {
         if (vertical) VRule() else HRule()
-        // The button is the full 48 dp to touch even where the strip is thinner.
+        // The grip is small, but what it answers to is the full 48 dp, even where the strip is thinner.
         Box(
-            Modifier.requiredSize(if (vertical) PaneMath.DIVIDER.dp else 64.dp, MinTouch).pressScale(source).background(Palette.Raised)
-                .clickable(interactionSource = source, indication = LocalIndication.current, role = Role.Button, onClick = onToggle)
+            Modifier.requiredSize(if (vertical) PaneMath.DIVIDER.dp else 64.dp, MinTouch).pressScale(source)
+                .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onToggle)
                 .semantics { contentDescription = "${if (hidden) "Show" else "Hide"} $label" },
             contentAlignment = Alignment.Center,
         ) {
-            Text(arrow, style = Type.BodyStrong.copy(color = Palette.Muted))
+            Box(
+                Modifier.size(if (vertical) 5.dp else 28.dp, if (vertical) 28.dp else 5.dp).clip(RoundedCornerShape(3.dp))
+                    .background(if (hidden) Palette.Faint else Palette.ChipEdge),
+            )
         }
     }
 }
@@ -219,7 +223,7 @@ fun SplitPane(
         Row(Modifier.fillMaxSize()) {
             if (paneOpen(hidden, w)) Column(Modifier.width(w.dp).pane("list")) { list() }
             PaneDivider(
-                vertical = true, hidden = hidden, label = label, arrow = if (hidden) "›" else "‹",
+                vertical = true, hidden = hidden, label = label,
                 onDrag = { pane.set("list", PaneMath.dragged(target, it, max = total - PaneMath.DIVIDER - PaneMath.MIN_PAGE)) },
                 onToggle = { pane.toggle("list") }, modifier = Modifier.testTag("divider-$key"),
                 onDragging = { pane.dragging = it },

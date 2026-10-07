@@ -140,10 +140,24 @@ internal fun safeWebView(context: android.content.Context, client: WebViewClient
 val DefaultIndicators = listOf("VOL")
 
 /**
- * The chart: KLineChart in a web view, with the open paper trades drawn on it, the live price as a line, and a strip above it for
- * indicators, drawing tools and a jump to the latest candle. [indicators] are the ids to show and [onIndicators] hears each change;
- * drawings are kept in [memory] per coin and chart size. In tests (and anywhere a web view cannot run) it is a plain line of text
- * saying what it would draw.
+ * The app's buttons over the chart (Indicators, Draw, Latest) reach the chart page through this. Until a chart is on screen, and in
+ * tests, a press does nothing.
+ */
+class ChartControl {
+    internal var run: (String) -> Unit = {}
+
+    fun indicators() = run("signalLab.openIndicators()")
+
+    fun draw() = run("signalLab.openDraw()")
+
+    fun latest() = run("signalLab.latest()")
+}
+
+/**
+ * The chart: KLineChart in a web view, with an open paper trade's levels drawn on it and the live price as a line. Its menus
+ * (indicators, drawing tools) and the jump to the latest candle are opened through [control], from the app's own buttons. [indicators]
+ * are the ids to show and [onIndicators] hears each change; drawings are kept in [memory] per coin and chart size. In tests (and
+ * anywhere a web view cannot run) it is a plain line of text saying what it would draw.
  */
 @Composable
 fun ChartView(
@@ -153,6 +167,7 @@ fun ChartView(
     indicators: List<String> = DefaultIndicators,
     onIndicators: (List<String>) -> Unit = {},
     memory: ChartMemory = ChartMemory.Shared,
+    control: ChartControl? = null,
 ) {
     if (!LocalWebViews.current) {
         Box(modifier.fillMaxSize().background(Palette.Background), contentAlignment = Alignment.Center) {
@@ -168,6 +183,7 @@ fun ChartView(
     SideEffect {
         kept.memory = memory
         kept.onIndicators = onIndicators
+        control?.run = { js -> if (kept.loaded) kept.view.evaluateJavascript(js, null) }
     }
     LaunchedEffect(chart, kept.loaded) {
         if (kept.loaded && chart != null) {

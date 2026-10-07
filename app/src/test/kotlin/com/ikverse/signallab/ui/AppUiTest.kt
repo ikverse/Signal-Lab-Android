@@ -2,6 +2,8 @@ package com.ikverse.signallab.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertContentDescriptionContains
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.getBoundsInRoot
@@ -49,6 +51,8 @@ import org.robolectric.annotation.Config
 private const val PHONE_UPRIGHT = "w400dp-h800dp"
 private const val PHONE_SIDEWAYS = "w700dp-h360dp"
 private const val TABLET = "w1200dp-h700dp"
+/** Wider than a phone held upright and taller than one held sideways: a small tablet, or an open foldable. */
+private const val SMALL_TABLET = "w700dp-h900dp"
 
 /** The screens, drawn for real (without web views) and used the way a person would: what shows, what a touch does, what survives rotation. */
 @OptIn(ExperimentalTestApi::class)
@@ -65,8 +69,11 @@ class AppUiTest {
     private fun tag(t: String) = rule.onNodeWithTag(t)
 
     private fun click(t: String) {
-        // A place far along the bottom bar, or down a side rail too short for every place, is scrolled to before it is touched.
-        if (t.startsWith("nav-")) tag(t).performScrollTo()
+        // A place behind More (Alerts, Learn, Lists, Settings) is reached through it, the way a person would.
+        if (t.startsWith("nav-") && !exists(t)) {
+            tag("nav-More").performClick()
+            rule.waitForIdle()
+        }
         tag(t).performClick()
         rule.waitForIdle()
     }
@@ -145,11 +152,12 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `a phone held upright has a bottom bar that scrolls through every place, and one panel at a time`() {
+    fun `a phone held upright has a bottom bar with the five places, and one panel at a time`() {
         show(FakeApp.full())
         assertTrue(exists("bottom-bar"))
         assertTrue(!exists("rail"))
-        for (d in Dest.entries) assertTrue(exists("nav-${d.name}"))
+        for (d in BarPlaces) assertTrue(d.name, exists("nav-${d.name}"))
+        for (d in MorePlaces) assertTrue(d.name, !exists("nav-${d.name}"))
         assertTrue(exists("markets-compact"))
         assertTrue(exists("coin-list"))
         assertTrue(!exists("details"))
@@ -181,14 +189,94 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_SIDEWAYS)
     @Test
-    fun `a small phone held sideways has a side rail with every place and two panels`() {
+    fun `a small phone held sideways has a side rail with the five places, the coins and the chart`() {
         show(FakeApp.full())
         assertTrue(exists("rail"))
         assertTrue(!exists("bottom-bar"))
-        for (d in Dest.entries) assertTrue(d.name, exists("nav-${d.name}"))
-        assertTrue(exists("markets-medium"))
+        for (d in BarPlaces) assertTrue(d.name, exists("nav-${d.name}"))
+        assertTrue(exists("markets-short"))
         assertTrue(exists("coin-list"))
-        assertTrue(exists("details"))
+        assertTrue(exists("chart-placeholder"))
+        assertTrue("the open trades wait behind their button", !exists("details"))
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `held sideways the open trades slide in over the chart, and Back or the cross slides them away`() {
+        show(FakeApp.full())
+        tag("open-trades").assertTextContains("1 trades", substring = true)
+        click("open-trades")
+        rule.waitUntil(3_000) { exists("details") }
+        assertTrue(exists("panel-header"))
+        assertTrue("the chart stays under the panel", exists("chart-placeholder"))
+        back()
+        rule.waitUntil(3_000) { !exists("details") }
+        assertTrue("Back closed the panel and stayed on Markets", exists("markets-short"))
+        click("open-trades")
+        rule.waitUntil(3_000) { exists("details") }
+        rule.onNodeWithContentDescription("Close").performClick()
+        rule.waitUntil(3_000) { !exists("details") }
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `held sideways the coin panel is narrow and can be hidden for a wider chart`() {
+        show(FakeApp.full())
+        tag("pane-coins").assertWidthIsEqualTo(216.dp)
+        val chart = widthOf("pane-chart").value
+        rule.onNodeWithContentDescription("Hide coins").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("pane-coins"))
+        assertTrue(widthOf("pane-chart").value > chart + 150f)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the coins tab says which list is watched, and its bell opens Alerts`() {
+        show(FakeApp.full())
+        rule.onNode(hasText("My coins") and hasAnyAncestor(hasTestTag("watch-header"))).assertExists()
+        rule.onNode(hasText("3 coins · 15m · 1h · 4h · 1d") and hasAnyAncestor(hasTestTag("watch-header"))).assertExists()
+        rule.onNodeWithContentDescription("Watching").assertExists()
+        rule.onNodeWithContentDescription("Alerts").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("alerts"))
+        back()
+        assertTrue("Back from the bell returns to Markets", exists("markets-compact"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `an open trade's Show on chart opens the chart on its size, with its levels`() {
+        val nav = NavState()
+        show(FakeApp.full(), nav = nav)
+        rule.onNodeWithContentDescription("Details").performClick()
+        rule.waitForIdle()
+        rule.onNode(hasText("BTC") and hasAnyAncestor(hasTestTag("coin-strip"))).assertExists()
+        rule.onAllNodes(hasText("Show on chart") and hasAnyAncestor(hasTestTag("open-1"))).onFirst().performClick()
+        rule.waitForIdle()
+        assertEquals(MarketsTab.Chart, nav.marketsTab)
+        assertEquals("1h", nav.timeframe)
+        assertEquals(1L, nav.chartTrade)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the chart shows one trade's levels at a time and steps between them`() {
+        val levels = listOf(
+            LevelUi(LevelKind.ENTRY, "Entry", 100.0, 1), LevelUi(LevelKind.STOP, "Stop", 95.0, 1),
+            LevelUi(LevelKind.ENTRY, "Entry", 101.0, 4), LevelUi(LevelKind.TARGET, "Target", 110.0, 4),
+        )
+        val app = FakeApp.full().let { FakeApp(lists = it.lists, markets = FakeMarkets(listOf(FakeApp.btc, FakeApp.eth), levels), trades = it.trades) }
+        show(app)
+        click("coin-BTCUSDT")
+        rule.waitUntil(3_000) { exists("level-strip") }
+        tag("chart-placeholder").assertTextContains("2 levels", substring = true)
+        tag("level-count").assertTextEquals("1 of 2")
+        rule.onNode(hasText("Breakout", substring = true) and hasAnyAncestor(hasTestTag("level-strip"))).assertExists()
+        rule.onNodeWithContentDescription("Next trade").performClick()
+        rule.waitForIdle()
+        tag("level-count").assertTextEquals("2 of 2")
+        tag("chart-placeholder").assertTextContains("2 levels", substring = true)
     }
 
     @Config(qualifiers = TABLET)
@@ -363,6 +451,8 @@ class AppUiTest {
         back()
         assertTrue(exists("learn-trend"))
         back()
+        assertTrue("Learn was opened from More, so Back returns there", exists("more"))
+        back()
         assertTrue(exists("markets-compact"))
     }
 
@@ -373,7 +463,7 @@ class AppUiTest {
     fun `the trades screen filters by status and by search, and the summary follows`() {
         show(FakeApp.full())
         click("nav-Trades")
-        tag("trades-summary").assertTextEquals("1 open · 2 closed · average +1.00% after costs")
+        tag("trades-summary").assertContentDescriptionEquals("1 open · 2 closed · average +1.00% after costs")
         rule.onNodeWithContentDescription("Closed").performClick()
         rule.waitForIdle()
         assertTrue(!exists("trade-1"))
@@ -388,7 +478,7 @@ class AppUiTest {
         rule.waitForIdle()
         assertTrue(exists("trade-3"))
         assertTrue(!exists("trade-1"))
-        tag("trades-summary").assertTextEquals("0 open · 1 closed · average -1.00% after costs")
+        tag("trades-summary").assertContentDescriptionEquals("0 open · 1 closed · average −1.00% after costs")
         rule.onNodeWithContentDescription("Filter by coin, pattern or chart").performTextReplacement("zzz")
         rule.waitForIdle()
         rule.onNodeWithText("Nothing matches").assertIsDisplayed()
@@ -402,8 +492,9 @@ class AppUiTest {
         click("trade-2")
         rule.onNodeWithText("Result after costs").assertIsDisplayed()
         rule.onAllNodes(hasText("+3.00%", substring = true)).assertCountEquals(2)
-        rule.onNodeWithText("Held for").assertIsDisplayed()
-        rule.onAllNodes(hasText("What is this pattern?")).onFirst().performScrollTo().performClick()
+        rule.onNode(hasText("3 candles", substring = true)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("2.90 pts better than random entries over the same stretch.").performScrollTo().assertIsDisplayed()
+        rule.onAllNodes(hasText("About this pattern")).onFirst().performScrollTo().performClick()
         rule.waitForIdle()
         assertTrue(exists("learn-screen"))
     }
@@ -414,7 +505,128 @@ class AppUiTest {
         show(FakeApp.full().also { it.trades.state.value = emptyList() })
         click("nav-Trades")
         rule.onNodeWithText("No paper trades yet").assertIsDisplayed()
-        tag("trades-summary").assertTextEquals("0 open · 0 closed")
+        tag("trades-summary").assertContentDescriptionEquals("0 open · 0 closed")
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `held sideways Trades shows the list and the chosen trade side by side`() {
+        show(FakeApp.full())
+        click("nav-Trades")
+        assertTrue(exists("trade-pane"))
+        rule.onNodeWithText("Choose a trade").assertExists()
+        click("trade-2")
+        assertTrue(exists("trade-detail"))
+        rule.onNode(hasText("Result after costs") and hasAnyAncestor(hasTestTag("trade-pane"))).assertExists()
+        assertTrue("the row stays a row; nothing opens under it", rule.onAllNodesWithTag("trade-detail").fetchSemanticsNodes().size == 1)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a pattern's group folds away and back when its header is touched`() {
+        show(FakeApp.full())
+        click("nav-Trades")
+        assertTrue(exists("trade-1"))
+        click("trades-group-Breakout: close above the 20-candle high")
+        assertTrue(!exists("trade-1"))
+        assertTrue(!exists("trade-2"))
+        click("trades-group-Breakout: close above the 20-candle high")
+        assertTrue(exists("trade-1"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `an alert about a trade shows its coin, what happened and its figures, and an old one its words`() {
+        val app = FakeApp.full().also {
+            it.alerts.state.value = listOf(
+                FakeApp.alert(5, "exit").copy(facts = AlertFacts("donchian20_1h", "Breakout · 20 high", tradeId = 2, reason = "target", net = 0.0154, random = 0.0)),
+                FakeApp.alert(6, "signal").copy(facts = AlertFacts("donchian20_1h", "Breakout · 20 high", entry = 2.126, target = 2.207, stop = 2.036)),
+                FakeApp.alert(7, "warning"),
+            )
+        }
+        show(app)
+        click("nav-Alerts")
+        rule.onNode(hasText("Target hit · Breakout · 20 high") and hasAnyAncestor(hasTestTag("alert-5")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("+1.54%") and hasAnyAncestor(hasTestTag("alert-5")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Entry 2.126 → target 2.207 (+3.81%) · stop 2.036") and hasAnyAncestor(hasTestTag("alert-6")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Title 7") and hasAnyAncestor(hasTestTag("alert-7")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Today", substring = true)).assertDoesNotExist()
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `held sideways an alert opens beside the list, with the trade it is about`() {
+        val app = FakeApp.full().also {
+            it.alerts.state.value = listOf(
+                FakeApp.alert(5, "exit").copy(facts = AlertFacts("donchian20_1h", "Breakout · 20 high", tradeId = 2, reason = "target", net = 0.03, random = 0.001)),
+                FakeApp.alert(7, "warning"),
+            )
+        }
+        show(app)
+        click("nav-Alerts")
+        rule.onNodeWithText("Choose an alert").assertExists()
+        click("alert-5")
+        assertTrue("touching it stays on Alerts", exists("alert-pane"))
+        assertTrue(exists("trade-detail"))
+        rule.onNode(hasText("Result after costs") and hasAnyAncestor(hasTestTag("alert-pane"))).assertExists()
+        click("alert-7")
+        rule.onNode(hasText("Body 7") and hasAnyAncestor(hasTestTag("alert-pane"))).assertExists()
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a Learn page opens from a row with a chevron, and its arrow returns to the list`() {
+        show(FakeApp.full())
+        click("nav-Learn")
+        click("learn-trend")
+        rule.onNodeWithTag("learn-text").assertTextContains("Text of the trend page.", substring = true)
+        rule.onNodeWithContentDescription("Back to Learn").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("learn-trend"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a list row says whether it is watched, a coin is removed with its cross, and New list sits at the top`() {
+        val app = FakeApp.full()
+        show(app)
+        click("nav-Lists")
+        rule.onNodeWithText("Watching", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("3 coins · BTC, ETH, SOL").assertExists()
+        assertTrue(tag("new-list").getBoundsInRoot().top.value < 120f)
+        rule.onNodeWithText("My coins").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Remove ETH").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.lists.log.contains("remove 1 ETHUSDT") }
+        rule.onNodeWithContentDescription("15m, ticked").performScrollTo().assertExists()
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `costs save only once something changed, and why they cost what they do is a tap away`() {
+        val app = FakeApp.full()
+        openSettings(app)
+        tag("save-costs").performScrollTo().performClick()
+        rule.waitForIdle()
+        assertTrue("nothing changed, nothing saved", app.settings.log.none { it.startsWith("fee") })
+        rule.onNodeWithContentDescription("Exchange fee each way, in %").performScrollTo().performTextReplacement("0.075")
+        tag("save-costs").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.any { it.startsWith("fee") } }
+        click("why-costs")
+        assertTrue(exists("learn-screen"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `with room for two panels Settings lists its groups and shows the chosen one`() {
+        val app = FakeApp.full()
+        openSettings(app)
+        for (s in SettingsSection.entries) assertTrue(s.name, exists("settings-section-${s.name}"))
+        assertTrue("Costs comes first", exists("save-costs"))
+        rule.onNodeWithContentDescription("Scan in the background, on").assertDoesNotExist()
+        click("settings-section-Scanning")
+        rule.onNodeWithContentDescription("Scan in the background, on").assertExists()
+        assertTrue(!exists("save-costs"))
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -422,7 +634,8 @@ class AppUiTest {
     fun `the scorecard shows each pattern's row, its verdict, and the warning about testing many patterns`() {
         show(FakeApp.full())
         click("nav-Scorecard")
-        rule.onNodeWithText("Breakout: close above the 20-candle high · 1h").assertExists()
+        rule.onNodeWithText("Breakout: close above the 20-candle high").assertExists()
+        rule.onNode(hasText("1h") and hasAnyAncestor(hasTestTag("score-donchian20_1h")), useUnmergedTree = true).assertExists()
         rule.onNodeWithText("No verdict").assertExists()
         tag("multiple-tests-note").performScrollTo().assertTextContains("20 patterns have been tested", substring = true)
     }
@@ -432,8 +645,8 @@ class AppUiTest {
     fun `on a wide screen the scorecard has columns`() {
         show(FakeApp.full())
         click("nav-Scorecard")
-        rule.onNodeWithText("VS RANDOM").assertExists()
-        rule.onNodeWithText("WIN RATE").assertExists()
+        rule.onNodeWithText("vs random").assertExists()
+        rule.onNodeWithText("Win").assertExists()
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -484,8 +697,8 @@ class AppUiTest {
     fun `the learn list shows every group and a page opens, with back to the list`() {
         show(FakeApp.full())
         click("nav-Learn")
-        rule.onNodeWithText("HOW IT WORKS").assertExists()
-        rule.onNodeWithText("PATTERNS").assertExists()
+        rule.onNodeWithText("How it works").assertExists()
+        rule.onNodeWithText("Patterns").assertExists()
         click("learn-trend")
         rule.onNodeWithTag("learn-text").assertTextContains("Text of the trend page.", substring = true)
         back()
@@ -653,6 +866,8 @@ class AppUiTest {
     private fun openUpdates(app: FakeApp) {
         show(app)
         click("nav-Settings")
+        // With room for two panels, Settings shows one group at a time: choose Updates.
+        if (exists("settings-section-Updates")) click("settings-section-Updates")
         tag("updates").performScrollTo()
     }
 
@@ -898,9 +1113,9 @@ class AppUiTest {
         assertTrue(!exists("pane-details"))
     }
 
-    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Config(qualifiers = SMALL_TABLET)
     @Test
-    fun `a small phone held sideways can resize the list and hide the details under the chart`() {
+    fun `a small tablet can resize the list and hide the details under the chart`() {
         show(FakeApp.full())
         tag("pane-coins").assertWidthIsEqualTo(220.dp)
         val chart = heightOf("pane-chart").value
@@ -925,7 +1140,7 @@ class AppUiTest {
         assertTrue(exists("pane-chart"))
     }
 
-    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Config(qualifiers = SMALL_TABLET)
     @Test
     fun `the details under the chart cannot be dragged so tall that the chart disappears`() {
         show(FakeApp.full())
@@ -1385,6 +1600,10 @@ class AppUiTest {
     @Test
     fun `the dim switch explains what it does and what it does not`() {
         openSettings(FakeApp.full())
+        rule.onNodeWithText("For a phone left on a desk or a charger.").performScrollTo().assertExists()
+        rule.onNodeWithText("Your usual brightness comes back", substring = true).assertDoesNotExist()
+        rule.onNodeWithContentDescription("About Keep the screen on and dim it").performScrollTo().performClick()
+        rule.waitForIdle()
         rule.onNodeWithText("Your usual brightness comes back", substring = true).performScrollTo().assertExists()
         rule.onNodeWithText("Scanning does not depend on it", substring = true).performScrollTo().assertExists()
     }
@@ -1415,7 +1634,7 @@ class AppUiTest {
         assertTrue(right("pane-chart") < left("rail"))
         assertTrue(right("pane-details") < left("rail"))
         assertTrue("the coin list is now the leftmost thing", left("pane-coins") < 20f)
-        assertEquals("the bar keeps its width", 112f, widthOf("rail").value, 0.6f)
+        assertEquals("the bar keeps its width", 72f, widthOf("rail").value, 0.6f)
     }
 
     @Config(qualifiers = PHONE_SIDEWAYS)
@@ -1424,7 +1643,7 @@ class AppUiTest {
         show(appWithRail(true))
         assertTrue(right("rail") > rootWidth() - 20f)
         assertTrue(right("pane-chart") < left("rail"))
-        for (d in Dest.entries) assertTrue("nav-${d.name}", exists("nav-${d.name}"))
+        for (d in BarPlaces) assertTrue("nav-${d.name}", exists("nav-${d.name}"))
     }
 
     @Config(qualifiers = PHONE_SIDEWAYS)
@@ -1436,7 +1655,7 @@ class AppUiTest {
         click("nav-Lists")
         assertTrue(exists("lists"))
         click("nav-Markets")
-        assertTrue(exists("markets-medium"))
+        assertTrue(exists("markets-short"))
         assertTrue(right("rail") > rootWidth() - 20f)
     }
 
@@ -1454,6 +1673,7 @@ class AppUiTest {
         val app = appWithRail(false)
         show(app)
         click("nav-Settings")
+        click("settings-section-Screen")
         assertTrue(left("rail") < 20f)
         rule.onNodeWithContentDescription("Side bar on the right, off").performScrollTo().performClick()
         rule.waitUntil(3_000) { app.settings.log.contains("rail right true") }
@@ -1471,6 +1691,8 @@ class AppUiTest {
     @Test
     fun `the side bar switch says what it does and when`() {
         openSettings(FakeApp.full())
+        rule.onNodeWithContentDescription("About Side bar on the right").performScrollTo().performClick()
+        rule.waitForIdle()
         rule.onNodeWithText("under your right thumb", substring = true).performScrollTo().assertExists()
         rule.onNodeWithText("Held upright, the bar along the bottom stays where it is", substring = true).performScrollTo().assertExists()
     }
@@ -1574,7 +1796,7 @@ class AppUiTest {
         show(app)
         click("nav-Trades")
         click("trade-3")
-        rule.onNodeWithText("Show on chart").performClick()
+        rule.onNodeWithText("Show on chart").performScrollTo().performClick()
         rule.waitForIdle()
         tag("chart-placeholder").assertTextContains("ETHUSDT", substring = true)
         noteText().assertTextContains("ETH is not in a list", substring = true)
@@ -1599,7 +1821,7 @@ class AppUiTest {
         openLink(app, Link("BTCUSDT", null, LinkPlace.TRADES, tradeId = 2))
         assertTrue(exists("trades"))
         rule.onNodeWithContentDescription("Filter by coin, pattern or chart").assertTextContains("BTC")
-        tag("trades-summary").assertTextContains("1 open · 1 closed", substring = true)
+        tag("trades-summary").assertContentDescriptionContains("1 open · 1 closed", substring = true)
         rule.onNodeWithText("Result after costs").assertExists()
     }
 
@@ -1610,10 +1832,10 @@ class AppUiTest {
         show(app)
         openLink(app, Link(null, null, LinkPlace.TRADES, status = "open"))
         chosen("Open").assertExists()
-        tag("trades-summary").assertTextContains("1 open · 0 closed", substring = true)
+        tag("trades-summary").assertContentDescriptionContains("1 open · 0 closed", substring = true)
         openLink(app, Link(null, null, LinkPlace.TRADES, status = "closed"))
         chosen("Closed").assertExists()
-        tag("trades-summary").assertTextContains("0 open · 2 closed", substring = true)
+        tag("trades-summary").assertContentDescriptionContains("0 open · 2 closed", substring = true)
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -1687,7 +1909,7 @@ class AppUiTest {
         click("nav-Learn")
         click("learn-scorecard")
         back()
-        assertEquals(Dest.Markets, nav.dest)
+        assertEquals("Learn was opened from More, so Back returns there", Dest.More, nav.dest)
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -1699,22 +1921,22 @@ class AppUiTest {
         rule.onNodeWithContentDescription("Open").performClick()
         rule.waitForIdle()
         click("trade-1")
-        rule.onNodeWithText("Show on chart").performClick()
+        rule.onNodeWithText("Show on chart").performScrollTo().performClick()
         rule.waitForIdle()
         assertEquals(Dest.Markets, nav.dest)
         back()
         assertEquals(Dest.Trades, nav.dest)
         chosen("Open").assertExists()
-        rule.onNodeWithText("What is this pattern?").performClick()
+        rule.onNodeWithText("About this pattern").performClick()
         rule.waitForIdle()
         assertEquals(Dest.Learn, nav.dest)
         back()
         assertEquals(Dest.Trades, nav.dest)
-        rule.onNodeWithText("Show on chart").performClick()
+        rule.onNodeWithText("Show on chart").performScrollTo().performClick()
         rule.waitForIdle()
         click("nav-Alerts")
         back()
-        assertEquals("tapping a tab forgets the way back to Trades", Dest.Markets, nav.dest)
+        assertEquals("tapping a tab forgets the way back to Trades; Alerts returns to More", Dest.More, nav.dest)
     }
 
     // kept state
@@ -1801,7 +2023,7 @@ class AppUiTest {
         assertTrue("the list of lists is showing", exists("new-list"))
         rule.onNodeWithText("First").assertIsDisplayed()
         back()
-        assertEquals("Back is not swallowed by a screen that is no longer there", Dest.Markets, nav.dest)
+        assertEquals("Back is not swallowed by a screen that is no longer there", Dest.More, nav.dest)
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -1890,6 +2112,27 @@ class AppUiTest {
         rule.waitUntil(3_000) { app.analyst.log.isNotEmpty() }
         assertEquals(listOf("explain-trade 3"), app.analyst.log)
         rule.waitUntil(3_000) { !exists("pick-2") }
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the arrow on a report and on a list leads back to its list`() {
+        val app = FakeApp.full()
+        app.analyst.state.value = listOf(ReportUi(7, 1_700_000_000_000L, "weekly-review", "Weekly review", "## Summary\nThree patterns helped."))
+        show(app)
+        click("nav-Analyst")
+        click("report-7")
+        rule.onNodeWithContentDescription("Back to Analyst").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("analyst-index"))
+        click("nav-Lists")
+        rule.onNodeWithText("My coins").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("list-detail"))
+        rule.onNodeWithContentDescription("Back to Lists").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("list-detail"))
+        assertTrue(exists("new-list"))
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)

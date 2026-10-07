@@ -56,7 +56,11 @@ class TradeExit(
 
 class LiveTrade(val id: Long, val trade: NewTrade, val openedAt: Long, val exit: TradeExit?, val closedAt: Long?)
 
-class Alert(val id: Long, val ts: Long, val kind: String, val symbol: String?, val tf: String?, val title: String, val body: String, val link: String?)
+/** An alert as stored. [facts] is the JSON of the numbers behind one about a trade (see `AlertText.facts`), or null. */
+class Alert(
+    val id: Long, val ts: Long, val kind: String, val symbol: String?, val tf: String?, val title: String, val body: String, val link: String?,
+    val facts: String? = null,
+)
 
 enum class TradeStatus { OPEN, CLOSED, ALL }
 
@@ -170,17 +174,19 @@ class TradeLog(
         }
 
     /** Writes the alert and returns it as stored, so the notification can carry its id and time. */
-    suspend fun record(kind: String, title: String, body: String, symbol: String? = null, tf: String? = null, link: String? = null): Alert {
+    suspend fun record(
+        kind: String, title: String, body: String, symbol: String? = null, tf: String? = null, link: String? = null, facts: String? = null,
+    ): Alert {
         val ts = clock()
         val id = access { d ->
             val cv = android.content.ContentValues().apply {
                 put("ts", ts); put("kind", kind); put("symbol", symbol); put("tf", tf)
-                put("title", title); put("body", body); put("link", link)
+                put("title", title); put("body", body); put("link", link); put("facts", facts)
             }
             d.insert("alerts", null, cv)
         }
         changed()
-        return Alert(id, ts, kind, symbol, tf, title, body, link)
+        return Alert(id, ts, kind, symbol, tf, title, body, link, facts)
     }
 
     /** When an alert of this kind and exact title was last raised; 0 if never. Used so a standing problem is not repeated. */
@@ -189,8 +195,12 @@ class TradeLog(
     }
 
     suspend fun alerts(limit: Int = 100): List<Alert> = access { d ->
-        d.rawQuery("SELECT id, ts, kind, symbol, tf, title, body, link FROM alerts ORDER BY id DESC LIMIT ?", arrayOf(limit.toString())).use { c ->
-            buildList { while (c.moveToNext()) add(Alert(c.getLong(0), c.getLong(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5), c.getString(6), c.getString(7))) }
+        d.rawQuery("SELECT id, ts, kind, symbol, tf, title, body, link, facts FROM alerts ORDER BY id DESC LIMIT ?", arrayOf(limit.toString())).use { c ->
+            buildList {
+                while (c.moveToNext()) {
+                    add(Alert(c.getLong(0), c.getLong(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5), c.getString(6), c.getString(7), c.getString(8)))
+                }
+            }
         }
     }
 
