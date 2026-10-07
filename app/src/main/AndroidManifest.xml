@@ -18,6 +18,11 @@
     <!-- Hand a downloaded update to Android's installer (which still asks the user before it installs anything). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- The Analyst hands questions to the Claude app; from Android 11 an app must name the apps it looks for. -->
+    <queries>
+        <package android:name="com.anthropic.claude" />
+    </queries>
+
     <application
         android:name=".SignalLabApplication"
         android:allowBackup="false"
@@ -33,6 +38,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Claude's answer, shared back from the Claude app, is kept as an Analyst report. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
 

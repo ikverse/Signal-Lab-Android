@@ -29,6 +29,8 @@ class NavigationLinksTest {
         assertEquals(Link(null, null, LinkPlace.TRADES), parseLink("signallab://trades"))
         assertEquals(Link(null, null, LinkPlace.ALERTS, group = "problems"), parseLink("signallab://alerts?group=problems"))
         assertEquals(Link(null, null, LinkPlace.SETTINGS), parseLink("signallab://settings"))
+        assertEquals(Link(null, null, LinkPlace.ANALYST, report = 3), parseLink("signallab://analyst?report=3"))
+        assertEquals(Link(null, null, LinkPlace.ANALYST), parseLink("signallab://analyst"))
         for (bad in listOf(null, "", "signallab://", "signallab://coin/", "signallab://coin/?tf=1h", "signallab://nowhere", "https://example.com/trades", "signallab://settingsx")) {
             assertNull(parseLink(bad), "for [$bad]")
         }
@@ -169,6 +171,29 @@ class NavigationLinksTest {
     }
 
     @Test
+    fun `an answer shared back opens its report, and on a phone Back closes the report before leaving`() {
+        val nav = NavState()
+        nav.go(Dest.Trades)
+        nav.openLink(Link(null, place = LinkPlace.ANALYST, report = 3), fromApp = false)
+        assertEquals(Dest.Analyst, nav.dest)
+        assertEquals(3L, nav.analystReport)
+        assertEquals(emptyList(), nav.trail)
+        assertTrue(nav.back()); assertEquals(Dest.Analyst, nav.dest); assertNull(nav.analystReport)
+        assertTrue(nav.back()); assertEquals(Dest.Markets, nav.dest)
+
+        // A wide screen shows the report beside the list, so there is no report to step out of first.
+        val wide = NavState().also { it.narrow = false }
+        wide.openAnalyst(4)
+        assertTrue(wide.back()); assertEquals(Dest.Markets, wide.dest)
+
+        // The page on how it works, opened from the Analyst, returns to the report that was open.
+        val jump = NavState()
+        jump.openAnalyst(5)
+        jump.openLearn("analyst")
+        assertTrue(jump.back()); assertEquals(Dest.Analyst, jump.dest); assertEquals(5L, jump.analystReport)
+    }
+
+    @Test
     fun `back from a jump returns to the tab that was left, along the whole trail`() {
         val nav = NavState()
         nav.narrow = false
@@ -284,12 +309,18 @@ class NavigationLinksTest {
                 }
             }
         }
-        assertEquals(13, links, "the links the pages carry")
+        assertEquals(19, links, "the links the pages carry")
     }
 
     @Test
     fun `the sentences that send the reader somewhere are links`() {
         val expected = listOf(
+            "analyst" to "The [Analyst](go:analyst) hands your record",
+            "analyst" to "the same numbers you see on the [Scorecard](go:scorecard)",
+            "analyst" to "See [how the scorecard judges](learn:scorecard).",
+            "analyst" to "New patterns for the [pattern lab](learn:pattern-lab)",
+            "pattern-lab" to "In the [Analyst](go:analyst), ask",
+            "pattern-lab" to "See [how the scorecard judges](learn:scorecard).",
             "chart-sizes" to "(see [What a paper trade is](learn:paper-trade))",
             "chart-sizes" to "off in [Settings](go:settings) to save battery",
             "costs" to "lower it in [Settings](go:settings)",

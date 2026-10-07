@@ -37,6 +37,36 @@ object Indicators {
         return out
     }
 
+    /** Lowest value of the [n] bars before bar i; bar i itself is excluded. */
+    fun rollingMinPrior(x: DoubleArray, n: Int): DoubleArray {
+        val out = nans(x.size)
+        for (i in n until x.size) {
+            var m = x[i - n]
+            for (j in i - n + 1 until i) m = minOf(m, x[j])
+            out[i] = m
+        }
+        return out
+    }
+
+    /**
+     * Exponential moving average with weight 2 / (n + 1), seeded with the simple average of the first [n] values, as RSI is. It
+     * depends on where the series starts, as RSI does, but never on anything after bar i.
+     */
+    fun ema(x: DoubleArray, n: Int): DoubleArray {
+        val out = nans(x.size)
+        if (x.size < n) return out
+        val k = 2.0 / (n + 1)
+        var e = 0.0
+        for (i in 0 until n) e += x[i]
+        e /= n
+        out[n - 1] = e
+        for (i in n until x.size) {
+            e += k * (x[i] - e)
+            out[i] = e
+        }
+        return out
+    }
+
     /** Standard deviation (divisor n) of the last [n] values, including the current one. */
     fun rollingStd(x: DoubleArray, n: Int): DoubleArray {
         val out = nans(x.size)

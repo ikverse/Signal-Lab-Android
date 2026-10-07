@@ -65,6 +65,8 @@ class ScanEnv(
     private val source: Map<Pair<String, Timeframe>, List<Kline>>,
     /** The charts the list is watched on; by default just [tf]. */
     timeframes: Set<Timeframe> = setOf(tf),
+    /** The lab patterns being forward-tested. */
+    lab: List<com.ikverse.signallab.engine.LabPattern> = emptyList(),
 ) {
     val market = FakeMarket(0)
     val candles = CandleStore(appContext, name = null, io = Dispatchers.Unconfined)
@@ -75,7 +77,7 @@ class ScanEnv(
     val sink = RecordingSink()
     var lists = listOf(Watchlist(1, "L", coins, true, timeframes))
     val sync = CandleSync(market, candles)
-    val scanner = Scanner(market, sync, candles, log, settings, { lists }, sink)
+    val scanner = Scanner(market, sync, candles, log, settings, { lists }, sink, lab = { lab })
 
     /** Series the exchange serves nothing for, however far the clock moves. */
     val hidden = HashSet<Pair<String, Timeframe>>()

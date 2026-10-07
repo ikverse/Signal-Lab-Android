@@ -19,6 +19,7 @@ import com.ikverse.signallab.engine.CandleClock
 import com.ikverse.signallab.engine.EngineConfig
 import com.ikverse.signallab.engine.ExitMode
 import com.ikverse.signallab.engine.Indicators
+import com.ikverse.signallab.engine.LabPattern
 import com.ikverse.signallab.engine.LiveScan
 import com.ikverse.signallab.engine.PaperTrading
 import com.ikverse.signallab.engine.Timeframe
@@ -69,6 +70,8 @@ class ScanResult(
  *
  * Different timeframes scan at the same time, each under its own lock, so a long hourly scan never
  * makes a signal on a minute chart late.
+ *
+ * [lab] gives the lab patterns being forward-tested, which run beside the built-in ones.
  */
 class Scanner(
     private val market: MarketData,
@@ -78,6 +81,7 @@ class Scanner(
     private val settings: SettingsStore,
     private val lists: () -> List<Watchlist>,
     private val sink: AlertSink,
+    private val lab: suspend () -> List<LabPattern> = { emptyList() },
 ) {
     private val locks = Timeframe.entries.associateWith { Mutex() }
 
@@ -190,7 +194,15 @@ class Scanner(
         // 2. What fired on the candles that closed.
         val panel = LinkedHashMap<String, Candles>()
         for (symbol in watched) windows[symbol]?.let { panel[symbol] = it }
-        val scan = LiveScan.scan(tf, panel, active.associate { it.id to it.symbols }, cursor(tf), now)
+        val labPatterns = try {
+            lab()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // The lab could not be read: the built-in patterns still run, and the lab runs again on the next scan.
+            emptyList()
+        }
+        val scan = LiveScan.scan(tf, panel, active.associate { it.id to it.symbols }, cursor(tf), now, labPatterns)
         for (key in scan.variants) log.registerVariant(key, tf)
         val found = scan.found.sortedWith(compareBy({ it.barTime }, { it.key.name }, { it.symbol }, { it.listId }))
         for (f in found) {

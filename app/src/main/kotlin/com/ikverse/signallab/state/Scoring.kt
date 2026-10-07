@@ -1,10 +1,10 @@
 package com.ikverse.signallab.state
 
 import com.ikverse.signallab.data.LiveTrade
+import com.ikverse.signallab.data.PatternLabels
 import com.ikverse.signallab.engine.EngineConfig
 import com.ikverse.signallab.engine.Statistics
 import com.ikverse.signallab.engine.Timeframe
-import com.ikverse.signallab.engine.VariantLabels
 import com.ikverse.signallab.ui.ScoreRowUi
 import com.ikverse.signallab.ui.ScorecardUi
 
@@ -56,11 +56,11 @@ object Scoring {
             val g = all[i]
             val s = stats[i]
             ScoreRowUi(
-                variant = g.variant, label = VariantLabels.describe(g.variant), timeframe = g.tf.label,
+                variant = g.variant, label = PatternLabels.describe(g.variant), timeframe = g.tf.label,
                 open = g.open.size, closed = s.n, hitRate = s.hit, meanNet = s.mean, randomMean = s.random, excess = s.excess,
                 tCluster = s.t.takeIf { !it.isNaN() },
                 verdict = judged[i].verdict, firmness = Statistics.tier(s.n),
-                forwardOnly = g.variant in EngineConfig.FORWARD_ONLY_VARIANTS,
+                forwardOnly = EngineConfig.isForwardOnly(g.variant),
             )
         }
         return ScorecardUi(rows, trials)

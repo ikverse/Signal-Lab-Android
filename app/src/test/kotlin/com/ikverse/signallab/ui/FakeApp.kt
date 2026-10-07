@@ -126,6 +126,59 @@ class FakeAlerts(initial: List<AlertUi> = emptyList()) : AlertsModel {
     override val alerts: StateFlow<List<AlertUi>> = state
 }
 
+class FakeAnalyst(initial: List<ReportUi> = emptyList(), override val claudeInstalled: Boolean = true) : AnalystModel {
+    override val cards = listOf(
+        AnalystCardUi("weekly-review", "Weekly review", "What helped and hurt this week."),
+        AnalystCardUi("explain-trade", "Explain a trade", "Why one paper trade won or lost.", needsTrade = true),
+    )
+    val state = MutableStateFlow(initial)
+    override val reports: StateFlow<List<ReportUi>> = state
+    val noticeState = MutableStateFlow<String?>(null)
+    override val notice: StateFlow<String?> = noticeState
+    override fun noticeSeen() { noticeState.value = null }
+
+    /** Every question asked, as "card" or "card trade", and a reason to refuse them with. */
+    val log = mutableListOf<String>()
+    var refuse: String? = null
+
+    override suspend fun ask(card: String, tradeId: Long?): Outcome {
+        log += listOfNotNull(card, tradeId?.toString()).joinToString(" ")
+        return refuse?.let { Outcome.Refused(it) } ?: Outcome.Done
+    }
+
+    /** What [keep] was given, and the id it answers with (null to refuse). */
+    val kept = mutableListOf<String>()
+    var keepAnswer: Long? = 42
+
+    override suspend fun keep(text: String): Long? {
+        kept += text
+        return keepAnswer
+    }
+
+    val labState = MutableStateFlow<List<LabPatternUi>>(emptyList())
+    override val lab: StateFlow<List<LabPatternUi>> = labState
+    val budgetState = MutableStateFlow(LabBudgetUi())
+    override val budget: StateFlow<LabBudgetUi> = budgetState
+
+    var backtestAnswer = LabBacktestUi(listOf(LabRowUi("1h", 3, 40, 0.55, 0.004, 0.001, 0.8), LabRowUi("4h", 0, 0, null, null, null, null)), "For reference only.")
+    var labRefuse: String? = null
+
+    override suspend fun backtest(definition: String): LabBacktestUi {
+        log += "backtest $definition"
+        return backtestAnswer
+    }
+
+    override suspend fun startLab(definition: String, title: String, reason: String?, report: Long?): Outcome {
+        log += "start $title $report"
+        return labRefuse?.let { Outcome.Refused(it) } ?: Outcome.Done
+    }
+
+    override suspend fun stopLab(id: Long): Outcome {
+        log += "stop $id"
+        return Outcome.Done
+    }
+}
+
 class FakeLearn(override val pages: List<LearnPageUi> = listOf(
     LearnPageUi("trend", "Patterns", "Trend", "# Trend\nText of the trend page."),
     LearnPageUi("scorecard", "How it works", "Scorecard", "# Scorecard\nText of the scorecard page."),
@@ -239,6 +292,7 @@ class FakeApp(
     override val trades: FakeTrades = FakeTrades(),
     override val scorecard: FakeScorecard = FakeScorecard(),
     override val alerts: FakeAlerts = FakeAlerts(),
+    override val analyst: FakeAnalyst = FakeAnalyst(),
     override val learn: FakeLearn = FakeLearn(),
     override val settings: FakeSettings = FakeSettings(),
     override val prompts: FakePrompts = FakePrompts(),

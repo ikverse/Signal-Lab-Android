@@ -1,11 +1,11 @@
 package com.ikverse.signallab.scan
 
 import com.ikverse.signallab.data.DataConfig
+import com.ikverse.signallab.data.PatternLabels
 import com.ikverse.signallab.engine.ExitMode
 import com.ikverse.signallab.engine.ExitReason
 import com.ikverse.signallab.engine.LiveScan
 import com.ikverse.signallab.engine.Timeframe
-import com.ikverse.signallab.engine.VariantLabels
 import com.ikverse.signallab.engine.Warnings
 import java.util.Locale
 
@@ -73,7 +73,7 @@ object AlertText {
             else -> "Entry ${price(p.entryPrice)}, held ${p.limit} ${if (p.limit == 1) "candle" else "candles"}."
         }
         val note = if (newCoin) " ${newCoinLine(p.symbol)}" else ""
-        return Text("Paper trade opened: ${coin(p.symbol)} ${p.tf.label}", "${VariantLabels.describe(p.variant)}. $levels$note", link(p.symbol, p.tf))
+        return Text("Paper trade opened: ${coin(p.symbol)} ${p.tf.label}", "${PatternLabels.describe(p.variant)}. $levels$note", link(p.symbol, p.tf))
     }
 
     fun closed(variant: String, symbol: String, tf: Timeframe, reason: ExitReason, net: Double, randomMean: Double, tradeId: Long? = null): Text {
@@ -85,14 +85,14 @@ object AlertText {
         val baseline = if (randomMean.isNaN()) "" else "; random entries averaged ${percent(randomMean)}"
         return Text(
             "Paper trade closed: ${coin(symbol)} ${tf.label}, $how",
-            "${VariantLabels.describe(variant)}. Net ${percent(net)} after costs$baseline.",
+            "${PatternLabels.describe(variant)}. Net ${percent(net)} after costs$baseline.",
             tradesLink(symbol, tradeId),
         )
     }
 
     fun missed(variant: String, symbol: String, tf: Timeframe): Text = Text(
         "Signal missed: ${coin(symbol)} ${tf.label}",
-        "${VariantLabels.describe(variant)} fired, but the phone only noticed after its entry candle had ended, so no paper trade was opened.",
+        "${PatternLabels.describe(variant)} fired, but the phone only noticed after its entry candle had ended, so no paper trade was opened.",
         link(symbol, tf),
     )
 

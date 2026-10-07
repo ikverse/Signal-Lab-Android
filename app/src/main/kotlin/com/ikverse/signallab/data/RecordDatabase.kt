@@ -5,8 +5,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 /**
- * The record: watchlists, settings, live paper trades and what happened to them, alerts, and every
- * signal variant ever tried. This is the file the Drive backup carries, so what is in it is what a
+ * The record: watchlists, settings, live paper trades and what happened to them, alerts, every
+ * signal variant ever tried, and the analyst's reports. This is the file the Drive backup carries, so what is in it is what a
  * restore brings back.
  *
  * **Schema changes are steps in [MIGRATIONS], and a step is never edited once it has shipped.** A
@@ -92,6 +92,28 @@ class RecordDatabase(context: Context?, name: String? = "signal_lab.db") :
                 "ALTER TABLE live_exits ADD COLUMN max_down REAL",
                 "ALTER TABLE live_exits ADD COLUMN bars_to_peak INTEGER",
             ),
+            // Step 3: the analyst's reports, each an answer the user shared back from the Claude app. [card] is the question it
+            // answered when the answer says so, and null for any other text the user chose to keep.
+            listOf(
+                """CREATE TABLE analyst_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, received_at INTEGER NOT NULL, card TEXT,
+                    title TEXT NOT NULL, body TEXT NOT NULL)""",
+                "CREATE INDEX reports_by_time ON analyst_reports (received_at)",
+            ),
+            // Step 4: the pattern lab. A row in lab_patterns is a pattern whose forward test began; a row in lab_stops ends it. Both are
+            // append-only like the trades: a lab pattern counts among the patterns tested for good, so its record can never be rewritten.
+            listOf(
+                """CREATE TABLE lab_patterns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, started_at INTEGER NOT NULL, report_id INTEGER,
+                    title TEXT NOT NULL, reason TEXT, definition TEXT NOT NULL)""",
+                """CREATE TABLE lab_stops (
+                    pattern_id INTEGER PRIMARY KEY REFERENCES lab_patterns(id), stopped_at INTEGER NOT NULL)""",
+            ) + listOf("lab_patterns", "lab_stops").flatMap { t ->
+                listOf(
+                    "CREATE TRIGGER ${t}_no_update BEFORE UPDATE ON $t BEGIN SELECT RAISE(ABORT, '$t is append-only'); END",
+                    "CREATE TRIGGER ${t}_no_delete BEFORE DELETE ON $t BEGIN SELECT RAISE(ABORT, '$t is append-only'); END",
+                )
+            },
         )
 
         val SCHEMA_VERSION: Int = MIGRATIONS.size

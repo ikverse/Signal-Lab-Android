@@ -281,4 +281,36 @@ class ScannerTest {
         e.at(closeOf(eth, bar + 1))
         assertFalse(e.scanner.isUpToDate(tf))
     }
+
+    @Test
+    fun aLabPatternRunsBesideTheBuiltInOnesAndOpensItsOwnPaperTrade() = runTest {
+        // The trend pattern written as a lab pattern: it fires on the same candle, and trades under its own name with the exit it asks for.
+        val copy = com.ikverse.signallab.engine.LabPattern(
+            4, setOf(tf),
+            listOf(com.ikverse.signallab.engine.LabCondition(
+                com.ikverse.signallab.engine.LabOperand(com.ikverse.signallab.engine.LabBlock.CLOSE),
+                com.ikverse.signallab.engine.LabCompare.CROSSES_ABOVE,
+                com.ikverse.signallab.engine.LabOperand(com.ikverse.signallab.engine.LabBlock.SMA, 20),
+            )),
+            com.ikverse.signallab.engine.LabExit.Hold(5),
+        )
+        com.ikverse.signallab.data.PatternLabels.labTitles = mapOf(4L to "Trend copy")
+        try {
+            val e = ScanEnv(coins, tf, source, lab = listOf(copy))
+            e.at(closeOf(eth, bar))
+            e.scanner.scan(tf)
+            val trades = e.log.trades(TradeStatus.ALL, limit = Int.MAX_VALUE).filter { it.trade.symbol == "ETHUSDT" && it.trade.barTime == eth.t[bar] }
+            val lab = trades.single { it.trade.variant == "lab4_1d" }
+            val builtIn = trades.single { it.trade.variant == variant }
+            assertEquals(builtIn.trade.entryPrice, lab.trade.entryPrice, "the same candle, the same entry")
+            assertEquals("held", lab.trade.exitMode)
+            assertEquals(5, lab.trade.holdBars)
+            assertEquals("lab", lab.trade.family)
+            assertTrue(e.log.registeredVariants().any { it.name == "lab4_1d" }, "it counts among the patterns tested")
+            val bodies = e.sink.delivered.filter { it.kind == AlertText.KIND_SIGNAL }.map { it.body }
+            assertTrue(bodies.any { it.startsWith("Lab, forward-only: Trend copy.") }, "alert bodies: $bodies")
+        } finally {
+            com.ikverse.signallab.data.PatternLabels.labTitles = emptyMap()
+        }
+    }
 }

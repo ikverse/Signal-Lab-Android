@@ -20,6 +20,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.remember
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -109,6 +110,10 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
             Dest.Markets -> MarketsScreen(model.markets, model.trades, model.alerts, model.panels, layout, nav, onOpenLearn = openVariant, onOpenLists = { nav.go(Dest.Lists) })
             Dest.Trades -> TradesScreen(model.trades, nav, onOpenCoin = { s, tf -> nav.openCoin(s, tf, fromApp = true) }, onOpenLearn = openVariant)
             Dest.Scorecard -> ScorecardScreen(model.scorecard, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact)
+            Dest.Analyst -> AnalystScreen(
+                model.analyst, model.trades, model.panels, nav.analystReport, { nav.analystReport = it }, wide = layout != LayoutClass.Compact,
+                onOpenPage = { nav.openLearn(it) }, onGo = { nav.openPlace(it) },
+            )
             Dest.Alerts -> AlertsScreen(model.alerts, nav, onOpen = { nav.openLink(it, fromApp = true) })
             Dest.Learn -> LearnScreen(model.learn, model.panels, nav.learnPage, { nav.learnPage = it }, wide = layout != LayoutClass.Compact, onGo = { nav.openPlace(it) })
             Dest.Lists -> ListsScreen(model.lists, model.panels, wide = layout != LayoutClass.Compact)
@@ -117,12 +122,17 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
     }
 }
 
+/** Every place in one column that scrolls when the screen is too short for all of them (a phone held sideways); the place on show is kept in view. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SideRail(nav: NavState) {
-    Column(Modifier.width(scaledWithText(112.dp)).fillMaxHeight().testTag("rail")) {
+    Column(Modifier.width(scaledWithText(112.dp)).fillMaxHeight().verticalScroll(rememberScrollState()).testTag("rail")) {
         for (d in Dest.entries) {
-            TouchRow({ nav.go(d) }, selected = nav.dest == d, modifier = Modifier.testTag("nav-${d.name}")) {
-                Text(d.label, style = if (nav.dest == d) Type.BodyStrong else Type.Body.copy(color = Palette.Muted))
+            val inView = remember { BringIntoViewRequester() }
+            val selected = nav.dest == d
+            LaunchedEffect(selected) { if (selected) inView.bringIntoView() }
+            TouchRow({ nav.go(d) }, selected = selected, modifier = Modifier.bringIntoViewRequester(inView).testTag("nav-${d.name}")) {
+                Text(d.label, style = if (selected) Type.BodyStrong else Type.Body.copy(color = Palette.Muted))
             }
         }
     }

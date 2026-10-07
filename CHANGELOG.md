@@ -5,6 +5,10 @@ release notes.
 
 ## Unreleased
 
+- New: Analyst. Tap a question (Weekly review, What's fading?, BTC regime check, Explain a trade, 1h vs 4h) and the Claude app opens with it as a draft, your record's data included, answered on your own Claude plan. Nothing is sent until you tap Send in Claude. Share Claude's answer to Signal Lab to keep it under Reports. Learn has a page on how it works.
+- New: "Paste an answer" in the Analyst keeps an answer you copied in Claude.
+- New: the pattern lab. "Suggest 3 patterns" asks Claude for new patterns in a form the app can read. Each one can be backtested on your stored candles and started as a paper-trading test; its trades say "Lab, forward-only", because only trades after it started can judge it. At most 5 run at once and 5 can start in 30 days, since every pattern tested raises the bar for every verdict. The app warns when no active list watches one of a pattern's charts, and will not start a pattern that could never trade.
+
 ## 0.1.6 - 2026-10-06
 
 - Text actions such as "Rename" and "Add coins" use a brighter blue, so small text is easier to read.

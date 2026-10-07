@@ -54,7 +54,7 @@ object LiveScan {
      * Runs every signal on [panel] (closed candles of every watched coin, all of timeframe [tf]) and
      * returns those that fired on a candle that closed after [after] (a close time; null on a first
      * run, when only the newest candle counts). [lists] maps each active list to its coins, because
-     * cross-sectional momentum ranks within a list.
+     * cross-sectional momentum ranks within a list. [lab] are the lab patterns being forward-tested; each runs on the charts it names.
      */
     fun scan(
         tf: Timeframe,
@@ -62,6 +62,7 @@ object LiveScan {
         lists: Map<Long, Collection<String>>,
         after: Long?,
         now: Long,
+        lab: List<LabPattern> = emptyList(),
     ): Scan {
         val newest = newestClosedOpen(tf, now)
         val found = ArrayList<Found>()
@@ -78,7 +79,7 @@ object LiveScan {
         }
 
         for ((symbol, c) in panel) {
-            for ((key, flagged) in Signals.perCoin(c)) {
+            for ((key, flagged) in Signals.perCoin(c) + LabPatterns.perCoin(c, lab)) {
                 flags.getOrPut(key) { LinkedHashMap() }[symbol] = flagged
                 collect(key, symbol, 0, c, flagged)
             }
