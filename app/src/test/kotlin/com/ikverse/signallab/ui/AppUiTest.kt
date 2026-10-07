@@ -547,6 +547,38 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
+    fun `the trades screen narrows to a chart size, and the summary follows`() {
+        show(FakeApp.full().also { it.trades.state.value = listOf(FakeApp.trade(1), FakeApp.trade(2, net = 0.03), FakeApp.trade(3, "ETHUSDT", "4h", net = -0.01)) })
+        click("nav-Trades")
+        chosen("Any chart").assertExists()
+        tag("trades-summary").assertContentDescriptionEquals("1 open · 2 closed · average +1.00% after costs")
+        rule.onNodeWithContentDescription("4h").performClick()
+        rule.waitForIdle()
+        chosen("4h").assertExists()
+        assertTrue(!exists("trade-1"))
+        assertTrue(!exists("trade-2"))
+        assertTrue(exists("trade-3"))
+        tag("trades-summary").assertContentDescriptionEquals("0 open · 1 closed · average −1.00% after costs")
+        rule.onNodeWithContentDescription("Open").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Nothing matches").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Any chart").performClick()
+        rule.waitForIdle()
+        assertTrue(exists("trade-1"))
+        assertTrue(!exists("trade-3"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `with trades on one chart size only, the screen offers no chart choice`() {
+        show(FakeApp.full())
+        click("nav-Trades")
+        assertTrue(exists("trades"))
+        assertTrue(!exists("trades-charts"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
     fun `a trade opens to show what it did, and leads to its chart and its explanation`() {
         show(FakeApp.full())
         click("nav-Trades")
