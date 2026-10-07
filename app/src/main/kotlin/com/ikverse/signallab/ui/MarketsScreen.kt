@@ -19,12 +19,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -47,6 +49,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,15 +99,18 @@ const val CHART_KEY = "chart"
 fun defaultChart(timeframes: List<String>): String? =
     listOf("1h", "15m", "4h", "30m", "5m", "1d", "1m").firstOrNull { it in timeframes } ?: timeframes.firstOrNull()
 
-/** The open trades the chart can show the levels of, in the order the chart has them, and which one is on show (the first unless [chosen] is among them). */
-internal fun levelTrades(chart: ChartUi?, chosen: Long?): Pair<List<Long>, Int> {
-    val ids = chart?.levels?.map { it.tradeId }?.distinct().orEmpty()
-    return ids to ids.indexOf(chosen).coerceAtLeast(0)
+/**
+ * The open trades whose levels are on the chart: each one the user switched on or off in [chosen], and every one not touched yet is on
+ * if it is the newest open trade of its chart size and off otherwise.
+ */
+internal fun tradesOnChart(open: List<TradeUi>, chosen: Map<Long, Boolean>): Set<Long> {
+    val newest = open.groupBy { it.timeframe }.mapNotNull { (_, same) -> same.maxByOrNull { it.openedAt }?.id }.toSet()
+    return open.filter { chosen[it.id] ?: (it.id in newest) }.map { it.id }.toSet()
 }
 
-/** The levels of one trade, each named with its price ("Target 2.949"), as the chart draws them. */
-internal fun levelsOf(chart: ChartUi, tradeId: Long?): List<LevelUi> =
-    chart.levels.filter { it.tradeId == tradeId }.map { it.copy(label = "${it.label} ${Fmt.price(it.price)}") }
+/** The levels of the trades that are [on], each named with its price ("Target 2.949"), as the chart draws them. */
+internal fun levelsOf(chart: ChartUi, on: Set<Long>): List<LevelUi> =
+    chart.levels.filter { it.tradeId in on }.map { it.copy(label = "${it.label} ${Fmt.price(it.price)}") }
 
 /**
  * Markets: your coins, the chart, and what is happening on the selected coin. Three tabs on a phone held upright; on a phone held
@@ -162,11 +168,11 @@ fun MarketsScreen(
     val live = prices[coin.symbol]
     val mine = allTrades.filter { it.symbol == coin.symbol }
     val openHere = mine.filter { it.closed == null }
+    val onChart = tradesOnChart(openHere, nav.chartChoice)
 
     val pickCoin = { c: CoinUi ->
         nav.symbol = c.symbol
         nav.timeframe = null
-        nav.chartTrade = null
         if (layout == LayoutClass.Compact) nav.marketsTab = MarketsTab.Chart
     }
     val list = @Composable { compact: Boolean ->
@@ -176,19 +182,20 @@ fun MarketsScreen(
     }
     val chartPane = @Composable { sideways: Boolean, onOpenTrades: (() -> Unit)? ->
         ChartPane(
-            coin, tf, chart, live, openHere, nav.chartTrade, { nav.chartTrade = it }, { nav.timeframe = it; nav.chartTrade = null }, indicators,
+            coin, tf, chart, live, openHere, onChart, { nav.timeframe = it }, indicators,
             { panels.save(CHART_KEY, it.joinToString(",")) }, note, unwatched, onOpenLists, control, sideways, onOpenTrades, Modifier.fillMaxSize(),
         )
     }
     val showOnChart = { t: TradeUi ->
         nav.timeframe = t.timeframe
-        nav.chartTrade = t.id
+        nav.chooseChartTrade(t.id, true)
         if (layout == LayoutClass.Compact) nav.marketsTab = MarketsTab.Chart
     }
+    val toggleOnChart = { t: TradeUi -> nav.chooseChartTrade(t.id, t.id !in onChart) }
     val details = @Composable { strip: Boolean, header: (@Composable () -> Unit)?, onShow: (TradeUi) -> Unit ->
         Details(
-            coin, live, mine, allAlerts.filter { it.symbol == coin.symbol && it.kind == "warning" }, onOpenLearn, onShow, note, unwatched, onOpenLists,
-            Modifier.fillMaxSize(), strip, header,
+            coin, live, mine, allAlerts.filter { it.symbol == coin.symbol && it.kind == "warning" }, onOpenLearn, onChart, toggleOnChart, onShow, note,
+            unwatched, onOpenLists, Modifier.fillMaxSize(), strip, header,
         )
     }
 
@@ -442,8 +449,7 @@ private fun ChartPane(
     chart: ChartUi?,
     live: Double?,
     open: List<TradeUi>,
-    chosenTrade: Long?,
-    onChooseTrade: (Long?) -> Unit,
+    onChart: Set<Long>,
     onChoose: (String) -> Unit,
     indicators: List<String>,
     onIndicators: (List<String>) -> Unit,
@@ -492,8 +498,7 @@ private fun ChartPane(
         }
         CoinNote(note, unwatched, onOpenLists)
         HRule()
-        val (ids, at) = levelTrades(chart, chosenTrade)
-        val shown = ids.getOrNull(at)
+        val here = open.filter { it.timeframe == tf }
         when {
             tf == null -> EmptyState("No chart chosen", "This coin is not watched on any chart.")
             chart == null -> Text("Loading…", style = Type.Small, modifier = Modifier.padding(16.dp))
@@ -501,22 +506,23 @@ private fun ChartPane(
                 "No candles yet on the ${Fmt.chartName(tf)} chart",
                 "The history for this chart is still downloading, or Binance has none for this coin yet.",
             )
-            else -> ChartView(chart.copy(levels = levelsOf(chart, shown)), live, Modifier.weight(1f), indicators, onIndicators, control = control)
+            else -> ChartView(chart.copy(levels = levelsOf(chart, onChart)), live, Modifier.weight(1f), indicators, onIndicators, control = control)
         }
-        if (chart != null && tf != null && ids.isNotEmpty()) {
+        if (chart != null && tf != null && here.isNotEmpty()) {
             HRule()
-            val trade = open.firstOrNull { it.id == shown }
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp).testTag("level-strip"), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(horizontal = 16.dp).testTag("level-strip"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text("Levels", style = Type.Small)
                 Spacer(Modifier.width(8.dp))
                 ChartTag(tf)
                 Spacer(Modifier.width(8.dp))
-                Text(trade?.short ?: "Open trade", style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (ids.size > 1) {
-                    Text("${at + 1} of ${ids.size}", style = Type.Small.copy(fontFeatureSettings = "tnum"), modifier = Modifier.testTag("level-count"))
-                    IconAction(Glyphs.ChevronLeft, "Previous trade", { onChooseTrade(ids[(at - 1 + ids.size) % ids.size]) })
-                    IconAction(Glyphs.ChevronRight, "Next trade", { onChooseTrade(ids[(at + 1) % ids.size]) })
-                }
+                val on = here.count { it.id in onChart }
+                Text(
+                    "$on of ${here.size} ${if (here.size == 1) "trade" else "trades"} on", style = Type.BodyStrong.copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).testTag("level-count"),
+                )
             }
         }
     }
@@ -542,6 +548,8 @@ private fun Details(
     trades: List<TradeUi>,
     warnings: List<AlertUi>,
     onOpenLearn: (String) -> Unit,
+    onChart: Set<Long>,
+    onToggle: (TradeUi) -> Unit,
     onShowOnChart: (TradeUi) -> Unit,
     note: String?,
     unwatched: Boolean,
@@ -559,7 +567,7 @@ private fun Details(
         SectionLabel("Open paper trades", count = open.size)
         if (open.isEmpty()) Text("None on ${coin.base} right now.", style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         for (t in open) {
-            OpenTradeCard(t, live, { onShowOnChart(t) }, { onOpenLearn(t.variant) })
+            OpenTradeCard(t, live, t.id in onChart, { onToggle(t) }, { onShowOnChart(t) }, { onOpenLearn(t.variant) })
             Spacer(Modifier.height(10.dp))
         }
         SectionLabel("Recent results")
@@ -586,40 +594,47 @@ private fun Details(
 
 /**
  * An open trade: its chart size, its pattern and how it stands now; a bar from its stop to its target with a tick where it was entered
- * and a dot at the price now; the three prices; and the way to its chart and its explanation.
+ * and a dot at the price now; the three prices; and the way to its chart and its explanation. The card is a switch: touched, it puts the
+ * trade's levels on the chart ([onChart]) or takes them off, and while they are on it is outlined.
  */
 @Composable
-private fun OpenTradeCard(t: TradeUi, live: Double?, onShowOnChart: () -> Unit, onAbout: () -> Unit) {
+private fun OpenTradeCard(t: TradeUi, live: Double?, onChart: Boolean, onToggle: () -> Unit, onShowOnChart: () -> Unit, onAbout: () -> Unit) {
     val now = live?.let { it / t.entryPrice - 1 }
-    RaisedGroup(Modifier.testTag("open-${t.id}")) {
-        Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ChartTag(t.timeframe)
-                Text(t.short, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
-                Text(Fmt.signedPercent(now), style = Type.NumberStrong.copy(color = Fmt.changeColor(now), fontSize = 17.sp))
+    RaisedGroup(Modifier.testTag("open-${t.id}"), edge = if (onChart) Palette.Accent else null) {
+        Column(Modifier.fillMaxWidth().toggleable(value = onChart, role = Role.Switch, onValueChange = { onToggle() })) {
+            Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ChartTag(t.timeframe)
+                    Text(t.short, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                    Text(Fmt.signedPercent(now), style = Type.NumberStrong.copy(color = Fmt.changeColor(now), fontSize = 17.sp))
+                }
+                Text(
+                    if (onChart) "Levels on chart" else "Levels hidden · tap to show",
+                    style = Type.Small.copy(color = if (onChart) Palette.Accent else Palette.Muted), modifier = Modifier.padding(top = 2.dp),
+                )
+                val stop = t.stop
+                val target = t.target
+                when {
+                    t.exitMode == "trail" && stop != null -> {
+                        // A stop that follows the price up has no target: the bar runs as far above the entry as the stop is below it, and fades.
+                        val top = t.entryPrice + (t.entryPrice - stop)
+                        RangeBar(0.5f, rangeFraction(stop, top, live), Fmt.changeColor(now), Modifier.padding(top = 12.dp, bottom = 4.dp), openEnded = true)
+                        PriceTrio("Safety stop", Fmt.price(stop), "Entry", Fmt.price(t.entryPrice), "Then", "trails up")
+                    }
+                    stop != null && target != null -> {
+                        RangeBar(rangeFraction(stop, target, t.entryPrice) ?: 0.5f, rangeFraction(stop, target, live), Fmt.changeColor(now), Modifier.padding(top = 12.dp, bottom = 4.dp))
+                        PriceTrio("Stop", Fmt.price(stop), "Entry", Fmt.price(t.entryPrice), "Target", Fmt.price(target))
+                    }
+                    else -> {
+                        Text("Entry ${Fmt.price(t.entryPrice)}", style = Type.Number, modifier = Modifier.padding(top = 8.dp))
+                        Text(exitText(t), style = Type.Small)
+                    }
+                }
             }
-            val stop = t.stop
-            val target = t.target
-            when {
-                t.exitMode == "trail" && stop != null -> {
-                    // A stop that follows the price up has no target: the bar runs as far above the entry as the stop is below it, and fades.
-                    val top = t.entryPrice + (t.entryPrice - stop)
-                    RangeBar(0.5f, rangeFraction(stop, top, live), Fmt.changeColor(now), Modifier.padding(top = 14.dp, bottom = 4.dp), openEnded = true)
-                    PriceTrio("Safety stop", Fmt.price(stop), "Entry", Fmt.price(t.entryPrice), "Then", "trails up")
-                }
-                stop != null && target != null -> {
-                    RangeBar(rangeFraction(stop, target, t.entryPrice) ?: 0.5f, rangeFraction(stop, target, live), Fmt.changeColor(now), Modifier.padding(top = 14.dp, bottom = 4.dp))
-                    PriceTrio("Stop", Fmt.price(stop), "Entry", Fmt.price(t.entryPrice), "Target", Fmt.price(target))
-                }
-                else -> {
-                    Text("Entry ${Fmt.price(t.entryPrice)}", style = Type.Number, modifier = Modifier.padding(top = 8.dp))
-                    Text(exitText(t), style = Type.Small)
-                }
+            Row(Modifier.padding(start = 2.dp, bottom = 2.dp)) {
+                TextAction("Show on chart", onShowOnChart)
+                TextAction("About this pattern", onAbout)
             }
-        }
-        Row(Modifier.padding(start = 2.dp, bottom = 2.dp)) {
-            TextAction("Show on chart", onShowOnChart)
-            TextAction("About this pattern", onAbout)
         }
     }
 }

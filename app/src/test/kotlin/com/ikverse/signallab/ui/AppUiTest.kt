@@ -10,6 +10,8 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -17,6 +19,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -256,27 +259,85 @@ class AppUiTest {
         rule.waitForIdle()
         assertEquals(MarketsTab.Chart, nav.marketsTab)
         assertEquals("1h", nav.timeframe)
-        assertEquals(1L, nav.chartTrade)
+        assertEquals(mapOf(1L to true), nav.chartChoice)
     }
 
-    @Config(qualifiers = PHONE_UPRIGHT)
-    @Test
-    fun `the chart shows one trade's levels at a time and steps between them`() {
+    /** An app with two open trades on BTC's hour chart (the second is the newer), each with its levels on that chart. */
+    private fun twoTradesOnTheChart(): FakeApp {
         val levels = listOf(
             LevelUi(LevelKind.ENTRY, "Entry", 100.0, 1), LevelUi(LevelKind.STOP, "Stop", 95.0, 1),
             LevelUi(LevelKind.ENTRY, "Entry", 101.0, 4), LevelUi(LevelKind.TARGET, "Target", 110.0, 4),
         )
-        val app = FakeApp.full().let { FakeApp(lists = it.lists, markets = FakeMarkets(listOf(FakeApp.btc, FakeApp.eth), levels), trades = it.trades) }
-        show(app)
-        click("coin-BTCUSDT")
-        rule.waitUntil(3_000) { exists("level-strip") }
-        tag("chart-placeholder").assertTextContains("2 levels", substring = true)
-        tag("level-count").assertTextEquals("1 of 2")
-        rule.onNode(hasText("Breakout", substring = true) and hasAnyAncestor(hasTestTag("level-strip"))).assertExists()
-        rule.onNodeWithContentDescription("Next trade").performClick()
+        val base = FakeApp.full()
+        return FakeApp(lists = base.lists, markets = FakeMarkets(listOf(FakeApp.btc, FakeApp.eth), levels), trades = FakeTrades(listOf(FakeApp.trade(1), FakeApp.trade(4))))
+    }
+
+    private fun card(id: Long) = rule.onNode(isToggleable() and hasAnyAncestor(hasTestTag("open-$id")))
+
+    private fun touchCard(id: Long) {
+        tag("open-$id").performScrollTo().performClick()
         rule.waitForIdle()
-        tag("level-count").assertTextEquals("2 of 2")
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `touching an open trade's card puts its levels on the chart or takes them off`() {
+        show(twoTradesOnTheChart())
+        rule.waitUntil(3_000) { exists("level-strip") }
+        // To begin with only the newest trade of the chart's size is on.
+        tag("level-count").assertTextEquals("1 of 2 trades on")
         tag("chart-placeholder").assertTextContains("2 levels", substring = true)
+        card(4).assertIsOn()
+        card(1).assertIsOff()
+
+        touchCard(1)
+        card(1).assertIsOn()
+        tag("level-count").assertTextEquals("2 of 2 trades on")
+        tag("chart-placeholder").assertTextContains("4 levels", substring = true)
+
+        touchCard(4)
+        card(4).assertIsOff()
+        tag("level-count").assertTextEquals("1 of 2 trades on")
+        tag("chart-placeholder").assertTextContains("2 levels", substring = true)
+
+        touchCard(1)
+        tag("level-count").assertTextEquals("0 of 2 trades on")
+        tag("chart-placeholder").assertTextContains("0 levels", substring = true)
+        card(1).assertIsOff()
+        card(4).assertIsOff()
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `a card's own buttons do their own job and do not touch the switch`() {
+        val nav = NavState()
+        show(twoTradesOnTheChart(), nav = nav)
+        rule.waitUntil(3_000) { exists("level-strip") }
+        card(1).assertIsOff()
+        // Show on chart puts the trade on; had the touch reached the card as well it would have switched it straight off again.
+        rule.onAllNodes(hasText("Show on chart") and hasAnyAncestor(hasTestTag("open-1"))).onFirst().performScrollTo().performClick()
+        rule.waitForIdle()
+        assertEquals(mapOf(1L to true), nav.chartChoice)
+        card(1).assertIsOn()
+        // About this pattern goes to Learn and leaves the trade as it was.
+        rule.onAllNodes(hasText("About this pattern") and hasAnyAncestor(hasTestTag("open-1"))).onFirst().performScrollTo().performClick()
+        rule.waitForIdle()
+        assertEquals(Dest.Learn, nav.dest)
+        assertEquals(mapOf(1L to true), nav.chartChoice)
+    }
+
+    @Config(qualifiers = PHONE_SIDEWAYS)
+    @Test
+    fun `held sideways a card switches its levels and leaves the panel open, and Show on chart closes it`() {
+        show(twoTradesOnTheChart())
+        click("open-trades")
+        rule.waitUntil(3_000) { exists("details") }
+        tag("chart-placeholder").assertTextContains("2 levels", substring = true)
+        touchCard(1)
+        assertTrue("the panel stays open while cards are switched", exists("details"))
+        tag("chart-placeholder").assertTextContains("4 levels", substring = true)
+        rule.onAllNodes(hasText("Show on chart") and hasAnyAncestor(hasTestTag("open-1"))).onFirst().performScrollTo().performClick()
+        rule.waitUntil(3_000) { !exists("details") }
     }
 
     @Config(qualifiers = TABLET)

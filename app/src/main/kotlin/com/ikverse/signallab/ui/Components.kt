@@ -360,10 +360,15 @@ fun ChartTag(label: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Things that belong together, on a raised surface with rounded corners. */
+/** Things that belong together, on a raised surface with rounded corners; with an [edge] colour, outlined in it. */
 @Composable
-fun RaisedGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.padding(horizontal = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Palette.Raised), content = content)
+fun RaisedGroup(modifier: Modifier = Modifier, edge: Color? = null, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier.padding(horizontal = 12.dp).fillMaxWidth().clip(shape).background(Palette.Raised)
+            .then(if (edge != null) Modifier.border(1.5.dp, edge, shape) else Modifier),
+        content = content,
+    )
 }
 
 /** Where [value] falls between [low] and [high], from 0 to 1, or null when the range is empty or a number is missing. */
