@@ -221,6 +221,7 @@ class NavigationLinksTest {
         assertEquals(listOf(Dest.Trades), nav.trail)
         nav.go(Dest.Alerts)
         assertEquals(emptyList(), nav.trail)
+        assertTrue(nav.back()); assertEquals(Dest.More, nav.dest, "Alerts sits behind More")
         assertTrue(nav.back()); assertEquals(Dest.Markets, nav.dest)
     }
 
@@ -248,7 +249,7 @@ class NavigationLinksTest {
         nav.go(Dest.Learn)
         nav.learnPage = "trend"                              // a page open beside its list is the normal state
         assertTrue(nav.canBack, "Learn itself is a place to leave")
-        assertTrue(nav.back()); assertEquals(Dest.Markets, nav.dest); assertEquals("trend", nav.learnPage, "straight out, not to another page")
+        assertTrue(nav.back()); assertEquals(Dest.More, nav.dest); assertEquals("trend", nav.learnPage, "straight out, not to another page")
     }
 
     @Test

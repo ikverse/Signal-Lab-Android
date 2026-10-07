@@ -21,9 +21,12 @@ object Fmt {
     fun percent(fraction: Double?, digits: Int = 2): String =
         if (fraction == null || fraction.isNaN()) "—" else "%.${digits}f%%".format(Locale.ROOT, fraction * 100)
 
-    /** 0.0123 as "+1.23%", -0.01 as "-1.00%". */
+    /** 0.0123 as "+1.23%", -0.01 as "−1.00%": a true minus sign, as wide as the plus, so signed columns line up. */
     fun signedPercent(fraction: Double?, digits: Int = 2): String =
-        if (fraction == null || fraction.isNaN()) "—" else "%+.${digits}f%%".format(Locale.ROOT, fraction * 100)
+        if (fraction == null || fraction.isNaN()) "—" else "%+.${digits}f%%".format(Locale.ROOT, fraction * 100).replace('-', MINUS)
+
+    /** The minus sign used on screen. Notifications keep the plain hyphen. */
+    const val MINUS = '−'
 
     /** A big number short: 1_250_000_000 as "1.25B". */
     fun compact(v: Double): String = when {
@@ -39,6 +42,23 @@ object Fmt {
 
     fun time(millis: Long, zone: TimeZone = TimeZone.getDefault()): String =
         SimpleDateFormat("HH:mm", Locale.ENGLISH).also { it.timeZone = zone }.format(Date(millis))
+
+    /** A day as a list's heading: "Today · 7 Oct", "Yesterday · 6 Oct", or "5 Oct" (with the year when it is not this one). */
+    fun day(millis: Long, now: Long, zone: TimeZone = TimeZone.getDefault()): String {
+        val cal = java.util.Calendar.getInstance(zone)
+        cal.timeInMillis = now
+        val today = cal.get(java.util.Calendar.YEAR) to cal.get(java.util.Calendar.DAY_OF_YEAR)
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        val yesterday = cal.get(java.util.Calendar.YEAR) to cal.get(java.util.Calendar.DAY_OF_YEAR)
+        cal.timeInMillis = millis
+        val that = cal.get(java.util.Calendar.YEAR) to cal.get(java.util.Calendar.DAY_OF_YEAR)
+        val date = SimpleDateFormat(if (that.first == today.first) "d MMM" else "d MMM yyyy", Locale.ENGLISH).also { it.timeZone = zone }.format(Date(millis))
+        return when (that) {
+            today -> "Today · $date"
+            yesterday -> "Yesterday · $date"
+            else -> date
+        }
+    }
 
     /** A fee as the user thinks of it: 0.001 as "0.10%". */
     fun fee(fraction: Double): String = "%.3f%%".format(Locale.ROOT, fraction * 100).replace(Regex("(\\.\\d\\d)0%$"), "$1%")

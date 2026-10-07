@@ -123,9 +123,139 @@ class ScreenLogicTest {
     }
 
     @Test
+    fun `the chart steps through the open trades whose levels it has, one at a time`() {
+        val chart = ChartUi("BTCUSDT", "1h", emptyList(), listOf(
+            LevelUi(LevelKind.ENTRY, "Entry", 100.0, 5), LevelUi(LevelKind.STOP, "Stop", 95.5, 5), LevelUi(LevelKind.ENTRY, "Entry", 2.5, 7),
+        ))
+        assertEquals(listOf(5L, 7L) to 0, levelTrades(chart, null))
+        assertEquals(listOf(5L, 7L) to 1, levelTrades(chart, 7))
+        assertEquals("a trade no longer open falls back to the first", listOf(5L, 7L) to 0, levelTrades(chart, 9))
+        assertEquals(emptyList<Long>() to 0, levelTrades(null, 5))
+        assertEquals(listOf("Entry 100.00", "Stop 95.500"), levelsOf(chart, 5).map { it.label })
+        assertEquals(listOf("Entry 2.500"), levelsOf(chart, 7).map { it.label })
+    }
+
+    @Test
+    fun `where a price sits between two others runs from 0 to 1 and never past the ends`() {
+        assertEquals(0.5f, rangeFraction(90.0, 110.0, 100.0)!!, 1e-6f)
+        assertEquals(0f, rangeFraction(90.0, 110.0, 80.0)!!, 1e-6f)
+        assertEquals(1f, rangeFraction(90.0, 110.0, 120.0)!!, 1e-6f)
+        assertNull(rangeFraction(110.0, 90.0, 100.0))
+        assertNull(rangeFraction(90.0, 110.0, null))
+    }
+
+    @Test
+    fun `a closed trade's gap to random entries is in points, and unknown without a random figure`() {
+        assertEquals(2.9, gapToRandom(ClosedUi(0L, 1.0, "target", 0.03, 0.001, null, null, 1))!!, 1e-9)
+        assertEquals(-1.5, gapToRandom(ClosedUi(0L, 1.0, "stop", -0.01, 0.005, null, null, 1))!!, 1e-9)
+        assertNull(gapToRandom(ClosedUi(0L, 1.0, "stop", -0.01, null, null, null, 1)))
+        assertNull(gapToRandom(ClosedUi(0L, 1.0, "stop", -0.01, Double.NaN, null, null, 1)))
+    }
+
+    @Test
+    fun `a verdict's firmness fills one, two or three dots`() {
+        assertEquals(0, firmnessDots("No verdict"))
+        assertEquals(1, firmnessDots("Early read"))
+        assertEquals(2, firmnessDots("Provisional"))
+        assertEquals(3, firmnessDots("Meaningful"))
+    }
+
+    @Test
+    fun `the search also finds a trade by its short pattern name`() {
+        val t = open.copy(short = "Breakout · 20 high")
+        assertEquals(listOf(t.id), filterTrades(listOf(t), TradeFilter.All, "20 high").map { it.id })
+    }
+
+    @Test
+    fun `a day reads as today, yesterday, or its date, with the year only when it is another`() {
+        val utc = TimeZone.getTimeZone("UTC")
+        val now = 1_791_380_000_000L // 2026-10-07, mid-afternoon UTC
+        assertEquals("Today · 7 Oct", Fmt.day(now - 3_600_000L, now, utc))
+        assertEquals("Yesterday · 6 Oct", Fmt.day(now - 86_400_000L, now, utc))
+        assertEquals("5 Oct", Fmt.day(now - 2 * 86_400_000L, now, utc))
+        assertEquals("7 Oct 2025", Fmt.day(now - 365 * 86_400_000L, now, utc))
+    }
+
+    @Test
+    fun `an alert about a trade is read from its numbers, and an old one from its words`() {
+        val facts = AlertFacts("donchian20_1h", "Breakout · 20 high", tradeId = 2, entry = 2.126, target = 2.207, stop = 2.036)
+        val opened = AlertUi(1, 0L, "signal", "Paper trade opened: ZRO 15m", "b", "ZROUSDT", "15m", facts = facts)
+        assertEquals("Opened", alertOutcome(opened))
+        assertEquals("Entry 2.126 → target 2.207 (+3.81%) · stop 2.036", alertFigures(opened))
+        val trailing = opened.copy(facts = facts.copy(target = null, trails = true))
+        assertEquals("Entry 2.126 · safety stop 2.036, then trails up", alertFigures(trailing))
+        val closed = AlertUi(2, 0L, "exit", "Paper trade closed: GTC 15m, target hit", "b", "GTCUSDT", "15m",
+            facts = AlertFacts("x", "x", reason = "stop", net = -0.02, random = 0.0117))
+        assertEquals("the numbers win over the words", "Stopped out", alertOutcome(closed))
+        assertEquals("Random entries averaged +1.17%", alertFigures(closed))
+        val old = AlertUi(3, 0L, "exit", "Paper trade closed: GTC 15m, target hit", "b", "GTCUSDT", "15m")
+        assertEquals("target", alertReason(old))
+        assertEquals("Target hit", alertOutcome(old))
+        assertNull(alertFigures(old))
+        assertEquals(null, alertTrade(old, listOf(won)))
+        assertEquals(won, alertTrade(closed.copy(facts = closed.facts!!.copy(tradeId = 2)), listOf(won)))
+        assertEquals(won, alertTrade(old.copy(link = "signallab://trades?coin=BTCUSDT&id=2"), listOf(won)))
+    }
+
+    @Test
+    fun `a Learn title splits into a name and what it is`() {
+        assertEquals("Trend" to "Price crosses above its average", splitTitle("Trend: price crosses above its average"))
+        assertEquals("What a paper trade is" to null, splitTitle("What a paper trade is"))
+        assertEquals(": odd" to null, splitTitle(": odd"))
+    }
+
+    @Test
+    fun `a list's line names how many coins and the first four`() {
+        val list = ListUi(1, "My coins 4", true, listOf("ORCAUSDT", "GTCUSDT", "NIGHTUSDT", "SANDUSDT", "MOVRUSDT", "ZROUSDT"), listOf("15m", "1h"))
+        assertEquals("6 coins · ORCA, GTC, NIGHT, SAND +2", listCoinsLine(list))
+        assertEquals("1 coin · BTC", listCoinsLine(list.copy(coins = listOf("BTCUSDT"))))
+        assertEquals("0 coins", listCoinsLine(list.copy(coins = emptyList())))
+    }
+
+    @Test
+    fun `the status bar hides only on a phone held sideways`() {
+        assertTrue(hideStatusBar(846, 372))
+        assertFalse("upright", hideStatusBar(411, 800))
+        assertFalse("a tablet held sideways keeps it", hideStatusBar(1200, 700))
+        assertFalse("a square window is not sideways", hideStatusBar(400, 400))
+    }
+
+    @Test
+    fun `the bar has five places and the other four sit behind More`() {
+        assertEquals(listOf(Dest.Markets, Dest.Trades, Dest.Scorecard, Dest.Analyst, Dest.More), BarPlaces)
+        assertEquals(Dest.entries.toSet(), (BarPlaces + MorePlaces).toSet())
+        for (d in MorePlaces) assertEquals(Dest.More, barPlaceOf(d))
+        for (d in BarPlaces) assertEquals(d, barPlaceOf(d))
+    }
+
+    @Test
+    fun `a place behind More returns to More on Back, and More to Markets`() {
+        val nav = NavState()
+        nav.go(Dest.More)
+        nav.go(Dest.Alerts)
+        assertTrue(nav.back())
+        assertEquals(Dest.More, nav.dest)
+        assertTrue(nav.back())
+        assertEquals(Dest.Markets, nav.dest)
+        assertFalse(nav.back())
+    }
+
+    @Test
+    fun `on a phone Back from a Learn page goes to the Learn list first, then More`() {
+        val nav = NavState()
+        nav.go(Dest.Learn)
+        nav.learnPage = "trend"
+        assertTrue(nav.back())
+        assertEquals(Dest.Learn, nav.dest)
+        assertNull(nav.learnPage)
+        assertTrue(nav.back())
+        assertEquals(Dest.More, nav.dest)
+    }
+
+    @Test
     fun `percentages carry their sign and a missing one reads as a dash`() {
         assertEquals("+1.23%", Fmt.signedPercent(0.0123))
-        assertEquals("-1.00%", Fmt.signedPercent(-0.01))
+        assertEquals("−1.00%", Fmt.signedPercent(-0.01))
         assertEquals("+0.00%", Fmt.signedPercent(0.0))
         assertEquals("—", Fmt.signedPercent(null))
         assertEquals("55%", Fmt.percent(0.55, 0))
@@ -216,12 +346,14 @@ class ScreenLogicTest {
         assertNull(nav.learnPage)
         assertFalse(nav.canBack)
 
-        // A page chosen inside Learn on a narrow screen: Back closes the page first, then leaves Learn.
+        // A page chosen inside Learn on a narrow screen: Back closes the page first, then leaves Learn for More, then Markets.
         nav.go(Dest.Learn)
         nav.learnPage = "trend"
         assertTrue(nav.back())
         assertEquals(Dest.Learn, nav.dest)
         assertNull(nav.learnPage)
+        assertTrue(nav.back())
+        assertEquals(Dest.More, nav.dest)
         assertTrue(nav.back())
         assertEquals(Dest.Markets, nav.dest)
 
@@ -230,6 +362,8 @@ class ScreenLogicTest {
         assertTrue(nav.back())
         assertFalse(nav.showDebug)
         assertEquals(Dest.Settings, nav.dest)
+        assertTrue(nav.back())
+        assertEquals(Dest.More, nav.dest)
         assertTrue(nav.back())
         assertEquals(Dest.Markets, nav.dest)
     }

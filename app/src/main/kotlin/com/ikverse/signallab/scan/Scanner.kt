@@ -187,7 +187,7 @@ class Scanner(
                 if (!log.close(lt.id, exit)) continue
                 closed++
                 val text = AlertText.closed(lt.trade.variant, lt.trade.symbol, tf, result.reason, result.net, result.randomMean, lt.id)
-                log.record(AlertText.KIND_EXIT, text.title, text.body, lt.trade.symbol, tf.label, text.link).also { alerts.add(it); notify.add(it) }
+                log.record(AlertText.KIND_EXIT, text.title, text.body, lt.trade.symbol, tf.label, text.link, text.facts).also { alerts.add(it); notify.add(it) }
             }
         }
 
@@ -230,10 +230,10 @@ class Scanner(
                 entryPrice = plan.entryPrice, target = plan.target, stop = plan.stop, holdBars = plan.limit, exitDue = plan.exitDue,
                 cost = plan.cost, exitMode = plan.mode.label, atr = plan.atr,
             )
-            if (log.open(trade) == null) continue
+            val tradeId = log.open(trade) ?: continue
             opened++
-            val text = AlertText.opened(plan, isNewCoin(plan.symbol, now))
-            log.record(AlertText.KIND_SIGNAL, text.title, text.body, plan.symbol, tf.label, text.link).also { alerts.add(it); notify.add(it) }
+            val text = AlertText.opened(plan, isNewCoin(plan.symbol, now), tradeId)
+            log.record(AlertText.KIND_SIGNAL, text.title, text.body, plan.symbol, tf.label, text.link, text.facts).also { alerts.add(it); notify.add(it) }
         }
 
         // 3. Warnings: shown, never traded. Only for the candle that just closed, and not again within a cooldown.

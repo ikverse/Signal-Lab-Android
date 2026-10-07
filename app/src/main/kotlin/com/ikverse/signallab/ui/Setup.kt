@@ -75,7 +75,7 @@ fun CoinPicker(
         shown = Shown(source, window, lists.offers(query, source, window))
     }
     Column(modifier) {
-        PlainField(query, { query = it }, "Search coins")
+        SearchField(query, { query = it }, "Search coins")
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp).testTag("sources")) {
             for (s in PickSource.entries) ChoiceText(s.label, s == source, { sourceName = s.name }, Modifier.testTag("source-${s.name}"))
         }
@@ -140,7 +140,7 @@ fun ChartPicker(all: List<Pair<String, String>>, chosen: Set<String>, onChange: 
         SectionLabel("Charts to watch")
         FlowRow(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
             for ((label, _) in all) {
-                ChoiceText(label, label in chosen, { onChange(if (label in chosen) chosen - label else chosen + label) })
+                TickChip(label, label in chosen, { onChange(if (label in chosen) chosen - label else chosen + label) })
             }
         }
         val notes = all.filter { it.first in chosen }.joinToString("  ·  ") { "${it.first}: ${it.second}" }
@@ -225,8 +225,8 @@ private fun SetupActions(
         HRule()
         message?.let { ProblemState(it) }
         if (onCancel != null) TextAction("Cancel", onCancel, color = Palette.Muted, modifier = Modifier.fillMaxWidth())
-        TextAction(
-            "Switch on and start (${chosen.size} ${if (chosen.size == 1) "coin" else "coins"})", enabled = chosen.isNotEmpty() && charts.isNotEmpty(),
+        TonalButton(
+            "Switch on and start (${chosen.size} ${if (chosen.size == 1) "coin" else "coins"})", enabled = chosen.isNotEmpty() && charts.isNotEmpty(), stretch = true,
             onClick = {
                 scope.launch {
                     when (val r = lists.create(name, chosen, charts.toSet(), activate = true)) {
@@ -238,7 +238,7 @@ private fun SetupActions(
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth().testTag("start"),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).testTag("start"),
         )
     }
 }

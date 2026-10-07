@@ -114,6 +114,9 @@ class RecordDatabase(context: Context?, name: String? = "signal_lab.db") :
                     "CREATE TRIGGER ${t}_no_delete BEFORE DELETE ON $t BEGIN SELECT RAISE(ABORT, '$t is append-only'); END",
                 )
             },
+            // Step 5: the numbers behind an alert about a trade (its pattern, prices and result), as JSON, so the inbox shows them as figures.
+            // Nullable: alerts from before, and alerts that are not about a trade, have none and show their words as they always did.
+            listOf("ALTER TABLE alerts ADD COLUMN facts TEXT"),
         )
 
         val SCHEMA_VERSION: Int = MIGRATIONS.size

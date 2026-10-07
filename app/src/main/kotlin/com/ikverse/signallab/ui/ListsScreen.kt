@@ -3,7 +3,10 @@ package com.ikverse.signallab.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,7 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,6 +36,24 @@ import kotlinx.coroutines.launch
 
 /** How long "Tap again to delete" stays armed. */
 private const val CONFIRM_WINDOW_MS = 4_000L
+
+/** The line under a list's name: how many coins, and the first four of them. */
+internal fun listCoinsLine(l: ListUi): String {
+    val n = l.coins.size
+    val names = l.coins.take(4).joinToString(", ") { it.removeSuffix("USDT") }
+    return "$n ${if (n == 1) "coin" else "coins"}" + (if (n > 0) " · $names" else "") + (if (n > 4) " +${n - 4}" else "")
+}
+
+/** Whether a list is scanned: a green dot and "Watching", or a hollow one and "Off". */
+@Composable
+private fun WatchState(active: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp)) {
+        Canvas(Modifier.size(8.dp)) {
+            if (active) drawCircle(Palette.Up) else drawCircle(Palette.Faint, style = Stroke(1.5.dp.toPx()))
+        }
+        Text(if (active) "Watching" else "Off", style = Type.Small.copy(color = if (active) Palette.Up else Palette.Muted), modifier = Modifier.padding(start = 5.dp))
+    }
+}
 
 /**
  * Your lists: make them, switch them on and off, choose the charts and the coins. On a wide screen the list of lists sits beside the
@@ -68,20 +91,27 @@ fun ListsScreen(model: ListsModel, panels: PanelPrefs, wide: Boolean, modifier: 
     }
     val listOfLists = @Composable {
         Column(Modifier.fillMaxSize()) {
-            ScreenTitle("Lists")
+            Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                ScreenTitle("Lists", Modifier.weight(1f))
+                TonalButton("New list", { creating = true }, Modifier.padding(end = 8.dp).testTag("new-list"), icon = Glyphs.Plus)
+            }
             LazyColumn(Modifier.weight(1f)) {
                 items(lists, key = { it.id }) { l ->
-                    TouchRow({ selected = l.id; adding = false }, selected = current?.id == l.id) {
+                    TouchRow({ selected = l.id; adding = false }, selected = current?.id == l.id, minHeight = 76.dp) {
                         Column(Modifier.weight(1f)) {
-                            Text(l.name, style = Type.BodyStrong, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text("${l.coins.size} ${if (l.coins.size == 1) "coin" else "coins"} · ${l.timeframes.joinToString(" ")}", style = Type.Small)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(l.name, style = Type.BodyStrong, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                WatchState(l.active)
+                            }
+                            Text(listCoinsLine(l), style = Type.Small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                for (tf in l.timeframes) ChartTag(tf)
+                            }
                         }
-                        Text(if (l.active) "watching" else "off", style = Type.Small.copy(color = if (l.active) Palette.Up else Palette.Muted))
                     }
                     HRule()
                 }
             }
-            TextAction("New list", { creating = true }, Modifier.fillMaxWidth().testTag("new-list"))
         }
     }
     val detail = @Composable {
@@ -148,7 +178,7 @@ private fun ListDetail(model: ListsModel, list: ListUi, adding: Boolean, setAddi
     }
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("list-detail")) {
-        if (onBack != null) TextAction("‹ Lists", onBack, color = Palette.Muted)
+        if (onBack != null) BackRow("Lists", onBack)
         if (renaming) {
             PlainField(newName, { newName = it }, "List name")
             Row {
@@ -171,9 +201,10 @@ private fun ListDetail(model: ListsModel, list: ListUi, adding: Boolean, setAddi
         HRule()
         SectionLabel("Coins (${list.coins.size} of $MAX_COINS_PER_LIST)")
         for (c in list.coins) {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(c.removeSuffix("USDT"), style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                TextAction("Remove", { run { model.removeCoin(list.id, c) } }, color = Palette.Muted)
+            val base = c.removeSuffix("USDT")
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(base, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                IconAction(Glyphs.Close, "Remove $base", { run { model.removeCoin(list.id, c) } }, tint = Palette.Muted)
             }
             HRule()
         }

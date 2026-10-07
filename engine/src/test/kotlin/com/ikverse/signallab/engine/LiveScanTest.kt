@@ -340,6 +340,19 @@ class LiveScanTest {
     }
 
     @Test
+    fun everyVariantHasAShortNameThatNamesOnePatternOnly() {
+        val keys = tfs.flatMap { Signals.compute(Golden.panel(it)).keys.map { k -> k.name } } +
+            listOf("intraday_mom_30m", "intraday_mom_1h", "intraday_breakout_15m", "bullish_harami_1h", "bullish_hikkake_15m", "fade1h_hold24_1h", "fade4h_4h")
+        for (v in keys) assertTrue(VariantLabels.short(v) != v && VariantLabels.short(v).length < 26, "$v is shortened to '${VariantLabels.short(v)}'")
+        for ((short, variants) in keys.groupBy { VariantLabels.short(it) }) {
+            assertEquals(1, variants.map { VariantLabels.describe(it) }.distinct().size, "'$short' names more than one pattern: $variants")
+        }
+        assertEquals("Breakout · 20 high", VariantLabels.short("donchian20_1d"))
+        assertEquals("Trend · 50 avg", VariantLabels.short("trend_ma50_15m"))
+        assertEquals("Bullish hikkake", VariantLabels.short("bullish_hikkake_15m"))
+    }
+
+    @Test
     fun everyVariantTheEngineProducesHasARealDescription() {
         for (tf in tfs) {
             for (key in Signals.compute(Golden.panel(tf)).keys) {

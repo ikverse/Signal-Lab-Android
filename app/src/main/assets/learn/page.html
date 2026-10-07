@@ -6,25 +6,29 @@
 <title>Signal Lab learn</title>
 <style>
   :root { color-scheme: dark; }
-  html, body { margin: 0; background: #050505; color: #d1d4dc; font: 15px/1.55 Roboto, "Helvetica Neue", Arial, sans-serif; }
+  html, body { margin: 0; background: #050505; color: #cdd1d9; font: 15px/1.6 Roboto, "Helvetica Neue", Arial, sans-serif; }
   #content { max-width: 760px; margin: 0 auto; padding: 8px 16px 48px; }
-  h1 { font-size: 22px; font-weight: 500; color: #f0f3fa; margin: 18px 0 6px; }
-  h2 { font-size: 16px; font-weight: 500; color: #f0f3fa; margin: 26px 0 6px; padding-top: 14px; border-top: 1px solid #1e222d; }
-  h3 { font-size: 14px; font-weight: 500; color: #f0f3fa; margin: 18px 0 4px; }
-  p, li { color: #d1d4dc; }
+  h1 { font-size: 24px; line-height: 1.25; font-weight: 500; color: #f4f5f7; margin: 18px 0 8px; }
+  h2 { font-size: 17px; font-weight: 500; color: #f4f5f7; margin: 26px 0 6px; padding-top: 14px; border-top: 1px solid #15181e; }
+  h3 { font-size: 15px; font-weight: 500; color: #f4f5f7; margin: 18px 0 4px; }
+  p, li { color: #cdd1d9; }
   li { margin: 3px 0; }
-  a { color: #2962ff; text-decoration: none; }
-  strong { color: #f0f3fa; font-weight: 500; }
-  code { font: 13px "Roboto Mono", Menlo, Consolas, monospace; color: #d1d4dc; }
+  /* Numbered steps: each number in a small badge, with room between steps. */
+  ol { list-style: none; counter-reset: step; padding-left: 0; }
+  ol > li { counter-increment: step; position: relative; padding-left: 38px; margin: 12px 0; }
+  ol > li::before { content: counter(step); position: absolute; left: 0; top: 1px; width: 26px; height: 26px; border-radius: 13px; background: #16213a; color: #9dbbff; font-size: 13px; font-weight: 600; line-height: 26px; text-align: center; }
+  a { color: #5b8dff; text-decoration: none; }
+  strong { color: #f4f5f7; font-weight: 500; }
+  code { font: 13px "Roboto Mono", Menlo, Consolas, monospace; color: #cdd1d9; }
   table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px; }
-  th { text-align: left; color: #868993; font-weight: 500; font-size: 12px; padding: 6px 8px 6px 0; border-bottom: 1px solid #1e222d; }
-  td { padding: 7px 8px 7px 0; border-bottom: 1px solid #14171f; vertical-align: top; }
-  blockquote { margin: 12px 0; padding: 2px 0 2px 12px; border-left: 2px solid #1e222d; color: #868993; }
-  hr { border: 0; border-top: 1px solid #1e222d; margin: 22px 0; }
+  th { text-align: left; color: #8f95a1; font-weight: 500; font-size: 12px; padding: 6px 8px 6px 0; border-bottom: 1px solid #15181e; }
+  td { padding: 7px 8px 7px 0; border-bottom: 1px solid #111318; vertical-align: top; }
+  blockquote { margin: 12px 0; padding: 2px 0 2px 12px; border-left: 2px solid #15181e; color: #8f95a1; }
+  hr { border: 0; border-top: 1px solid #15181e; margin: 22px 0; }
   .mermaid { margin: 14px 0; text-align: center; overflow-x: auto; }
   .figure { margin: 14px 0; }
   .figure svg { max-width: 100%; height: auto; }
-  .note { color: #868993; font-size: 13px; }
+  .note { color: #8f95a1; font-size: 13px; }
   .failed { color: #ff9800; font-size: 13px; }
 </style>
 </head>
@@ -44,8 +48,8 @@
           mermaid.initialize({
             startOnLoad: false, securityLevel: 'strict', theme: 'base',
             themeVariables: {
-              background: '#050505', primaryColor: '#0d0f14', primaryTextColor: '#d1d4dc', primaryBorderColor: '#2a2e39',
-              lineColor: '#868993', secondaryColor: '#0d0f14', tertiaryColor: '#050505', fontFamily: 'Roboto, Arial, sans-serif', fontSize: '14px'
+              background: '#050505', primaryColor: '#0e1014', primaryTextColor: '#cdd1d9', primaryBorderColor: '#2c3240',
+              lineColor: '#8f95a1', secondaryColor: '#0e1014', tertiaryColor: '#050505', fontFamily: 'Roboto, Arial, sans-serif', fontSize: '14px'
             },
             flowchart: { htmlLabels: true, curve: 'basis' }
           });
@@ -60,6 +64,12 @@
 
   var latest = 0;
 
+  // On a phone a flow drawn left to right is shrunk to the width until its words cannot be read, so there it is drawn top to bottom.
+  function narrow(text) {
+    if (!(window.innerWidth < 600)) return text;
+    return text.replace(/^(\s*(?:flowchart|graph))\s+LR\b/m, '$1 TD');
+  }
+
   // The app calls this with a page's Markdown. The text shows at once; Mermaid blocks become diagrams a moment later, and a diagram that
   // will not draw says so and shows nothing else.
   window.render = async function (markdown) {
@@ -71,7 +81,7 @@
     blocks.forEach(function (code) {
       var div = document.createElement('div');
       div.className = 'mermaid';
-      div.textContent = code.textContent;
+      div.textContent = narrow(code.textContent);
       code.parentElement.replaceWith(div);
       nodes.push(div);
     });

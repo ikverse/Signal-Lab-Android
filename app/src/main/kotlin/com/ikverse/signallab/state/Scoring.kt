@@ -61,6 +61,7 @@ object Scoring {
                 tCluster = s.t.takeIf { !it.isNaN() },
                 verdict = judged[i].verdict, firmness = Statistics.tier(s.n),
                 forwardOnly = EngineConfig.isForwardOnly(g.variant),
+                short = PatternLabels.short(g.variant),
             )
         }
         return ScorecardUi(rows, trials)

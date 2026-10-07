@@ -24,22 +24,38 @@ import androidx.compose.ui.unit.sp
 import com.ikverse.signallab.R
 
 /**
- * The look: TradingView's. Plain text on near-black, separated by thin lines, with no boxes or pills around labels, and
- * TradingView's own muted green and red for up and down. Near-black rather than black, because pure black smears on an
- * OLED screen when it scrolls. Roboto is bundled, because many phones (Samsung's among them) ship a different font.
+ * The look: near-black, plain lists split by thin lines, and a raised surface only where things belong together (a trade's
+ * card, a group of settings). Numbers carry the colour; labels stay neutral. Near-black rather than black, because pure black
+ * smears on an OLED screen when it scrolls. TradingView's muted green and red for up and down. Roboto is bundled, because many
+ * phones (Samsung's among them) ship a different font.
  */
 object Palette {
     val Background = Color(0xFF050505)
-    val Raised = Color(0xFF0D0F14)
-    val Rule = Color(0xFF1E222D)
-    val Text = Color(0xFFD1D4DC)
-    val Strong = Color(0xFFF0F3FA)
-    val Muted = Color(0xFF868993)
-    // Lightened from TradingView's 2962FF (4.1:1 on the background) so 14 sp accent text clears 4.5:1; this is about 5.6:1.
-    val Accent = Color(0xFF4A7FFF)
+    val Raised = Color(0xFF0E1014)
+    val Rule = Color(0xFF15181E)
+    val Text = Color(0xFFCDD1D9)
+    val Strong = Color(0xFFF4F5F7)
+    // About 6.8:1 on the background, so the secondary lines read without effort.
+    val Muted = Color(0xFF8F95A1)
+    /** Only for marks that say nothing on their own, such as a row's chevron. */
+    val Faint = Color(0xFF5F6570)
+    // About 6.5:1 on the background.
+    val Accent = Color(0xFF5B8DFF)
+    /** Behind the chosen tab's icon and a filled button, with [OnAccentTint] on it. */
+    val AccentTint = Color(0xFF16213A)
+    val OnAccentTint = Color(0xFF9DBBFF)
+    /** A chart tag ("15m") and a count. */
+    val TagFill = Color(0xFF171A21)
+    val TagText = Color(0xFFB7BCC6)
+    /** A chosen chip, and the edge of one that is not. */
+    val ChipFill = Color(0xFF1A1E27)
+    val ChipEdge = Color(0xFF2C3240)
     val Up = Color(0xFF089981)
     val Down = Color(0xFFF23645)
     val Warn = Color(0xFFFF9800)
+    /** Behind a change in a pill: the same green and red, faint. */
+    val UpTint = Up.copy(alpha = 0.14f)
+    val DownTint = Down.copy(alpha = 0.14f)
 }
 
 val Roboto = FontFamily(
@@ -59,14 +75,21 @@ object Type {
         letterSpacing = (size * tracking).sp, fontFeatureSettings = if (tabular) "tnum" else null,
     )
 
-    val Title = style(20, FontWeight.Medium, Palette.Strong, leading = 1.25, tracking = -0.01)
-    val Heading = style(16, FontWeight.Medium, Palette.Strong)
-    val Body = style(14)
-    val BodyStrong = style(14, FontWeight.Medium, Palette.Strong)
-    val Small = style(12, color = Palette.Muted, tracking = 0.01)
-    val Label = style(11, FontWeight.Medium, Palette.Muted, tracking = 0.01)
-    val Number = style(14, tabular = true)
-    val NumberStrong = style(14, FontWeight.Medium, Palette.Strong, tabular = true)
+    val Title = style(22, FontWeight.Medium, Palette.Strong, leading = 1.25, tracking = -0.01)
+    /** Also a coin's name in a list. */
+    val Heading = style(17, FontWeight.Medium, Palette.Strong, leading = 1.25)
+    val Body = style(15)
+    val BodyStrong = style(15, FontWeight.Medium, Palette.Strong)
+    val Small = style(13, color = Palette.Muted, tracking = 0.01)
+    /** A section's name, in sentence case. */
+    val Section = style(13, FontWeight.Medium, Palette.Muted, tracking = 0.01)
+    val Label = style(12, FontWeight.Medium, Palette.Muted, tracking = 0.01)
+    val Number = style(15, tabular = true)
+    val NumberStrong = style(15, FontWeight.Medium, Palette.Strong, tabular = true)
+    /** A figure that is the point of its screen: a coin's price over its chart, a trade's result. */
+    val Big = style(24, FontWeight.Medium, Palette.Strong, tabular = true, leading = 1.2)
+    /** The numbers in a strip of totals. */
+    val Kpi = style(19, FontWeight.Medium, Palette.Strong, tabular = true, leading = 1.25)
 }
 
 /** The few moves the app makes: quick and ease-out, because a dense screen should answer a touch at once and never make anyone wait. */

@@ -48,7 +48,7 @@ class El {
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
 }
 
-function load() {
+function load({ width } = {}) {
   const host = new El('div');
   const head = new El('head');
   const scripts = [];
@@ -64,6 +64,7 @@ function load() {
       .map((l, i, arr) => l).join('\n') },
     console,
     scrollTo: (x, y) => scrolls.push([x, y]),
+    innerWidth: width,
   };
   // The stand-in reader: a "```mermaid" fence around a line becomes the block the real reader produces.
   ctx.marked.parse = (md) => {
@@ -177,4 +178,22 @@ t('a page opened while the last one waits for its diagram wins, and the late dia
   assert.equal(await slow, 0);
   assert.equal(env.runs.length, 0, 'the diagram of the page that was left is not drawn');
   assert.deepEqual(env.host.children.map((c) => c.textContent), ['# A page', 'With some text.']);
+});
+
+t('on a phone a flow drawn left to right is drawn top to bottom instead, and on a wide screen it is left alone', async () => {
+  const phone = load({ width: 400 });
+  const pending = phone.render(withDiagram);
+  assert.equal(phone.host.children[1].textContent, 'graph TD');
+  phone.arrived(0);
+  await pending;
+  const wide = load({ width: 900 });
+  const later = wide.render(withDiagram);
+  assert.equal(wide.host.children[1].textContent, 'graph LR');
+  wide.arrived(0);
+  await later;
+  const flow = load({ width: 400 });
+  const third = flow.render('```mermaid\nflowchart LR; A-->B\n```');
+  assert.equal(flow.host.children[0].textContent, 'flowchart TD; A-->B');
+  flow.arrived(0);
+  await third;
 });

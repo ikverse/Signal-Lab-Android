@@ -86,7 +86,7 @@ class FakeLists(initial: List<ListUi> = emptyList(), loaded: Boolean = true) : L
     override val allTimeframes = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d").map { it to "note for $it" }
 }
 
-class FakeMarkets(initial: List<CoinUi> = emptyList()) : MarketsModel {
+class FakeMarkets(initial: List<CoinUi> = emptyList(), private val levels: List<LevelUi> = emptyList()) : MarketsModel {
     val coinState = MutableStateFlow(initial)
     val priceState = MutableStateFlow<Map<String, Double>>(emptyMap())
     val changeState = MutableStateFlow(0L)
@@ -101,7 +101,7 @@ class FakeMarkets(initial: List<CoinUi> = emptyList()) : MarketsModel {
 
     override suspend fun chart(symbol: String, timeframe: String): ChartUi? {
         charts += symbol to timeframe
-        return ChartUi(symbol, timeframe, List(5) { CandleUi(it * 60_000L, 1.0, 2.0, 0.5, 1.5, 10.0) }, emptyList())
+        return ChartUi(symbol, timeframe, List(5) { CandleUi(it * 60_000L, 1.0, 2.0, 0.5, 1.5, 10.0) }, levels)
     }
 
     override fun watchPrices(symbols: Set<String>): AutoCloseable {

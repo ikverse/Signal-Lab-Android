@@ -18,13 +18,16 @@ data class CoinUi(
     val openTrades: Int,
     /** The chart sizes this coin is watched on, shortest first, as the labels the lists use ("15m", "1h"). */
     val timeframes: List<String>,
+    /** Closes over the last day, oldest first, for the small line beside the price; empty when there are too few. */
+    val spark: List<Double> = emptyList(),
 )
 
 data class CandleUi(val time: Long, val open: Double, val high: Double, val low: Double, val close: Double, val volume: Double)
 
 enum class LevelKind { ENTRY, STOP, TARGET }
 
-data class LevelUi(val kind: LevelKind, val label: String, val price: Double)
+/** A price line on the chart for one open paper trade: [tradeId] says which, so the chart can show one trade's lines at a time. */
+data class LevelUi(val kind: LevelKind, val label: String, val price: Double, val tradeId: Long = 0)
 
 data class ChartUi(val symbol: String, val timeframe: String, val candles: List<CandleUi>, val levels: List<LevelUi>)
 
@@ -84,6 +87,8 @@ data class TradeUi(
     /** How the trade exits: "trail", "learned", "held", "classic", or null for a trade from before exits were chosen. */
     val exitMode: String?,
     val closed: ClosedUi?,
+    /** The pattern's name for a row ("Bullish hikkake"); [label] is the full sentence. */
+    val short: String = label,
 )
 
 data class ScoreRowUi(
@@ -103,12 +108,34 @@ data class ScoreRowUi(
     /** How firm that is, by the number of trades behind it: "No verdict", "Early read", "Provisional" or "Meaningful". */
     val firmness: String,
     val forwardOnly: Boolean,
+    /** The pattern's name for a row; [label] is the full sentence. */
+    val short: String = label,
 )
 
 data class ScorecardUi(val rows: List<ScoreRowUi> = emptyList(), val patternsTested: Int = 0)
 
-/** One alert. [link] is where touching it goes (see [parseLink]); null for one that goes nowhere. */
-data class AlertUi(val id: Long, val time: Long, val kind: String, val title: String, val body: String, val symbol: String?, val timeframe: String?, val link: String? = null)
+/** One alert. [link] is where touching it goes (see [parseLink]); null for one that goes nowhere. [facts] are its numbers, for one about a trade. */
+data class AlertUi(
+    val id: Long, val time: Long, val kind: String, val title: String, val body: String, val symbol: String?, val timeframe: String?,
+    val link: String? = null, val facts: AlertFacts? = null,
+)
+
+/**
+ * The numbers behind an alert about a trade: its pattern (as [variant] and its short name, [pattern]), the trade's id, its prices when it
+ * opened (with [trails] for a stop that follows the price up), and how it ended when it closed ([reason] "target", "stop" or "time").
+ */
+data class AlertFacts(
+    val variant: String,
+    val pattern: String,
+    val tradeId: Long? = null,
+    val entry: Double? = null,
+    val target: Double? = null,
+    val stop: Double? = null,
+    val trails: Boolean = false,
+    val reason: String? = null,
+    val net: Double? = null,
+    val random: Double? = null,
+)
 
 data class LearnPageUi(val id: String, val group: String, val title: String, val markdown: String)
 

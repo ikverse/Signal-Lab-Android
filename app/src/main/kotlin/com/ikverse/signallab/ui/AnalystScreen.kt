@@ -1,11 +1,19 @@
 package com.ikverse.signallab.ui
 
 import android.content.ClipboardManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -18,7 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,7 +83,7 @@ fun AnalystScreen(
 ) {
     val reports by model.reports.collectAsStateWithLifecycle()
     val current = reports.firstOrNull { it.id == selected } ?: if (wide) reports.firstOrNull() else null
-    val index = @Composable { AnalystIndex(model, trades, reports, current?.id, onSelect, onOpenPage) }
+    val index = @Composable { AnalystIndex(model, trades, reports, current?.id, onSelect, onOpenPage, compact = wide) }
     val content = @Composable {
         when {
             current != null -> ReportView(model, current, wide, onSelect, onOpenPage, onGo)
@@ -94,18 +104,19 @@ fun AnalystScreen(
 private fun ReportView(model: AnalystModel, report: ReportUi, wide: Boolean, onSelect: (Long?) -> Unit, onOpenPage: (String) -> Unit, onGo: (String) -> Unit) {
     var patterns by rememberSaveable(report.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        if (!wide) TextAction("‹ Analyst", { onSelect(null) }, color = Palette.Muted)
+        if (!wide) BackRow("Analyst", { onSelect(null) })
         Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             Text(report.title, style = Type.Heading, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("report-title"))
             Text("Kept ${Fmt.dateTime(report.receivedAt)}", style = Type.Small)
         }
         if (report.suggestions.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
-                ChoiceText("Answer", !patterns, { patterns = false }, Modifier.testTag("tab-answer"))
-                ChoiceText("Patterns (${report.suggestions.size})", patterns, { patterns = true }, Modifier.testTag("tab-patterns"))
-            }
+            Tabs(
+                listOf(false, true), patterns, { if (it) "Patterns (${report.suggestions.size})" else "Answer" }, { patterns = it },
+                Modifier.widthIn(max = 360.dp), tag = { if (it) "tab-patterns" else "tab-answer" },
+            )
+        } else {
+            HRule()
         }
-        HRule()
         if (patterns && report.suggestions.isNotEmpty()) {
             LazyColumn(Modifier.weight(1f).testTag("suggestions")) {
                 itemsIndexed(report.suggestions, key = { i, s -> "$i-${s.definition}" }) { i, s ->
@@ -170,6 +181,7 @@ private fun AnalystIndex(
     currentId: Long?,
     onSelect: (Long?) -> Unit,
     onOpenPage: (String) -> Unit,
+    compact: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -208,19 +220,22 @@ private fun AnalystIndex(
     }
 
     LazyColumn(Modifier.fillMaxSize().testTag("analyst-index")) {
-        item(key = "title") { ScreenTitle("Analyst") }
+        item(key = "title") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ScreenTitle("Analyst", Modifier.weight(1f))
+                IconAction(Glyphs.Info, "How this works", { onOpenPage("analyst") }, Modifier.padding(end = 4.dp).testTag("analyst-learn"), tint = Palette.Muted)
+            }
+        }
         item(key = "intro") {
+            // Two lines; how answers come back, and the rest, are on the page behind the info button.
             Text(
                 if (model.claudeInstalled) {
-                    "Each question opens the Claude app with a draft: the question, with your record's data below it, answered on your own Claude " +
-                        "plan. Nothing is sent until you tap Send there. To keep an answer, tap Share under it and choose Signal Lab."
+                    "Ask Claude about your record. Each question opens the Claude app with a draft. Nothing is sent until you tap Send there."
                 } else {
-                    "The Claude app is not on this phone, so a question opens Android's share menu instead. With the Claude app installed, it " +
-                        "opens there directly, answered on your own Claude plan."
+                    "The Claude app is not on this phone, so a question opens Android's share menu instead."
                 },
                 style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp).testTag("analyst-intro"),
             )
-            TextAction("How this works", { onOpenPage("analyst") }, modifier = Modifier.testTag("analyst-learn"))
         }
         notice?.let { text ->
             item(key = "notice") {
@@ -231,18 +246,25 @@ private fun AnalystIndex(
         problem?.let { text -> item(key = "problem") { ProblemState(text) } }
         item(key = "ask") { SectionLabel("Ask Claude") }
         items(model.cards, key = { "card-${it.id}" }) { c ->
-            TouchRow({ if (c.needsTrade) picking = !picking else ask(c.id) }, modifier = Modifier.testTag("card-${c.id}")) {
+            // Beside an open report the list is narrow: each question keeps to one line of description.
+            TouchRow({ if (c.needsTrade) picking = !picking else ask(c.id) }, modifier = Modifier.testTag("card-${c.id}"), minHeight = if (compact) 54.dp else RowHeight) {
                 Column(Modifier.weight(1f)) {
                     Text(c.title, style = Type.BodyStrong)
-                    Text(c.description, style = Type.Small)
+                    Text(c.description, style = Type.Small, maxLines = if (compact) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
                 }
-                Text(
+                // A question opens Claude; Explain a trade first opens a list of trades to choose from, here.
+                Icon(
                     when {
-                        !c.needsTrade -> "Ask"
-                        picking -> "Close"
+                        !c.needsTrade -> Glyphs.External
+                        picking -> Glyphs.ChevronUp
+                        else -> Glyphs.ChevronDown
+                    },
+                    contentDescription = when {
+                        !c.needsTrade -> "Ask in Claude"
+                        picking -> "Close the trades"
                         else -> "Pick a trade"
                     },
-                    style = Type.Small.copy(color = Palette.Accent),
+                    tint = if (c.needsTrade) Palette.Muted else Palette.Accent, modifier = Modifier.padding(start = 12.dp).size(20.dp),
                 )
             }
             HRule()
@@ -266,12 +288,21 @@ private fun AnalystIndex(
         }
         item(key = "lab") {
             SectionLabel("Lab patterns")
-            Text(
-                "${budget.running} of ${budget.maxRunning} running · ${budget.newLeft} of ${budget.maxNew} new left in ${budget.windowDays} days. " +
-                    "Every pattern tested raises the bar for every verdict.",
-                style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp).testTag("lab-budget"),
-            )
-            TextAction("About the lab", { onOpenPage("pattern-lab") }, modifier = Modifier.testTag("lab-learn"))
+            RaisedGroup {
+                // A slot for each pattern that may run at once, filled while one runs.
+                Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (i in 0 until budget.maxRunning) {
+                        Box(Modifier.weight(1f).height(8.dp).clip(RoundedCornerShape(4.dp)).background(if (i < budget.running) Palette.Accent else Palette.Rule))
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${budget.running} of ${budget.maxRunning} running · ${budget.newLeft} of ${budget.maxNew} new left in ${budget.windowDays} days",
+                        style = Type.Small.copy(color = Palette.Text), modifier = Modifier.weight(1f).testTag("lab-budget"),
+                    )
+                    TextAction("About", { onOpenPage("pattern-lab") }, modifier = Modifier.testTag("lab-learn"))
+                }
+            }
             if (lab.isEmpty()) {
                 Text(
                     "None yet. Ask \"Suggest 3 patterns\", keep the answer, then start one from its Patterns tab.",
@@ -309,7 +340,7 @@ private fun AnalystIndex(
         }
         item(key = "reports") {
             SectionLabel("Reports")
-            TextAction("Paste an answer", ::paste, modifier = Modifier.testTag("paste"))
+            TonalButton("Paste an answer", ::paste, Modifier.padding(horizontal = 12.dp).testTag("paste"), icon = Glyphs.Plus)
         }
         if (reports.isEmpty()) {
             item(key = "no-reports") {
@@ -328,6 +359,7 @@ private fun AnalystIndex(
                         style = Type.Small,
                     )
                 }
+                Icon(Glyphs.ChevronRight, contentDescription = null, tint = Palette.Faint, modifier = Modifier.size(18.dp))
             }
             HRule()
         }

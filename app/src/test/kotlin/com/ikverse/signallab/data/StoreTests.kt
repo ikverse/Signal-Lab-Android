@@ -245,6 +245,35 @@ class RecordDatabaseTest {
     }
 
     @Test
+    fun anAlertKeepsItsNumbersAndOneWithoutThemReadsAsBefore() = runTest {
+        val log = TradeLog(db(), io = Dispatchers.Unconfined)
+        val facts = """{"variant":"donchian20_1h","net":0.01}"""
+        val recorded = log.record("exit", "Paper trade closed: BTC 1h, target hit", "b", "BTCUSDT", "1h", null, facts)
+        assertEquals(facts, recorded.facts)
+        log.record("problem", "Blocked", "b")
+        val (problem, exit) = log.alerts()
+        assertNull(problem.facts)
+        assertEquals(facts, exit.facts)
+    }
+
+    @Test
+    fun anAlertFromVersionFourOpensUnderVersionFiveWithNoNumbers() = runTest {
+        val name = "v4-alerts.db"
+        context.deleteDatabase(name)
+        val raw = context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null)
+        RecordDatabase.MIGRATIONS.take(4).flatten().forEach(raw::execSQL)
+        raw.version = 4
+        raw.execSQL("INSERT INTO alerts (ts, kind, symbol, tf, title, body, link) VALUES (5, 'signal', 'BTCUSDT', '1h', 'Paper trade opened: BTC 1h', 'words', NULL)")
+        raw.close()
+        val log = TradeLog(RecordDatabase(context, name), io = Dispatchers.Unconfined)
+        val old = log.alerts().single()
+        assertEquals("Paper trade opened: BTC 1h", old.title)
+        assertEquals("words", old.body)
+        assertNull(old.facts)
+        assertEquals(5, RecordDatabase(context, name).writableDatabase.version)
+    }
+
+    @Test
     fun aTradeIsOpenedOnceAndClosedOnce() = runTest {
         val log = TradeLog(db(), io = Dispatchers.Unconfined)
         val id = assertNotNull(log.open(trade()))

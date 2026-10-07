@@ -14,6 +14,7 @@ import com.ikverse.signallab.engine.Refusal
 import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.Watchlist
 import com.ikverse.signallab.engine.WatchlistRules
+import com.ikverse.signallab.ui.AlertFacts
 import com.ikverse.signallab.ui.AlertUi
 import com.ikverse.signallab.ui.AlertsModel
 import com.ikverse.signallab.ui.CandleUi
@@ -214,8 +215,15 @@ class LiveMarketsModel(private val graph: AppGraph, scope: CoroutineScope) : Mar
             val change = if (latest == null || price == null) null else {
                 graph.candles.closeAt(symbol, shortest, latest.t.last() - DAY_MS)?.takeIf { it > 0 }?.let { price / it - 1 }
             }
-            CoinUi(symbol, symbol.removeSuffix(DataConfig.QUOTE), price, change, open[symbol] ?: 0, tfs.map { it.label })
+            CoinUi(symbol, symbol.removeSuffix(DataConfig.QUOTE), price, change, open[symbol] ?: 0, tfs.map { it.label }, spark(symbol, tfs))
         }
+    }
+
+    /** The last day of closes for the line beside a coin's price: from the hour chart when the coin has one, else its shortest. */
+    private suspend fun spark(symbol: String, tfs: java.util.TreeSet<Timeframe>): List<Double> {
+        val tf = if (Timeframe.H1 in tfs) Timeframe.H1 else tfs.first()
+        val closes = graph.candles.latest(symbol, tf, tf.barsPerDay + 1)?.close ?: return emptyList()
+        return sparkPoints(closes.toList())
     }
 
     override suspend fun chart(symbol: String, timeframe: String): ChartUi? {
@@ -224,9 +232,9 @@ class LiveMarketsModel(private val graph: AppGraph, scope: CoroutineScope) : Mar
         val candles = List(c.size) { CandleUi(c.t[it], c.open[it], c.high[it], c.low[it], c.close[it], c.volume[it]) }
         val levels = graph.tradeLog.trades(TradeStatus.OPEN, symbol = symbol, limit = 50).filter { it.trade.tf == tf }.flatMap { t ->
             buildList {
-                add(LevelUi(LevelKind.ENTRY, "Entry", t.trade.entryPrice))
-                t.trade.stop?.let { add(LevelUi(LevelKind.STOP, "Stop", it)) }
-                t.trade.target?.let { add(LevelUi(LevelKind.TARGET, "Target", it)) }
+                add(LevelUi(LevelKind.ENTRY, "Entry", t.trade.entryPrice, t.id))
+                t.trade.stop?.let { add(LevelUi(LevelKind.STOP, "Stop", it, t.id)) }
+                t.trade.target?.let { add(LevelUi(LevelKind.TARGET, "Target", it, t.id)) }
             }
         }
         return ChartUi(symbol, timeframe, candles, levels)
@@ -240,10 +248,20 @@ class LiveMarketsModel(private val graph: AppGraph, scope: CoroutineScope) : Mar
     }
 }
 
+/** At most [max] of [closes], evenly picked and always ending on the last, so a day of 15-minute candles draws as lightly as a day of hours. */
+internal fun sparkPoints(closes: List<Double>, max: Int = 48): List<Double> {
+    val clean = closes.filter { it.isFinite() && it > 0 }
+    if (clean.size < 3) return emptyList()
+    if (clean.size <= max) return clean
+    val step = (clean.size - 1).toDouble() / (max - 1)
+    return List(max) { clean[(it * step).toInt().coerceAtMost(clean.size - 1)] }.dropLast(1) + clean.last()
+}
+
 internal fun LiveTrade.toUi() = TradeUi(
     id = id, variant = trade.variant, label = PatternLabels.describe(trade.variant), symbol = trade.symbol, timeframe = trade.tf.label,
     openedAt = trade.entryTime, entryPrice = trade.entryPrice, stop = trade.stop, target = trade.target, exitMode = trade.exitMode,
     closed = exit?.let { ClosedUi(it.exitTime, it.exitPrice, it.reason.label, it.net, it.randomMean, it.maxUp, it.maxDown, it.barsHeld) },
+    short = PatternLabels.short(trade.variant),
 )
 
 class LiveTradesModel(private val graph: AppGraph, scope: CoroutineScope) : TradesModel {
@@ -270,7 +288,24 @@ class LiveScorecardModel(private val graph: AppGraph, scope: CoroutineScope) : S
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ScorecardUi())
 }
 
-internal fun Alert.toUi() = AlertUi(id, ts, kind, title, body, symbol, tf, link)
+internal fun Alert.toUi() = AlertUi(id, ts, kind, title, body, symbol, tf, link, alertFacts(facts))
+
+/** Reads the numbers stored with an alert (see `AlertText.facts`); null when there are none or they do not read. */
+internal fun alertFacts(json: String?): AlertFacts? {
+    if (json == null) return null
+    return try {
+        val o = org.json.JSONObject(json)
+        fun num(key: String) = if (o.has(key)) o.getDouble(key) else null
+        val variant = o.getString("variant")
+        AlertFacts(
+            variant = variant, pattern = PatternLabels.short(variant), tradeId = if (o.has("trade")) o.getLong("trade") else null,
+            entry = num("entry"), target = num("target"), stop = num("stop"), trails = o.optBoolean("trails", false),
+            reason = if (o.has("reason")) o.getString("reason") else null, net = num("net"), random = num("random"),
+        )
+    } catch (_: org.json.JSONException) {
+        null
+    }
+}
 
 class LiveAlertsModel(private val graph: AppGraph, scope: CoroutineScope) : AlertsModel {
     @OptIn(ExperimentalCoroutinesApi::class)
