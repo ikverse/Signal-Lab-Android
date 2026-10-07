@@ -3,8 +3,18 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
-## Unreleased
+## 1.0.0 - 2026-10-07
 
+- New look across the app, made for reading on a dark screen: clearer text sizes, figures that line up in columns, short pattern names ("Bullish hikkake", "Breakout · 20 high") instead of whole sentences, and colour only on results. The green, red and amber are the same as before.
+- New: the bar along the bottom has five places with icons: Markets, Trades, Scorecard, Analyst and More. Alerts, Learn, Lists and Settings are under More, and Back from them returns to More. Held sideways, the side bar has the same five.
+- New: on a phone held sideways the status bar is hidden, for more room. Swipe down from the top edge to see it for a moment.
+- Markets: the coin list names the list being watched, draws the last day as a small line beside each price, and has a bell that opens Alerts. The chart's chart sizes and tools share one row above it, and its legend is one line. A trade's levels are drawn inside the chart, one trade at a time, with arrows to step through the open ones, and their labels never cover each other. Details shows each open trade as a card with a bar from its stop to its target and a dot where the price is now.
+- Markets on a phone held sideways: the coins and the chart fill the screen, and the open trades slide in over the chart from a button.
+- Trades: totals at the top, groups that fold away, the coin first on each row, and an opened trade shows a bar from its worst dip to its best and how far it did better or worse than random entries. Held sideways, the chosen trade sits beside the list.
+- Scorecard: the chart size always shows, the figures line up in columns with a small bar for "vs random", and dots show how firm a verdict is.
+- Alerts: grouped by day, with a mark for each kind. An alert about a trade shows its coin, what happened and its figures instead of a paragraph; alerts raised before this version keep their words. Held sideways, an alert opens beside the list with the trade it is about.
+- Learn: diagrams are drawn top to bottom on a phone so their words can be read, and numbered steps have badges.
+- Lists show whether they are watched and their first coins, and New list sits at the top. Settings are grouped, with one-line explanations and the rest behind an info button; the costs' Save button lights up once something has changed.
 - New: Analyst. Tap a question (Weekly review, What's fading?, BTC regime check, Explain a trade, 1h vs 4h) and the Claude app opens with it as a draft, your record's data included, answered on your own Claude plan. Nothing is sent until you tap Send in Claude. Share Claude's answer to Signal Lab to keep it under Reports. Learn has a page on how it works.
 - New: "Paste an answer" in the Analyst keeps an answer you copied in Claude.
 - New: the pattern lab. "Suggest 3 patterns" asks Claude for new patterns in a form the app can read. Each one can be backtested on your stored candles and started as a paper-trading test; its trades say "Lab, forward-only", because only trades after it started can judge it. At most 5 run at once and 5 can start in 30 days, since every pattern tested raises the bar for every verdict. The app warns when no active list watches one of a pattern's charts, and will not start a pattern that could never trade.
