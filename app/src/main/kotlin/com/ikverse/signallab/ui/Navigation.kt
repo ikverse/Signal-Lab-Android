@@ -74,7 +74,7 @@ class NavState(
     alertsGroup: AlertGroup = AlertGroup.All,
     trail: List<Dest> = emptyList(),
     analystReport: Long? = null,
-    chartTrade: Long? = null,
+    chartChoice: Map<Long, Boolean> = emptyMap(),
 ) {
     var dest by mutableStateOf(dest)
     var symbol by mutableStateOf(symbol)
@@ -92,8 +92,17 @@ class NavState(
     /** The Analyst report on show; null for the questions and the list of reports. */
     var analystReport by mutableStateOf(analystReport)
 
-    /** The open trade whose levels the chart shows; null for the newest on that chart. */
-    var chartTrade by mutableStateOf(chartTrade)
+    /**
+     * Which open trades the user switched on or off on the chart, by trade id. A trade not in here has not been touched: it is on if it is
+     * the newest open trade of its chart size, off otherwise.
+     */
+    var chartChoice by mutableStateOf(chartChoice)
+        private set
+
+    /** Puts one trade's levels on the chart, or takes them off. */
+    fun chooseChartTrade(id: Long, on: Boolean) {
+        chartChoice = ((chartChoice - id) + (id to on)).entries.toList().takeLast(MAX_CHOICES).associate { it.key to it.value }
+    }
 
     var trail by mutableStateOf(trail)
         private set
@@ -107,13 +116,13 @@ class NavState(
         dest = to
     }
 
-    /** Opens a coin on one of its charts, or on its Details; with [trade], the chart shows that trade's levels. */
+    /** Opens a coin on one of its charts, or on its Details; with [trade], that trade's levels are put on the chart. */
     fun openCoin(symbol: String, timeframe: String? = null, tab: MarketsTab = MarketsTab.Chart, fromApp: Boolean = false, trade: Long? = null) {
         jump(Dest.Markets, fromApp)
         this.symbol = symbol
         this.timeframe = timeframe
         marketsTab = tab
-        chartTrade = trade
+        if (trade != null) chooseChartTrade(trade, true)
     }
 
     fun openLearn(page: String?, fromApp: Boolean = true) {
@@ -202,13 +211,16 @@ class NavState(
     companion object {
         private const val MAX_TRAIL = 6
 
+        /** How many of the user's on/off choices for trades are kept; the oldest go first. */
+        private const val MAX_CHOICES = 200
+
         val Saver: Saver<NavState, Any> = mapSaver(
             save = {
                 mapOf(
                     "dest" to it.dest.name, "symbol" to it.symbol, "tf" to it.timeframe, "learn" to it.learnPage, "tab" to it.marketsTab.name,
                     "debug" to it.showDebug, "ts" to it.tradesStatus.name, "tq" to it.tradesQuery, "te" to it.tradesExpanded,
                     "ag" to it.alertsGroup.name, "trail" to it.trail.joinToString(",") { d -> d.name }, "ar" to it.analystReport,
-                    "ct" to it.chartTrade,
+                    "cts" to it.chartChoice.entries.joinToString(",") { (id, on) -> "$id:${if (on) 1 else 0}" },
                 )
             },
             restore = {
@@ -217,7 +229,8 @@ class NavState(
                     MarketsTab.valueOf(it["tab"] as String), it["debug"] as Boolean,
                     TradeFilter.valueOf(it["ts"] as String), it["tq"] as String, it["te"] as Long?, AlertGroup.valueOf(it["ag"] as String),
                     (it["trail"] as String).split(',').filter { s -> s.isNotEmpty() }.map { s -> Dest.valueOf(s) },
-                    it["ar"] as Long?, it["ct"] as Long?,
+                    it["ar"] as Long?,
+                    (it["cts"] as String).split(',').filter { s -> s.isNotEmpty() }.associate { s -> s.substringBefore(':').toLong() to (s.substringAfter(':') == "1") },
                 )
             },
         )

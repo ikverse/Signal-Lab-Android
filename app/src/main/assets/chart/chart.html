@@ -44,7 +44,8 @@
       },
       priceMark: {
         high: { color: MUTED, textFamily: FONT }, low: { color: MUTED, textFamily: FONT },
-        last: { upColor: UP, downColor: DOWN, noChangeColor: MUTED, line: { style: 'dashed' }, text: { family: FONT } }
+        // The live price is drawn by setLastPrice, so the library's own line at the last close would only be a second line beside it.
+        last: { show: false }
       },
       // One line over the candles: O H L C Vol, letters quiet and figures bright. No date: the time axis has it.
       tooltip: {
@@ -133,13 +134,16 @@
   window.addEventListener('resize', fit);
 
   var KIND_COLOR = { ENTRY: ACCENT, STOP: DOWN, TARGET: UP };
+  // The live price: a white line, its price on the axis in dark figures on a white tag.
+  var LIVE = '#ffffff', LIVE_TEXT = '#050505';
   var haveData = false;
 
   function clearGroup(id) {
     try { chart.removeOverlay({ groupId: id }); } catch (e) {}
   }
 
-  function drawLevel(group, price, label, color, timestamp, dashed) {
+  // A line across the chart with a tag on the price axis: [label] is the tag's text, and with none the tag shows the price itself.
+  function drawLevel(group, price, label, color, timestamp, dashed, textColor) {
     try {
       chart.createOverlay({
         name: 'horizontalStraightLine', groupId: group, lock: true,
@@ -147,9 +151,9 @@
         styles: { line: { color: color, size: 1, style: dashed ? 'dashed' : 'solid', dashedValue: [4, 4] } }
       });
       chart.createOverlay({
-        name: 'simpleTag', groupId: group, lock: true, extendData: label,
+        name: 'simpleTag', groupId: group, lock: true, extendData: label || undefined,
         points: [{ timestamp: timestamp, value: price }],
-        styles: { text: { color: '#ffffff', backgroundColor: color, borderColor: color }, line: { color: color } }
+        styles: { text: { color: textColor || '#ffffff', backgroundColor: color, borderColor: color }, line: { color: color } }
       });
     } catch (e) { /* a missing overlay must never take the chart down */ }
   }
@@ -355,7 +359,7 @@
       clearGroup('live');
       if (!haveData || !(price > 0)) return;
       var data = chart.getDataList();
-      drawLevel('live', price, '', ACCENT, data[data.length - 1].timestamp, false);
+      drawLevel('live', price, '', LIVE, data[data.length - 1].timestamp, false, LIVE_TEXT);
     },
     // The indicators to show, as a list of ids such as ["VOL", "RSI"]; everything not listed is taken off.
     setIndicators: function (ids) {

@@ -123,16 +123,43 @@ class ScreenLogicTest {
     }
 
     @Test
-    fun `the chart steps through the open trades whose levels it has, one at a time`() {
+    fun `an open trade's levels are on the chart when it was switched on, else when it is the newest of its size`() {
+        val open = listOf(FakeApp.trade(5, tf = "1h"), FakeApp.trade(7, tf = "1h"), FakeApp.trade(6, tf = "15m"), FakeApp.trade(3, tf = "15m"))
+        assertEquals("the newest of each size to begin with", setOf(7L, 6L), tradesOnChart(open, emptyMap()))
+        assertEquals("a trade switched on joins them", setOf(7L, 6L, 5L), tradesOnChart(open, mapOf(5L to true)))
+        assertEquals("a trade switched off leaves", setOf(6L), tradesOnChart(open, mapOf(7L to false)))
+        assertEquals("every one can be off", emptySet<Long>(), tradesOnChart(open, open.associate { it.id to false }))
+        assertEquals("a choice for a trade no longer open is ignored", setOf(7L, 6L), tradesOnChart(open, mapOf(99L to true)))
+        assertEquals(emptySet<Long>(), tradesOnChart(emptyList(), mapOf(1L to true)))
+    }
+
+    @Test
+    fun `the chart draws the levels of the trades that are on, each named with its price`() {
         val chart = ChartUi("BTCUSDT", "1h", emptyList(), listOf(
             LevelUi(LevelKind.ENTRY, "Entry", 100.0, 5), LevelUi(LevelKind.STOP, "Stop", 95.5, 5), LevelUi(LevelKind.ENTRY, "Entry", 2.5, 7),
         ))
-        assertEquals(listOf(5L, 7L) to 0, levelTrades(chart, null))
-        assertEquals(listOf(5L, 7L) to 1, levelTrades(chart, 7))
-        assertEquals("a trade no longer open falls back to the first", listOf(5L, 7L) to 0, levelTrades(chart, 9))
-        assertEquals(emptyList<Long>() to 0, levelTrades(null, 5))
-        assertEquals(listOf("Entry 100.00", "Stop 95.500"), levelsOf(chart, 5).map { it.label })
-        assertEquals(listOf("Entry 2.500"), levelsOf(chart, 7).map { it.label })
+        assertEquals(listOf("Entry 100.00", "Stop 95.500"), levelsOf(chart, setOf(5L)).map { it.label })
+        assertEquals(listOf("Entry 2.500"), levelsOf(chart, setOf(7L)).map { it.label })
+        assertEquals(listOf("Entry 100.00", "Stop 95.500", "Entry 2.500"), levelsOf(chart, setOf(5L, 7L)).map { it.label })
+        assertEquals(emptyList<LevelUi>(), levelsOf(chart, emptySet()))
+    }
+
+    @Test
+    fun `which trades were switched on or off is kept, newest choice last, and survives being saved`() {
+        val nav = NavState()
+        nav.chooseChartTrade(5, true)
+        nav.chooseChartTrade(7, false)
+        nav.chooseChartTrade(5, false)
+        assertEquals(mapOf(7L to false, 5L to false), nav.chartChoice)
+        assertEquals("a trade chosen again moves to the end", listOf(7L, 5L), nav.chartChoice.keys.toList())
+        val back =NavState.Saver.restore(with(NavState.Saver) { SaverScope { true }.save(nav) }!!)!!
+        assertEquals(mapOf(7L to false, 5L to false), back.chartChoice)
+        assertEquals(emptyMap<Long, Boolean>(), NavState.Saver.restore(with(NavState.Saver) { SaverScope { true }.save(NavState()) }!!)!!.chartChoice)
+        nav.openCoin("BTCUSDT", "1h", trade = 9)
+        assertEquals("opening a coin on a trade puts that trade on and leaves the rest", mapOf(7L to false, 5L to false, 9L to true), nav.chartChoice)
+        repeat(300) { nav.chooseChartTrade(1000L + it, true) }
+        assertEquals("only the latest choices are kept", 200, nav.chartChoice.size)
+        assertTrue(nav.chartChoice.getValue(1299L))
     }
 
     @Test
