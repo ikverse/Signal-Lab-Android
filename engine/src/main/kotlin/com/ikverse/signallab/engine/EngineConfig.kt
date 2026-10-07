@@ -83,6 +83,19 @@ object EngineConfig {
     val FORWARD_ONLY_VARIANTS: Set<String> = setOf("fade1h_hold24_1h")
     const val FORWARD_ONLY_VERDICT = "Judged on live trades only"
 
+    /** True for a variant only live trades can judge: one of [FORWARD_ONLY_VARIANTS], or any lab pattern, which is always shaped after seeing data. */
+    fun isForwardOnly(variant: String): Boolean = variant in FORWARD_ONLY_VARIANTS || LabPatterns.isLab(variant)
+
+    // --- The pattern lab ---
+
+    /**
+     * Lab patterns forward-tested at the same time, and new ones started within [LAB_NEW_WINDOW_DAYS]. Every pattern tested raises the bar
+     * for every verdict, so ideas are rationed instead of tried by the dozen.
+     */
+    const val LAB_MAX_RUNNING = 5
+    const val LAB_MAX_NEW = 5
+    const val LAB_NEW_WINDOW_DAYS = 30
+
     // --- Exits for the live scan (the classic target and stop above stay what the research used) ---
 
     /** Trend patterns: a safety stop this many candle sizes (ATR) below the entry... */

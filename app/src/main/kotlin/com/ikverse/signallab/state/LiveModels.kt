@@ -6,12 +6,12 @@ import com.ikverse.signallab.data.Alert
 import com.ikverse.signallab.data.CostModel
 import com.ikverse.signallab.data.DataConfig
 import com.ikverse.signallab.data.LiveTrade
+import com.ikverse.signallab.data.PatternLabels
 import com.ikverse.signallab.data.SettingsStore
 import com.ikverse.signallab.data.TradeStatus
 import com.ikverse.signallab.data.WatchlistResult
 import com.ikverse.signallab.engine.Refusal
 import com.ikverse.signallab.engine.Timeframe
-import com.ikverse.signallab.engine.VariantLabels
 import com.ikverse.signallab.engine.Watchlist
 import com.ikverse.signallab.engine.WatchlistRules
 import com.ikverse.signallab.ui.AlertUi
@@ -241,7 +241,7 @@ class LiveMarketsModel(private val graph: AppGraph, scope: CoroutineScope) : Mar
 }
 
 internal fun LiveTrade.toUi() = TradeUi(
-    id = id, variant = trade.variant, label = VariantLabels.describe(trade.variant), symbol = trade.symbol, timeframe = trade.tf.label,
+    id = id, variant = trade.variant, label = PatternLabels.describe(trade.variant), symbol = trade.symbol, timeframe = trade.tf.label,
     openedAt = trade.entryTime, entryPrice = trade.entryPrice, stop = trade.stop, target = trade.target, exitMode = trade.exitMode,
     closed = exit?.let { ClosedUi(it.exitTime, it.exitPrice, it.reason.label, it.net, it.randomMean, it.maxUp, it.maxDown, it.barsHeld) },
 )
@@ -253,14 +253,20 @@ class LiveTradesModel(private val graph: AppGraph, scope: CoroutineScope) : Trad
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
 
+/**
+ * The scorecard as the Scorecard screen shows it: a row for every pattern on the charts the active [lists] use, built from [trades] (every
+ * paper trade), with the bar raised by every pattern ever tried. The Analyst's data file carries the same one.
+ */
+internal suspend fun currentScorecard(graph: AppGraph, lists: List<Watchlist>, trades: List<LiveTrade>): ScorecardUi {
+    val inUse = lists.filter { it.active }.flatMap { it.timeframes }.toSet()
+    val registered = graph.tradeLog.registeredVariants().filter { it.tf in inUse }.map { it.name to it.tf }
+    return Scoring.build(trades, registered, graph.tradeLog.variantCount())
+}
+
 class LiveScorecardModel(private val graph: AppGraph, scope: CoroutineScope) : ScorecardModel {
     @OptIn(ExperimentalCoroutinesApi::class)
     override val scorecard: StateFlow<ScorecardUi> = combine(graph.tradeLog.version, graph.watchlists.lists) { _, lists -> lists }
-        .mapLatest { lists ->
-            val inUse = lists.filter { it.active }.flatMap { it.timeframes }.toSet()
-            val registered = graph.tradeLog.registeredVariants().filter { it.tf in inUse }.map { it.name to it.tf }
-            Scoring.build(graph.tradeLog.trades(TradeStatus.ALL, limit = Int.MAX_VALUE), registered, graph.tradeLog.variantCount())
-        }
+        .mapLatest { lists -> currentScorecard(graph, lists, graph.tradeLog.trades(TradeStatus.ALL, limit = Int.MAX_VALUE)) }
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ScorecardUi())
 }
 
@@ -294,7 +300,8 @@ class LiveSettingsModel(
             backgroundScanning = scanning, followFastCharts = followFast, binanceUs = us,
             permissions = PermissionsUi(g.notifications, g.exactAlarms, g.batteryExempt),
             version = BuildConfig.VERSION_NAME,
-            dataNote = "Everything Signal Lab records stays on this phone. It downloads prices from Binance and sends nothing about you anywhere.",
+            dataNote = "Everything Signal Lab records stays on this phone, unless you share it to Claude from the Analyst. It downloads prices " +
+                "from Binance and sends nothing about you anywhere.",
             dimScreen = dim, dimLevel = level, railOnRight = railRight,
         )
     }
@@ -386,7 +393,7 @@ class LiveSettingsModel(
 }
 
 /** Panel sizes kept in the settings, one entry per screen, so they are still there the next time the app opens. */
-class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = listOf("markets", "lists", "learn", "chart")) : PanelPrefs {
+class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = listOf("markets", "lists", "learn", "analyst", "chart")) : PanelPrefs {
     private val state = MutableStateFlow<Map<String, String>?>(null)
     override val saved: StateFlow<Map<String, String>?> = state
 

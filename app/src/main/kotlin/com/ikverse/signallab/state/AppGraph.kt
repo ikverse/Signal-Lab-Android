@@ -6,7 +6,9 @@ import com.ikverse.signallab.data.CandleStore
 import com.ikverse.signallab.data.CandleSync
 import com.ikverse.signallab.data.DataConfig
 import com.ikverse.signallab.data.HistoryManager
+import com.ikverse.signallab.data.LabStore
 import com.ikverse.signallab.data.RecordDatabase
+import com.ikverse.signallab.data.ReportLog
 import com.ikverse.signallab.data.SettingsStore
 import com.ikverse.signallab.data.TradeLog
 import com.ikverse.signallab.data.TradeStatus
@@ -49,6 +51,8 @@ class AppGraph(context: Context, scope: CoroutineScope) {
     val candles = CandleStore(context)
     val settings = SettingsStore(recordDb)
     val tradeLog = TradeLog(recordDb)
+    val reports = ReportLog(recordDb)
+    val labStore = LabStore(recordDb)
 
     @Volatile
     private var host = DataConfig.HOST_COM
@@ -64,7 +68,10 @@ class AppGraph(context: Context, scope: CoroutineScope) {
     val notifier = Notifier(context)
     val health = ScanHealth()
     val alarms = AndroidAlarms(context) { server -> server - (market.nowMs() - System.currentTimeMillis()) }
-    val scanner = Scanner(market, sync, candles, tradeLog, settings, { watchlists.lists.value }, notifier)
+    val scanner = Scanner(
+        market, sync, candles, tradeLog, settings, { watchlists.lists.value }, notifier,
+        lab = { labStore.all().filter { it.running }.mapNotNull { com.ikverse.signallab.analyst.LabFormat.pattern(it.id, it.definition) } },
+    )
     val controller = ScanController(
         scanner, market, alarms, tradeLog, notifier, health,
         hasWork = ::scanWanted, skewMs = { market.clockSkewMs }, housekeeping = ::tidyIfDue,
@@ -141,6 +148,8 @@ class AppGraph(context: Context, scope: CoroutineScope) {
         scope.launch {
             try {
                 settings.get(SettingsStore.DATA_HOST)?.let { host = it }
+                // Reading the lab gives its patterns their names in alerts and rows from the start.
+                labStore.all()
                 watchlists.load()
                 market.serverTime()
                 universe.refreshIfStale()

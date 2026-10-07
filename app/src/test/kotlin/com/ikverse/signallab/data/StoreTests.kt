@@ -166,7 +166,7 @@ class RecordDatabaseTest {
     fun aFreshInstallHasEveryTable() {
         val d = db().writableDatabase
         val tables = d.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { c -> buildSet { while (c.moveToNext()) add(c.getString(0)) } }
-        assertTrue(tables.containsAll(setOf("watchlists", "watchlist_coins", "settings", "live_trades", "live_exits", "alerts", "variants")), "tables were $tables")
+        assertTrue(tables.containsAll(setOf("watchlists", "watchlist_coins", "settings", "live_trades", "live_exits", "alerts", "variants", "analyst_reports", "lab_patterns", "lab_stops")), "tables were $tables")
     }
 
     /** Version 1 as it first shipped, written out in full. If editing step 1 changes the schema, this fails. */
@@ -217,9 +217,9 @@ class RecordDatabaseTest {
         frozenVersion1.forEach(raw::execSQL)
         raw.version = 1
         raw.close()
-        val upgraded = RecordDatabase(context, name).writableDatabase // runs every step beyond version 1, today none
+        val upgraded = RecordDatabase(context, name).writableDatabase // runs every step beyond version 1
         val fresh = RecordDatabase(context, null).writableDatabase
-        // Today they are the same. After a version 2 exists, this compares the upgraded v1 file with a fresh v2 install.
+        // The upgraded version 1 file and a fresh install of the current version must end with the same schema.
         assertEquals(schemaOf(fresh), schemaOf(upgraded))
         assertEquals(RecordDatabase.SCHEMA_VERSION, upgraded.version)
     }
@@ -321,5 +321,62 @@ class RecordDatabaseTest {
         context.getDatabasePath(name).copyTo(copy, overwrite = true)
         val reopened = RecordDatabase(context, "checkpoint-copy.db")
         assertEquals(1, TradeLog(reopened, io = Dispatchers.Unconfined).trades().size)
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+class ReportLogTest {
+    @Test
+    fun `reports are kept newest first, with or without the question they answered, and each save is announced`() = runTest {
+        var now = 1_000L
+        val log = ReportLog(RecordDatabase(context, name = null), clock = { now }, io = Dispatchers.Unconfined)
+        assertEquals(0L, log.version.value)
+        val first = log.add("weekly-review", "Weekly review", "## Summary\nText")
+        now = 2_000L
+        val second = log.add(null, "A follow-up", "More")
+        assertEquals(2L, log.version.value)
+        val all = log.all()
+        assertEquals(listOf(second, first), all.map { it.id })
+        assertEquals(listOf(2_000L, 1_000L), all.map { it.receivedAt })
+        assertNull(all[0].card)
+        assertEquals("weekly-review", all[1].card)
+        assertEquals("## Summary\nText", all[1].body)
+        assertEquals(listOf(second), log.all(limit = 1).map { it.id })
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+class LabStoreTest {
+    @Test
+    fun `lab patterns start and stop, never change, and name themselves in rows and alerts`() = runTest {
+        var now = 1_000L
+        val rdb = RecordDatabase(context, name = null)
+        val store = LabStore(rdb, clock = { now }, io = Dispatchers.Unconfined)
+        val first = store.start("Trend copy", "Because.", "{\"a\":1}", reportId = 3)
+        now = 2_000L
+        val second = store.start("Second", null, "{\"b\":2}", reportId = null)
+        assertEquals(2L, store.version.value)
+        assertEquals(listOf(second, first), store.all().map { it.id })
+        assertTrue(store.all().all { it.running })
+        assertEquals("Lab, forward-only: Trend copy", PatternLabels.describe("lab${first}_1h"))
+        assertEquals("Lab, forward-only: pattern 99", PatternLabels.describe("lab99_1h"))
+        assertTrue(PatternLabels.describe("donchian20_1h").startsWith("Breakout"))
+
+        now = 3_000L
+        assertTrue(store.stop(first))
+        assertFalse(store.stop(first), "already stopped")
+        assertFalse(store.stop(12345), "no such pattern")
+        val stopped = store.all().single { it.id == first }
+        assertEquals(3_000L, stopped.stoppedAt)
+        assertFalse(stopped.running)
+        assertEquals(3L, stopped.reportId)
+        assertEquals("Because.", stopped.reason)
+
+        val d = rdb.writableDatabase
+        for (sql in listOf("UPDATE lab_patterns SET title = 'x'", "DELETE FROM lab_patterns", "UPDATE lab_stops SET stopped_at = 1", "DELETE FROM lab_stops")) {
+            val e = assertFailsWith<SQLiteException>(sql) { d.execSQL(sql) }
+            assertTrue(e.message!!.contains("append-only"), sql)
+        }
+        PatternLabels.labTitles = emptyMap()
     }
 }

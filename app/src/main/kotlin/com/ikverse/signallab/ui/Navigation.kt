@@ -8,9 +8,9 @@ import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 
-/** Where in the app the user is. Seven places; the side rail shows all of them and the bottom bar scrolls sideways through all of them. */
+/** Where in the app the user is. Eight places; the side rail shows all of them and the bottom bar scrolls sideways through all of them. */
 enum class Dest(val label: String) {
-    Markets("Markets"), Trades("Trades"), Scorecard("Scorecard"), Alerts("Alerts"), Learn("Learn"), Lists("Lists"), Settings("Settings")
+    Markets("Markets"), Trades("Trades"), Scorecard("Scorecard"), Analyst("Analyst"), Alerts("Alerts"), Learn("Learn"), Lists("Lists"), Settings("Settings")
 }
 
 /** How much room there is. Decided by the window's width, never by the phone's model, so rotating or resizing just switches layouts. */
@@ -57,6 +57,7 @@ class NavState(
     tradesExpanded: Long? = null,
     alertsGroup: AlertGroup = AlertGroup.All,
     trail: List<Dest> = emptyList(),
+    analystReport: Long? = null,
 ) {
     var dest by mutableStateOf(dest)
     var symbol by mutableStateOf(symbol)
@@ -70,6 +71,9 @@ class NavState(
     var tradesQuery by mutableStateOf(tradesQuery)
     var tradesExpanded by mutableStateOf(tradesExpanded)
     var alertsGroup by mutableStateOf(alertsGroup)
+
+    /** The Analyst report on show; null for the questions and the list of reports. */
+    var analystReport by mutableStateOf(analystReport)
 
     var trail by mutableStateOf(trail)
         private set
@@ -109,6 +113,12 @@ class NavState(
         alertsGroup = group
     }
 
+    /** Opens the Analyst, on [report] when there is one to show. */
+    fun openAnalyst(report: Long?, fromApp: Boolean = false) {
+        jump(Dest.Analyst, fromApp)
+        analystReport = report
+    }
+
     /** Goes to wherever [link] leads. */
     fun openLink(link: Link, fromApp: Boolean) {
         when (link.place) {
@@ -121,6 +131,7 @@ class NavState(
             )
             LinkPlace.ALERTS -> openAlerts(AlertGroup.entries.firstOrNull { it.name.equals(link.group, ignoreCase = true) } ?: AlertGroup.All, fromApp)
             LinkPlace.SETTINGS -> jump(Dest.Settings, fromApp)
+            LinkPlace.ANALYST -> openAnalyst(link.report, fromApp)
         }
     }
 
@@ -140,7 +151,8 @@ class NavState(
     /** True while [back] has somewhere to go, so the system back button is only taken over when it matters. */
     val canBack: Boolean
         get() = showDebug || trail.isNotEmpty() ||
-            (narrow && dest == Dest.Learn && learnPage != null) || (narrow && dest == Dest.Markets && marketsTab != MarketsTab.Coins) || dest != Dest.Markets
+            (narrow && dest == Dest.Learn && learnPage != null) || (narrow && dest == Dest.Analyst && analystReport != null) ||
+            (narrow && dest == Dest.Markets && marketsTab != MarketsTab.Coins) || dest != Dest.Markets
 
     /** Back: out of the debug page, then along the trail of jumps, then one step towards Markets. Returns false when there is nothing to step out of. */
     fun back(): Boolean = when {
@@ -148,12 +160,14 @@ class NavState(
         trail.isNotEmpty() -> {
             val to = trail.last()
             trail = trail.dropLast(1)
-            // Leaving Learn behind: its page is closed, so Learn opens on its list next time.
+            // Leaving Learn or the Analyst behind: its page is closed, so it opens on its list next time.
             if (dest == Dest.Learn) learnPage = null
+            if (dest == Dest.Analyst) analystReport = null
             dest = to
             true
         }
         narrow && dest == Dest.Learn && learnPage != null -> { learnPage = null; true }
+        narrow && dest == Dest.Analyst && analystReport != null -> { analystReport = null; true }
         narrow && dest == Dest.Markets && marketsTab != MarketsTab.Coins -> { marketsTab = MarketsTab.Coins; true }
         dest != Dest.Markets -> { dest = Dest.Markets; true }
         else -> false
@@ -167,7 +181,7 @@ class NavState(
                 mapOf(
                     "dest" to it.dest.name, "symbol" to it.symbol, "tf" to it.timeframe, "learn" to it.learnPage, "tab" to it.marketsTab.name,
                     "debug" to it.showDebug, "ts" to it.tradesStatus.name, "tq" to it.tradesQuery, "te" to it.tradesExpanded,
-                    "ag" to it.alertsGroup.name, "trail" to it.trail.joinToString(",") { d -> d.name },
+                    "ag" to it.alertsGroup.name, "trail" to it.trail.joinToString(",") { d -> d.name }, "ar" to it.analystReport,
                 )
             },
             restore = {
@@ -176,6 +190,7 @@ class NavState(
                     MarketsTab.valueOf(it["tab"] as String), it["debug"] as Boolean,
                     TradeFilter.valueOf(it["ts"] as String), it["tq"] as String, it["te"] as Long?, AlertGroup.valueOf(it["ag"] as String),
                     (it["trail"] as String).split(',').filter { s -> s.isNotEmpty() }.map { s -> Dest.valueOf(s) },
+                    it["ar"] as Long?,
                 )
             },
         )

@@ -327,6 +327,17 @@ class ScreenLogicTest {
     }
 
     @Test
+    fun `the warning for unwatched charts names them and says whether the pattern could trade at all`() {
+        assertNull(unwatchedText(emptyList(), true))
+        assertEquals("No active list watches 4h, so it would not trade there.", unwatchedText(listOf("4h"), false))
+        assertEquals("No active list watches 15m or 4h, so it would not trade there.", unwatchedText(listOf("15m", "4h"), false))
+        assertEquals(
+            "No active list watches 5m, 15m or 4h, so it would never trade. Add 5m, 15m or 4h to a list first.",
+            unwatchedText(listOf("5m", "15m", "4h"), true),
+        )
+    }
+
+    @Test
     fun `the screens import nothing from the data layer`() {
         val dir = File("src/main/kotlin/com/ikverse/signallab/ui")
         assertTrue("run from the app module: ${dir.absolutePath}", dir.isDirectory)

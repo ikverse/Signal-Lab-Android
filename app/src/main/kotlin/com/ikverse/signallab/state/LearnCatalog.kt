@@ -3,6 +3,7 @@ package com.ikverse.signallab.state
 import android.content.Context
 import com.ikverse.signallab.data.DataConfig
 import com.ikverse.signallab.engine.EngineConfig
+import com.ikverse.signallab.engine.LabPatterns
 import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.WatchlistRules
 import com.ikverse.signallab.ui.LearnModel
@@ -23,6 +24,8 @@ object LearnIndex {
         Entry("scorecard", HOW, "How the scorecard judges"),
         Entry("costs", HOW, "What costs are charged"),
         Entry("chart-sizes", HOW, "Chart sizes"),
+        Entry("analyst", HOW, "Asking Claude about your results"),
+        Entry("pattern-lab", HOW, "The pattern lab"),
         Entry("trend", PATTERNS, "Trend: price crosses above its average"),
         Entry("breakout", PATTERNS, "Breakout: close above the recent high"),
         Entry("momentum", PATTERNS, "Momentum: a coin's own strong week"),
@@ -48,6 +51,7 @@ object LearnIndex {
         variant.startsWith("intraday_breakout_") -> "intraday-breakout"
         variant.startsWith("bullish_harami_") -> "harami"
         variant.startsWith("bullish_hikkake_") -> "hikkake"
+        LabPatterns.isLab(variant) -> "pattern-lab"
         else -> null
     }
 }
@@ -106,6 +110,13 @@ object LearnValues {
         "MAX_COINS_ACTIVE" to WatchlistRules.MAX_ACTIVE_COINS.toString(),
         "MAX_1M" to WatchlistRules.maxCoinsOn(Timeframe.M1).toString(),
         "MAX_5M" to WatchlistRules.maxCoinsOn(Timeframe.M5).toString(),
+        "LAB_MAX_RUNNING" to EngineConfig.LAB_MAX_RUNNING.toString(),
+        "LAB_MAX_NEW" to EngineConfig.LAB_MAX_NEW.toString(),
+        "LAB_NEW_DAYS" to EngineConfig.LAB_NEW_WINDOW_DAYS.toString(),
+        "LAB_MAX_CONDITIONS" to LabPatterns.MAX_CONDITIONS.toString(),
+        "LAB_MIN_N" to LabPatterns.MIN_N.toString(),
+        "LAB_MAX_N" to LabPatterns.MAX_N.toString(),
+        "LAB_MAX_HOLD" to LabPatterns.MAX_HOLD.toString(),
     )
 
     // Both closing braces are escaped: the PC's regex engine tolerates a bare "}" but Android's rejects it, and that crashed the Learn tab.

@@ -94,6 +94,7 @@ object ExitPolicy {
     fun modeOf(key: SignalKey): ExitMode = when {
         key.holdBars != null -> ExitMode.HELD
         key.family in learnedFamilies -> ExitMode.LEARNED
+        key.family == LabPatterns.FAMILY && key.param(LabPatterns.LEARNED) == 1.0 -> ExitMode.LEARNED
         else -> ExitMode.TRAIL
     }
 

@@ -110,7 +110,7 @@ object Statistics {
         return scores.indices.map { i ->
             val s = scores[i]
             val verdict = when {
-                s.variant in EngineConfig.FORWARD_ONLY_VARIANTS -> EngineConfig.FORWARD_ONLY_VERDICT
+                EngineConfig.isForwardOnly(s.variant) -> EngineConfig.FORWARD_ONLY_VERDICT
                 s.n < EngineConfig.VERDICT_TIERS.first().first || s.tCluster.isNaN() -> "No verdict"
                 s.tCluster >= EngineConfig.EDGE_T && holm[i] < EngineConfig.ALPHA -> "Edge"
                 s.tCluster <= EngineConfig.LOSING_T -> "Losing"

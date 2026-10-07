@@ -29,6 +29,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
 import com.ikverse.signallab.scan.AlertText
@@ -64,8 +65,8 @@ class AppUiTest {
     private fun tag(t: String) = rule.onNodeWithTag(t)
 
     private fun click(t: String) {
-        // A place far along the bottom bar is scrolled to before it is touched; the side rail does not scroll.
-        if (t.startsWith("nav-") && exists("bottom-bar")) tag(t).performScrollTo()
+        // A place far along the bottom bar, or down a side rail too short for every place, is scrolled to before it is touched.
+        if (t.startsWith("nav-")) tag(t).performScrollTo()
         tag(t).performClick()
         rule.waitForIdle()
     }
@@ -180,7 +181,7 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_SIDEWAYS)
     @Test
-    fun `a small phone held sideways has a side rail with all seven places and two panels`() {
+    fun `a small phone held sideways has a side rail with every place and two panels`() {
         show(FakeApp.full())
         assertTrue(exists("rail"))
         assertTrue(!exists("bottom-bar"))
@@ -984,7 +985,7 @@ class AppUiTest {
         everyTouchTargetIsBigEnough()
         click("coin-BTCUSDT")
         everyTouchTargetIsBigEnough()
-        for (d in listOf("nav-Trades", "nav-Scorecard", "nav-Alerts")) {
+        for (d in listOf("nav-Trades", "nav-Scorecard", "nav-Analyst", "nav-Alerts")) {
             click(d)
             everyTouchTargetIsBigEnough()
         }
@@ -1849,5 +1850,227 @@ class AppUiTest {
         assertTrue(exists("list-detail"))
         assertTrue(rule.onAllNodesWithText("First").fetchSemanticsNodes().size >= 2) // in the list and as the title of the open one
         assertTrue(rule.onAllNodesWithText("Second").fetchSemanticsNodes().isEmpty())
+    }
+
+    // --- the analyst -------------------------------------------------------------------------------------
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a question is handed over with a tap, a refusal is shown in words, and the page on how it works is a tap away`() {
+        val app = FakeApp.full()
+        show(app)
+        click("nav-Analyst")
+        assertTrue(exists("analyst-index"))
+        tag("analyst-intro").assertTextContains("Nothing is sent until you tap Send", substring = true)
+        tag("no-reports").assertExists()
+        click("card-weekly-review")
+        rule.waitUntil(3_000) { app.analyst.log.isNotEmpty() }
+        assertEquals(listOf("weekly-review"), app.analyst.log)
+        app.analyst.refuse = "The question could not be prepared: disk full"
+        click("card-weekly-review")
+        rule.waitUntil(3_000) { exists("problem") }
+        tag("problem").assertTextContains("disk full", substring = true)
+        click("analyst-learn")
+        assertTrue(exists("learn-screen"))
+        back()
+        assertTrue(exists("analyst-index"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `explaining a trade offers the closed trades and asks about the one picked`() {
+        val app = FakeApp.full()
+        show(app)
+        click("nav-Analyst")
+        click("card-explain-trade")
+        assertTrue(exists("pick-2"))
+        assertTrue(exists("pick-3"))
+        assertTrue("an open trade is not offered", !exists("pick-1"))
+        click("pick-3")
+        rule.waitUntil(3_000) { app.analyst.log.isNotEmpty() }
+        assertEquals(listOf("explain-trade 3"), app.analyst.log)
+        rule.waitUntil(3_000) { !exists("pick-2") }
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a report opens over the list, survives the screen being rebuilt, and Back returns to the list`() {
+        val restore = StateRestorationTester(rule)
+        val app = FakeApp.full()
+        app.analyst.state.value = listOf(ReportUi(7, 1_700_000_000_000L, "weekly-review", "Weekly review", "## Summary\nThree patterns helped."))
+        restore.setContent { SignalLabApp(app, debug = false, webViews = false) }
+        rule.waitForIdle()
+        click("nav-Analyst")
+        click("report-7")
+        tag("report-title").assertTextEquals("Weekly review")
+        tag("learn-text").assertTextContains("Three patterns helped.", substring = true)
+        restore.emulateSavedInstanceStateRestore()
+        rule.waitForIdle()
+        tag("learn-text").assertTextContains("Three patterns helped.", substring = true)
+        back()
+        assertTrue(exists("analyst-index"))
+        assertTrue(!exists("report-title"))
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `on a wide screen the questions and the newest report sit side by side`() {
+        val app = FakeApp.full()
+        app.analyst.state.value = listOf(ReportUi(8, 2L, null, "Newest", "Newest body"), ReportUi(7, 1L, null, "Older", "Older body"))
+        show(app)
+        click("nav-Analyst")
+        assertTrue(exists("split-analyst"))
+        tag("report-title").assertTextEquals("Newest")
+        scrollTo("report-7")
+        click("report-7")
+        tag("report-title").assertTextEquals("Older")
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `an answer shared back opens its report, and one that could not be kept says why until it is seen`() {
+        val app = FakeApp.full()
+        app.analyst.state.value = listOf(ReportUi(9, 1L, null, "Shared", "Shared body"))
+        show(app)
+        rule.runOnUiThread { app.link.value = Link(null, place = LinkPlace.ANALYST, report = 9) }
+        rule.waitForIdle()
+        tag("report-title").assertTextEquals("Shared")
+        back()
+        app.analyst.noticeState.value = "The shared text was empty, so there was nothing to keep."
+        rule.waitForIdle()
+        tag("problem").assertTextContains("empty", substring = true)
+        click("notice-ok")
+        assertTrue(!exists("problem"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `without the Claude app the analyst says a question opens the share menu`() {
+        show(FakeApp(lists = FakeLists(listOf(FakeApp.list)), analyst = FakeAnalyst(claudeInstalled = false)))
+        click("nav-Analyst")
+        tag("analyst-intro").assertTextContains("share menu", substring = true)
+    }
+
+    // --- the pattern lab ---------------------------------------------------------------------------------
+
+    /** Brings an Analyst list item into view (the list only builds what is on screen). */
+    private fun scrollTo(t: String) {
+        rule.onNodeWithTag("analyst-index").performScrollToNode(hasTestTag(t))
+        rule.waitForIdle()
+    }
+
+    private val suggesting = ReportUi(
+        5, 1L, "suggest-patterns", "Suggest 3 patterns", "Answer text",
+        listOf(
+            LabSuggestionUi("Above the 50", "Because.", "close above SMA(50) on 1h; a trailing stop", null, "def-50"),
+            LabSuggestionUi("Broken", null, null, "\"2h\" is not a chart size.", null),
+            LabSuggestionUi("Already", null, "close above SMA(20) on 1h; a trailing stop", null, "def-20", runningAs = 3),
+        ),
+    )
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a report that suggests patterns has a tab to backtest and start them, and says why one cannot be tested`() {
+        val app = FakeApp.full()
+        app.analyst.state.value = listOf(suggesting)
+        show(app)
+        click("nav-Analyst")
+        scrollTo("report-5")
+        click("report-5")
+        tag("learn-text").assertTextContains("Answer text", substring = true)
+        click("tab-patterns")
+        tag("summary-0").assertTextContains("close above SMA(50)", substring = true)
+        tag("problem-1").assertTextContains("is not a chart size", substring = true)
+        assertTrue(!exists("start-1") && !exists("backtest-1"))
+        assertTrue(exists("running-2") && !exists("start-2"))
+        click("backtest-0")
+        rule.waitUntil(3_000) { exists("backtest-result-0") }
+        rule.onNodeWithText("1h · 3 coins · 40 trades", substring = true).assertExists()
+        rule.onNodeWithText("4h: no stored candles", substring = true).assertExists()
+        assertEquals(listOf("backtest def-50"), app.analyst.log.filter { it.startsWith("backtest") })
+        click("start-0")
+        rule.waitUntil(3_000) { app.analyst.log.any { it.startsWith("start") } }
+        assertEquals("start Above the 50 5", app.analyst.log.single { it.startsWith("start") })
+        app.analyst.labRefuse = "5 lab patterns are already running. Stop one first."
+        click("start-0")
+        rule.waitUntil(3_000) { exists("start-problem-0") }
+        tag("start-problem-0").assertTextContains("Stop one first", substring = true)
+        click("tab-answer")
+        assertTrue(exists("learn-text"))
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the lab lists its patterns with the allowance left, and stopping one takes a second tap`() {
+        val app = FakeApp.full()
+        app.analyst.labState.value = listOf(
+            LabPatternUi(3, "Above the 50", "close above SMA(50) on 1h; a trailing stop", 1L, null),
+            LabPatternUi(2, "Old idea", "close above SMA(20) on 1h; a trailing stop", 1L, 2L),
+        )
+        app.analyst.budgetState.value = LabBudgetUi(running = 1, newLeft = 3)
+        show(app)
+        click("nav-Analyst")
+        scrollTo("lab-budget")
+        tag("lab-budget").assertTextContains("1 of 5 running · 3 of 5 new left in 30 days", substring = true)
+        scrollTo("lab-2")
+        assertTrue(exists("stop-3"))
+        assertTrue("a stopped pattern has nothing to stop", !exists("stop-2"))
+        click("stop-3")
+        tag("stop-3").assertTextContains("Tap again to stop")
+        assertTrue(app.analyst.log.none { it.startsWith("stop") })
+        click("stop-3")
+        rule.waitUntil(3_000) { app.analyst.log.any { it.startsWith("stop") } }
+        assertEquals("stop 3", app.analyst.log.single { it.startsWith("stop") })
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `an answer copied in Claude is pasted in and opened, and an empty clipboard says what to do`() {
+        val app = FakeApp.full()
+        app.analyst.state.value = listOf(ReportUi(42, 1L, null, "Pasted", "Pasted body"))
+        show(app)
+        click("nav-Analyst")
+        scrollTo("paste")
+        click("paste")
+        assertTrue(app.analyst.kept.isEmpty())
+        scrollTo("problem")
+        tag("problem").assertTextContains("tap Copy", substring = true)
+        rule.runOnUiThread {
+            rule.activity.getSystemService(android.content.ClipboardManager::class.java)
+                .setPrimaryClip(android.content.ClipData.newPlainText("answer", "Signal Lab report: Weekly review"))
+        }
+        scrollTo("paste")
+        click("paste")
+        rule.waitUntil(3_000) { app.analyst.kept.isNotEmpty() }
+        assertEquals("Signal Lab report: Weekly review", app.analyst.kept.single())
+        rule.waitUntil(3_000) { exists("report-title") }
+        tag("report-title").assertTextEquals("Pasted")
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a pattern on charts no list watches says so, on its suggestion and in the lab list`() {
+        val app = FakeApp.full()
+        app.analyst.state.value = listOf(
+            ReportUi(
+                6, 1L, null, "Ideas", "Body",
+                listOf(
+                    LabSuggestionUi("Four-hour", null, "close above SMA(50) on 4h; a trailing stop", null, "def-4h", unwatched = listOf("4h"), neverTrades = true),
+                    LabSuggestionUi("Half", null, "close above SMA(50) on 1h and 4h; a trailing stop", null, "def-both", unwatched = listOf("4h")),
+                    LabSuggestionUi("Fine", null, "close above SMA(50) on 1h; a trailing stop", null, "def-1h"),
+                ),
+            ),
+        )
+        app.analyst.labState.value = listOf(LabPatternUi(3, "Running", "close above SMA(50) on 1d; a trailing stop", 1L, null, listOf("1d"), true))
+        show(app)
+        click("nav-Analyst")
+        scrollTo("lab-3")
+        tag("lab-unwatched-3").assertTextEquals("No active list watches 1d, so it would never trade. Add 1d to a list first.")
+        scrollTo("report-6")
+        click("report-6")
+        click("tab-patterns")
+        tag("unwatched-0").assertTextEquals("No active list watches 4h, so it would never trade. Add 4h to a list first.")
+        tag("unwatched-1").assertTextEquals("No active list watches 4h, so it would not trade there.")
+        assertTrue("a pattern whose charts are all watched has no warning", !exists("unwatched-2"))
     }
 }

@@ -17,6 +17,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.ikverse.signallab.analyst.ClaudeHandoff
+import com.ikverse.signallab.analyst.Handoff
 import com.ikverse.signallab.scan.Notifier
 import com.ikverse.signallab.ui.DimLevel
 import com.ikverse.signallab.ui.PermissionPrompt
@@ -26,7 +28,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
-/** The one screen. It holds the app's frame and the system hand-offs the frame cannot do itself: permissions, and opening a coin from a notification. */
+/**
+ * The one screen. It holds the app's frame and the system hand-offs the frame cannot do itself: permissions, opening a coin from a
+ * notification, handing a question to the Claude app, and keeping an answer shared back from it.
+ */
 class MainActivity : ComponentActivity() {
     private val app get() = application as SignalLabApplication
 
@@ -41,14 +46,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val dark = SystemBarStyle.dark(0xFF050505.toInt())
         enableEdgeToEdge(statusBarStyle = dark, navigationBarStyle = dark)
-        // A notification tap that starts the app opens its coin. Not again after the system restores the screen.
-        if (savedInstanceState == null) app.model.open(intent.getStringExtra(Notifier.EXTRA_LINK))
+        // A notification tap that starts the app opens its coin, and a shared answer is kept. Not again after the system restores the screen.
+        if (savedInstanceState == null) {
+            app.model.open(intent.getStringExtra(Notifier.EXTRA_LINK))
+            receiveShared(intent)
+        }
         setContent { SignalLabApp(app.model, debug = BuildConfig.DEBUG, webPool = webPool) }
         lifecycleScope.launch {
             app.graph.permissions.accepted.collect { openSystemPrompt(it) }
         }
         lifecycleScope.launch {
             app.model.openSystemScreen.collect { openSettingsScreen(it) }
+        }
+        lifecycleScope.launch {
+            app.model.handoffs.collect { openClaude(it) }
         }
         lifecycleScope.launch {
             // While the app is on screen: keep the screen on and dim if the user asked for that.
@@ -101,11 +112,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** A notification tapped while the app is already open. */
+    /** A notification tapped, or an answer shared, while the app is already open. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         app.model.open(intent.getStringExtra(Notifier.EXTRA_LINK))
+        receiveShared(intent)
+    }
+
+    /** Text shared into the app from another (Claude's answer, shared back): kept as an Analyst report. */
+    private fun receiveShared(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND || intent.type?.startsWith("text/") != true) return
+        intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.let { app.model.receiveShared(it) }
+    }
+
+    /** Opens the Claude app with the question as a draft and the data file attached; Android's share menu if Claude will not take it. */
+    private fun openClaude(handoff: Handoff) {
+        try {
+            startActivity(ClaudeHandoff.intent(this, handoff))
+        } catch (_: ActivityNotFoundException) {
+            startActivity(ClaudeHandoff.intent(this, handoff, toClaude = false))
+        }
     }
 
     override fun onResume() {

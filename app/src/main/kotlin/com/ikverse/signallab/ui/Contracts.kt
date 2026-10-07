@@ -215,6 +215,93 @@ interface AlertsModel {
     val alerts: StateFlow<List<AlertUi>>
 }
 
+/** A question the Analyst offers. [needsTrade] means a closed trade is picked for it first. */
+data class AnalystCardUi(val id: String, val title: String, val description: String, val needsTrade: Boolean = false)
+
+/**
+ * A pattern an answer suggests. [summary] is its rule in words and [definition] its written form, both null when it cannot be run, and then
+ * [problem] says why. [runningAs] is the lab number it is already being forward-tested as. [unwatched] are its charts no active list
+ * watches, where it cannot trade; [neverTrades] is true when that is every one of them.
+ */
+data class LabSuggestionUi(
+    val title: String,
+    val reason: String?,
+    val summary: String?,
+    val problem: String?,
+    val definition: String?,
+    val runningAs: Long? = null,
+    val unwatched: List<String> = emptyList(),
+    val neverTrades: Boolean = false,
+)
+
+/** An answer shared back from the Claude app. [card] is the question it answered, when it said; [markdown] is safe to show as it is. */
+data class ReportUi(
+    val id: Long,
+    val receivedAt: Long,
+    val card: String?,
+    val title: String,
+    val markdown: String,
+    val suggestions: List<LabSuggestionUi> = emptyList(),
+)
+
+/** A lab pattern's backtest on one chart size: over [coins] coins, [trades] trades. Null where there is nothing to measure. */
+data class LabRowUi(
+    val chart: String,
+    val coins: Int,
+    val trades: Int,
+    val hitRate: Double?,
+    val meanNet: Double?,
+    val excess: Double?,
+    val tCluster: Double?,
+)
+
+data class LabBacktestUi(val rows: List<LabRowUi>, val note: String)
+
+/** A lab pattern in the record; [stoppedAt] is null while it runs. [unwatched] and [neverTrades] are as for [LabSuggestionUi]. */
+data class LabPatternUi(
+    val id: Long,
+    val title: String,
+    val summary: String,
+    val startedAt: Long,
+    val stoppedAt: Long?,
+    val unwatched: List<String> = emptyList(),
+    val neverTrades: Boolean = false,
+)
+
+/** How many lab patterns run now and how many more may start in the current window. */
+data class LabBudgetUi(val running: Int = 0, val maxRunning: Int = 5, val newLeft: Int = 5, val maxNew: Int = 5, val windowDays: Int = 30)
+
+interface AnalystModel {
+    val cards: List<AnalystCardUi>
+    val reports: StateFlow<List<ReportUi>>
+
+    /** Whether the Claude app is on this phone; without it a question opens Android's share menu instead. */
+    val claudeInstalled: Boolean
+
+    /** A sentence about the last text shared into the app that could not be kept, until [noticeSeen]. */
+    val notice: StateFlow<String?>
+    fun noticeSeen()
+
+    /** Hands question [card] (about trade [tradeId], for a card that needs one) to the Claude app, with the record's data below it. */
+    suspend fun ask(card: String, tradeId: Long? = null): Outcome
+
+    /** Keeps [text] (an answer pasted in) as a report and returns its id; null, with [notice] saying why, when it cannot be kept. */
+    suspend fun keep(text: String): Long?
+
+    /** The lab patterns, running and stopped, newest first. */
+    val lab: StateFlow<List<LabPatternUi>>
+    val budget: StateFlow<LabBudgetUi>
+
+    /** Backtests the pattern written as [definition] on the stored candles of the active lists. */
+    suspend fun backtest(definition: String): LabBacktestUi
+
+    /** Starts the forward test of the pattern written as [definition], suggested in report [report]. */
+    suspend fun startLab(definition: String, title: String, reason: String?, report: Long?): Outcome
+
+    /** Stops the forward test of lab pattern [id]; its record stays. */
+    suspend fun stopLab(id: Long): Outcome
+}
+
 interface LearnModel {
     val pages: List<LearnPageUi>
 
@@ -246,11 +333,12 @@ interface SettingsModel {
 }
 
 /** Where a [Link] leads. */
-enum class LinkPlace { CHART, DETAILS, TRADES, ALERTS, SETTINGS }
+enum class LinkPlace { CHART, DETAILS, TRADES, ALERTS, SETTINGS, ANALYST }
 
 /**
  * Where a notification (or an alert in the inbox) leads. A coin's chart or its Details need [symbol] (and optionally the chart
- * size); the Trades tab takes a coin to filter by, a trade to open and a status; Alerts takes a group; Settings takes nothing.
+ * size); the Trades tab takes a coin to filter by, a trade to open and a status; Alerts takes a group; the Analyst takes a report to
+ * open; Settings takes nothing.
  */
 data class Link(
     val symbol: String?,
@@ -261,6 +349,8 @@ data class Link(
     val status: String? = null,
     /** An alerts group by name ("problems"), for the Alerts tab. */
     val group: String? = null,
+    /** A report to open, for the Analyst. */
+    val report: Long? = null,
 )
 
 private fun queryValue(query: String, name: String): String? =
@@ -269,8 +359,8 @@ private fun queryValue(query: String, name: String): String? =
 /**
  * Reads the addresses alerts carry:
  * "signallab://coin/SOLUSDT?tf=1h" (the chart; add "&show=details" for the Details tab),
- * "signallab://trades?coin=SOLUSDT&id=12&status=closed", "signallab://alerts?group=problems" and "signallab://settings".
- * Anything else is not a link.
+ * "signallab://trades?coin=SOLUSDT&id=12&status=closed", "signallab://alerts?group=problems", "signallab://analyst?report=3" and
+ * "signallab://settings". Anything else is not a link.
  */
 fun parseLink(text: String?): Link? {
     if (text == null || !text.startsWith("signallab://")) return null
@@ -284,6 +374,7 @@ fun parseLink(text: String?): Link? {
         }
         path == "trades" -> Link(queryValue(query, "coin"), null, LinkPlace.TRADES, queryValue(query, "id")?.toLongOrNull(), queryValue(query, "status"))
         path == "alerts" -> Link(null, null, LinkPlace.ALERTS, group = queryValue(query, "group"))
+        path == "analyst" -> Link(null, null, LinkPlace.ANALYST, report = queryValue(query, "report")?.toLongOrNull())
         path == "settings" -> Link(null, null, LinkPlace.SETTINGS)
         else -> null
     }
@@ -316,6 +407,7 @@ interface AppModel {
     val trades: TradesModel
     val scorecard: ScorecardModel
     val alerts: AlertsModel
+    val analyst: AnalystModel
     val learn: LearnModel
     val settings: SettingsModel
     val prompts: PermissionPrompts
