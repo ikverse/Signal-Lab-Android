@@ -12,7 +12,7 @@ The average closing price of the last {{TREND_WINDOWS}} candles (two versions, o
 <polyline points="10,70 50,76 90,84 130,78 170,66 210,52 250,40 290,30" fill="none" stroke="#d1d4dc" stroke-width="2"/>
 <polyline points="10,64 50,68 90,72 130,74 170,72 210,66 250,58 290,50" fill="none" stroke="#2962ff" stroke-width="1.5" stroke-dasharray="4 3"/>
 <circle cx="170" cy="66" r="5" fill="#089981"/>
-<text x="176" y="94" fill="#868993" font-size="11">first close above the average</text>
+<text x="310" y="94" fill="#868993" font-size="11" text-anchor="end">first close above the average</text>
 <text x="12" y="104" fill="#868993" font-size="11">white: price   blue dashed: average</text>
 </svg></div>
 

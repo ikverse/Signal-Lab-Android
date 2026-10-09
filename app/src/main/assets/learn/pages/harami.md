@@ -13,7 +13,7 @@ A **long red candle** (its body bigger than the average of the ten candles befor
 <line x1="110" y1="10" x2="110" y2="108" stroke="#f23645"/><rect x="98" y="22" width="24" height="76" fill="#f23645"/>
 <line x1="170" y1="44" x2="170" y2="82" stroke="#089981"/><rect x="162" y="54" width="16" height="20" fill="#089981"/>
 </g>
-<text x="60" y="118" fill="#868993" font-size="11">long red candle, then a small one inside it</text>
+<text x="160" y="118" fill="#868993" font-size="11" text-anchor="middle">long red candle, then a small one inside it</text>
 </svg></div>
 
 The idea: the fall lost its force.

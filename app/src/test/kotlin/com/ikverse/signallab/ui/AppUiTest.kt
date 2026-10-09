@@ -94,7 +94,9 @@ class AppUiTest {
 
     private fun pick(base: String) {
         rule.waitUntil(3_000) { rule.onAllNodesWithContentDescription("$base, not ticked").fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithContentDescription("$base, not ticked").performClick()
+        // On the first-run page the coin list is part of a page that scrolls: the page is brought to the list first, then the list to the coin.
+        if (exists("setup")) tag("offers").performScrollTo()
+        rule.onNodeWithContentDescription("$base, not ticked").performScrollTo().performClick()
         rule.waitForIdle()
     }
 
@@ -593,7 +595,7 @@ class AppUiTest {
         show(FakeApp.full())
         click("nav-Trades")
         click("trade-2")
-        rule.onNodeWithText("Result after costs").assertIsDisplayed()
+        rule.onNodeWithText("Result after costs").performScrollTo().assertIsDisplayed()
         rule.onAllNodes(hasText("+3.00%", substring = true)).assertCountEquals(2)
         rule.onNode(hasText("3 candles", substring = true)).performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("2.90 pts better than random entries over the same stretch.").performScrollTo().assertIsDisplayed()
@@ -618,6 +620,8 @@ class AppUiTest {
         click("nav-Trades")
         assertTrue(exists("trade-pane"))
         rule.onNodeWithText("Choose a trade").assertExists()
+        // Names are written in full now, so on a screen this short the second trade may sit below the first rows: brought into view first.
+        tag("trades-list").performScrollToNode(hasTestTag("trade-2"))
         click("trade-2")
         assertTrue(exists("trade-detail"))
         rule.onNode(hasText("Result after costs") and hasAnyAncestor(hasTestTag("trade-pane"))).assertExists()
@@ -846,10 +850,11 @@ class AppUiTest {
         click("nav-Lists")
         rule.onNodeWithText("My coins").performClick()
         rule.waitForIdle()
-        click("delete")
+        tag("delete").performScrollTo().performClick()
+        rule.waitForIdle()
         assertTrue(app.lists.log.none { it.startsWith("delete") })
         rule.onNodeWithText("Tap again to delete “My coins”").assertExists()
-        click("delete")
+        tag("delete").performScrollTo().performClick()
         rule.waitUntil(3_000) { app.lists.log.contains("delete 1") }
         // The last list gone, the app asks for coins again.
         rule.waitUntil(3_000) { exists("setup") }
@@ -2235,7 +2240,7 @@ class AppUiTest {
         rule.onNodeWithText("My coins").performClick()
         rule.waitForIdle()
         assertTrue(exists("list-detail"))
-        rule.onNodeWithContentDescription("Back to Lists").performClick()
+        rule.onNodeWithContentDescription("Back to My coin lists").performClick()
         rule.waitForIdle()
         assertTrue(!exists("list-detail"))
         assertTrue(exists("new-list"))

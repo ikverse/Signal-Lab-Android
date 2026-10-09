@@ -6,6 +6,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,7 +41,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,14 +61,20 @@ fun firmnessDots(firmness: String): Int = when (firmness) {
     else -> 0
 }
 
-/** Rows that match the chosen chart (or all), the ones with trades first, then by how many they have. */
+/** The chart sizes in the order of their length, shortest first, so 15m comes before 1h and 30m before 4h. */
+private val CHART_SIZES = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d")
+
+/** Where a chart size falls in [CHART_SIZES]; a size not known by name comes after them all. */
+private fun chartRank(timeframe: String): Int = CHART_SIZES.indexOf(timeframe).let { if (it < 0) CHART_SIZES.size else it }
+
+/** Rows that match the chosen chart (or all), the ones with trades first, then by how many they have, then by name and chart size. */
 fun scorecardRows(rows: List<ScoreRowUi>, chart: String?): List<ScoreRowUi> =
     rows.filter { chart == null || it.timeframe == chart }
-        .sortedWith(compareByDescending<ScoreRowUi> { it.closed }.thenByDescending { it.open }.thenBy { it.label }.thenBy { it.timeframe })
+        .sortedWith(compareByDescending<ScoreRowUi> { it.closed }.thenByDescending { it.open }.thenBy { it.label }.thenBy { chartRank(it.timeframe) })
 
 /** The patterns in the order a reader wants them: working first, then still being judged (most trades first), then the rest. */
 fun worksOrder(rows: List<ScoreRowUi>): List<ScoreRowUi> =
-    rows.sortedWith(compareBy<ScoreRowUi> { PlainWords.verdictRank(it.verdict) }.thenByDescending { it.closed }.thenBy { it.short }.thenBy { it.timeframe })
+    rows.sortedWith(compareBy<ScoreRowUi> { PlainWords.verdictRank(it.verdict) }.thenByDescending { it.closed }.thenBy { it.short }.thenBy { chartRank(it.timeframe) })
 
 /** The colour of the plain verdict word: green when working, red when not, quiet for no better than guessing, warm while still being judged. */
 private fun wordColor(verdict: String): Color = when (verdict) {
@@ -104,7 +112,8 @@ fun ScorecardScreen(
     val scale = rows.mapNotNull { r -> r.excess?.let { abs(it) } }.maxOrNull()?.takeIf { it > 0 }
     val answers = worksOrder(card.rows)
 
-    val answerList = @Composable {
+    // [single] is one column with the numbers under the answers: a phone, or a screen too narrow for two readable panes.
+    val answerList = @Composable { single: Boolean ->
         LazyColumn(Modifier.fillMaxSize().testTag("scorecard")) {
             item(key = "title") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -122,7 +131,7 @@ fun ScorecardScreen(
                 items(answers, key = { it.variant }) { r -> PatternAnswer(r, onOpenLearn, Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) }
             }
             item(key = "note") { TestingNote(card.patternsTested) }
-            if (!wide) {
+            if (single) {
                 item(key = "numbers") {
                     TextAction(if (numbers) "Hide the numbers" else "Show the numbers", { numbers = !numbers }, Modifier.testTag("show-numbers"))
                 }
@@ -136,35 +145,54 @@ fun ScorecardScreen(
                 }
                 item(key = "actions") { Actions(onOpenTrades, onAsk) }
             }
+            item(key = "end") { EndSpace() }
         }
     }
-    if (!wide) {
-        Box(modifier.fillMaxSize()) { answerList() }
-        return
-    }
-    SplitPane(
-        panels, "works", "results", 400f,
-        list = answerList,
-        page = {
-            LazyColumn(Modifier.fillMaxSize().testTag("scorecard-numbers")) {
-                item(key = "curve") { Curve(account, Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) }
-                item(key = "head") { SectionLabel("The numbers") }
-                item(key = "chips") { ChartChips(charts, chart) { chart = it } }
-                item(key = "header") { HeaderRow() }
-                items(rows, key = { "w-" + it.variant }) { r ->
-                    WideRow(r, scale, onOpenLearn)
-                    HRule()
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        // Two panes only where each keeps a readable width at the phone's text size; otherwise one column, as on a phone.
+        val roomForTwo = wide && maxWidth >= scaledWithText(MIN_ANSWERS_DP.dp) + scaledWithText(MIN_NUMBERS_DP.dp) + PaneMath.DIVIDER.dp
+        if (!roomForTwo) {
+            answerList(true)
+            return@BoxWithConstraints
+        }
+        SplitPane(
+            panels, "works", "results", 400f,
+            list = { answerList(false) },
+            pageTop = { hidden, show ->
+                if (hidden) LineButton("Show results", show, Modifier.padding(start = 16.dp, top = 12.dp).testTag("show-results"), icon = Glyphs.ChevronRight)
+            },
+            page = {
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    // A pane too narrow for the seven columns shows each pattern on two lines, as a phone does, rather than squeezing the columns.
+                    val table = maxWidth >= scaledWithText(MIN_TABLE_DP.dp)
+                    LazyColumn(Modifier.fillMaxSize().testTag("scorecard-numbers")) {
+                        item(key = "curve") { Curve(account, Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) }
+                        item(key = "head") { SectionLabel("The numbers") }
+                        item(key = "chips") { ChartChips(charts, chart) { chart = it } }
+                        item(key = "header") { if (table) HeaderRow() else NarrowCaptions() }
+                        items(rows, key = { "w-" + it.variant }) { r ->
+                            if (table) WideRow(r, scale, onOpenLearn) else NarrowRow(r, scale, onOpenLearn)
+                            HRule()
+                        }
+                        item(key = "actions") { Actions(onOpenTrades, onAsk) }
+                        item(key = "end") { EndSpace() }
+                    }
                 }
-                item(key = "actions") { Actions(onOpenTrades, onAsk) }
-            }
-        },
-        modifier = modifier,
-    )
+            },
+        )
+    }
 }
+
+/** The narrowest the answers are given beside the numbers, and the narrowest the numbers beside them, before the text size grows them. */
+private const val MIN_ANSWERS_DP = 300
+private const val MIN_NUMBERS_DP = 300
+
+/** The width the numbers need for their seven columns; narrower, each pattern takes two lines. */
+private const val MIN_TABLE_DP = 560
 
 @Composable
 private fun ChartChips(charts: List<String>, chart: String?, onChoose: (String?) -> Unit) {
-    if (charts.size > 1) Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 2.dp)) {
+    if (charts.size > 1) ChipRow {
         ChoiceText("All", chart == null, { onChoose(null) })
         for (c in charts) ChoiceText(c, chart == c, { onChoose(c) })
     }
@@ -199,7 +227,11 @@ private fun Hero(account: PlainWords.Account?, modifier: Modifier = Modifier) {
     }
 }
 
-/** One pattern's answer: its name, the verdict in a word, and the reason in a sentence. Touching it explains the pattern. */
+/**
+ * One pattern's answer: its name in full, its chart, the verdict in a word, and the reason in a sentence. Where the name and the verdict do
+ * not fit on one line, the verdict moves under the name. Touching it explains the pattern.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PatternAnswer(r: ScoreRowUi, onOpenLearn: (String) -> Unit, modifier: Modifier = Modifier) {
     val color = wordColor(r.verdict)
@@ -208,17 +240,27 @@ private fun PatternAnswer(r: ScoreRowUi, onOpenLearn: (String) -> Unit, modifier
             .testTag("score-${r.variant}"),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(r.short, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            Spacer(Modifier.width(8.dp))
-            ChartTag(r.timeframe)
-            Spacer(Modifier.weight(1f))
+        FlowRow(
+            Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(6.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            NameAndChart(r, Modifier.padding(end = 8.dp))
             Text(
-                PlainWords.verdictWord(r.verdict), style = Type.Label.copy(color = color), maxLines = 1,
+                PlainWords.verdictWord(r.verdict), style = Type.Label.copy(color = color),
                 modifier = Modifier.border(1.dp, color, RoundedCornerShape(12.dp)).padding(horizontal = 9.dp, vertical = 2.dp),
             )
         }
         Text(PlainWords.verdictReason(r.verdict, r.closed), style = Type.Small)
+    }
+}
+
+/** A pattern's name in full, wrapping when it is long, with its chart size after it. */
+@Composable
+private fun NameAndChart(r: ScoreRowUi, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(r.short, style = Type.BodyStrong, modifier = Modifier.weight(1f, fill = false))
+        Spacer(Modifier.width(8.dp))
+        ChartTag(r.timeframe)
     }
 }
 
@@ -299,7 +341,7 @@ private fun HeaderRow() {
 @Composable
 private fun WideRow(r: ScoreRowUi, scale: Double?, onOpenLearn: (String) -> Unit) {
     TouchRow({ onOpenLearn(r.variant) }, modifier = Modifier.testTag("numbers-${r.variant}"), minHeight = 52.dp) {
-        Text(r.short, style = Type.BodyStrong, modifier = Modifier.weight(2.6f).padding(end = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(r.short, style = Type.BodyStrong, modifier = Modifier.weight(2.6f).padding(end = 8.dp))
         Box(Modifier.weight(0.8f)) { ChartTag(r.timeframe) }
         TradeCount(r, Modifier.weight(1f))
         Text(Fmt.percent(r.hitRate, 0), style = Type.Number, modifier = Modifier.weight(0.8f))
@@ -313,11 +355,9 @@ private fun WideRow(r: ScoreRowUi, scale: Double?, onOpenLearn: (String) -> Unit
 private fun NarrowRow(r: ScoreRowUi, scale: Double?, onOpenLearn: (String) -> Unit) {
     TouchRow({ onOpenLearn(r.variant) }, modifier = Modifier.testTag("numbers-${r.variant}")) {
         Column(Modifier.weight(1f)) {
+            // The name takes what is left of the line and wraps in it; the verdict keeps the right edge, so the verdicts line up down the list.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(r.short, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                Spacer(Modifier.width(8.dp))
-                ChartTag(r.timeframe)
-                Spacer(Modifier.weight(1f))
+                NameAndChart(r, Modifier.weight(1f).padding(end = 8.dp))
                 Verdict(r)
             }
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -330,12 +370,12 @@ private fun NarrowRow(r: ScoreRowUi, scale: Double?, onOpenLearn: (String) -> Un
     }
 }
 
-/** Trades closed, with the open ones after them as "+3". */
+/** Trades closed, with the open ones after them in words: "0 · 1 open". */
 @Composable
 private fun TradeCount(r: ScoreRowUi, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Text("${r.closed}", style = Type.Number)
-        if (r.open > 0) Text(" +${r.open}", style = Type.Small.copy(fontFeatureSettings = "tnum"))
+        if (r.open > 0) Text(" · ${r.open} open", style = Type.Small.copy(fontFeatureSettings = "tnum"))
     }
 }
 
@@ -343,7 +383,9 @@ private fun TradeCount(r: ScoreRowUi, modifier: Modifier) {
 @Composable
 private fun VsRandom(excess: Double?, scale: Double?, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        // With no figure yet there is nothing to measure from, so not even the centre line is drawn.
         Canvas(Modifier.size(36.dp, 10.dp)) {
+            if (excess == null) return@Canvas
             val mid = size.width / 2
             drawRect(Palette.Faint, Offset(mid - 0.5f, 0f), Size(1f, size.height))
             if (excess != null && scale != null && excess != 0.0) {
@@ -361,7 +403,7 @@ private fun VsRandom(excess: Double?, scale: Double?, modifier: Modifier) {
 @Composable
 private fun Verdict(r: ScoreRowUi, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(r.verdict, style = Type.Small.copy(color = if (verdictColor(r.verdict) == Palette.Muted) Palette.Text else verdictColor(r.verdict)), maxLines = 1)
+        Text(r.verdict, style = Type.Small.copy(color = if (verdictColor(r.verdict) == Palette.Muted) Palette.Text else verdictColor(r.verdict)))
         val filled = firmnessDots(r.firmness)
         Canvas(Modifier.padding(start = 6.dp).size(24.dp, 6.dp).semantics { contentDescription = r.firmness }) {
             for (i in 0 until 3) {

@@ -306,7 +306,8 @@ class ScreenLogicTest {
     fun `percentages carry their sign and a missing one reads as a dash`() {
         assertEquals("+1.23%", Fmt.signedPercent(0.0123))
         assertEquals("−1.00%", Fmt.signedPercent(-0.01))
-        assertEquals("+0.00%", Fmt.signedPercent(0.0))
+        assertEquals("0.00%", Fmt.signedPercent(0.0))
+        assertEquals("0.0%", Fmt.signedPercent(-0.0004, 1))
         assertEquals("—", Fmt.signedPercent(null))
         assertEquals("55%", Fmt.percent(0.55, 0))
         assertEquals("12.50%", Fmt.percent(0.125))
@@ -557,5 +558,27 @@ class ScreenLogicTest {
                 assertTrue("${f.name}:${i + 1} says \"${m?.value}\": $line", m == null)
             }
         }
+    }
+
+    @Test
+    fun `a new list is offered a name no list has yet`() {
+        assertEquals("New list", freeListName(listOf("My coins")))
+        assertEquals("New list 3", freeListName(listOf("new list", "New list 2")))
+    }
+
+    @Test
+    fun `a building block's menu name says its length in words, except the last N candles`() {
+        assertEquals("Average price over a number of candles", menuWords("Average price over N candles"))
+        assertEquals("Highest price of the last N candles", menuWords("Highest price of the last N candles"))
+        assertEquals("Volume compared with normal (a number of candles)", menuWords("Volume compared with normal (N candles)"))
+    }
+
+    @Test
+    fun `a change compared with a plain number reads as a percentage, other numbers as they are`() {
+        assertEquals("the change over the last 24 candles is below −5%", DraftCondition("return(24)", "below", "-0.05").words)
+        assertEquals("−5%", LabVocab.label("-0.05", "return(24)"))
+        assertEquals("2.5%", LabVocab.label("0.025", "return(12)"))
+        assertEquals("RSI(14) crosses above 30", DraftCondition("rsi(14)", "crosses_above", "30").words)
+        assertEquals("-0.05", LabVocab.phrase("-0.05"))
     }
 }

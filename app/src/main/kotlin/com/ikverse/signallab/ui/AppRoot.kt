@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
@@ -40,7 +42,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** Where the first-run introduction is remembered as seen. */
@@ -136,6 +140,9 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
     val scanning = model.settings.settings.collectAsStateWithLifecycle().value.backgroundScanning
     // Each place keeps what the user had set in it (a filter, a half-filled form) while another place is on show.
     val holder = rememberSaveableStateHolder()
+    // The places behind More each start with a way back, named for where it leads.
+    val onBack = { nav.back(); Unit }
+    val backLabel = (nav.backTo ?: Dest.More).label
     holder.SaveableStateProvider(nav.dest.name) {
         when (nav.dest) {
             Dest.Today -> TodayScreen(model.markets, model.trades, model.scorecard, model.panels, layout, nav, onOpenLearn = openVariant, onOpenPage = { nav.openLearn(it) })
@@ -145,7 +152,7 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
             )
             Dest.Trades -> TradesScreen(
                 model.trades, nav, onOpenCoin = { s, tf, id -> nav.openCoin(s, tf, fromApp = true, trade = id) }, onOpenLearn = openVariant,
-                wide = layout != LayoutClass.Compact, prices = latestPrices(model),
+                wide = layout != LayoutClass.Compact, prices = latestPrices(model), onBack = onBack, backLabel = backLabel,
             )
             Dest.Scorecard -> ScorecardScreen(
                 model.scorecard, model.trades, model.panels, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact,
@@ -159,18 +166,22 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
             )
             Dest.Analyst -> AnalystScreen(
                 model.analyst, model.trades, model.panels, nav.analystReport, { nav.analystReport = it }, wide = layout != LayoutClass.Compact,
-                onOpenPage = { nav.openLearn(it) }, onGo = { nav.openPlace(it) },
+                onOpenPage = { nav.openLearn(it) }, onGo = { nav.openPlace(it) }, onBack = onBack, backLabel = backLabel,
             )
             Dest.Alerts -> AlertsScreen(
                 model.alerts, nav, onOpen = { nav.openLink(it, fromApp = true) }, wide = layout != LayoutClass.Compact,
                 trades = model.trades.trades.collectAsStateWithLifecycle().value, prices = latestPrices(model),
                 onOpenCoin = { s, tf, id -> nav.openCoin(s, tf, fromApp = true, trade = id) }, onOpenLearn = openVariant,
+                onBack = onBack, backLabel = backLabel,
             )
-            Dest.Learn -> LearnScreen(model.learn, model.panels, nav.learnPage, { nav.learnPage = it }, wide = layout != LayoutClass.Compact, onGo = { nav.openPlace(it) })
-            Dest.Lists -> ListsScreen(model.lists, model.panels, wide = layout != LayoutClass.Compact)
+            Dest.Learn -> LearnScreen(
+                model.learn, model.panels, nav.learnPage, { nav.learnPage = it }, wide = layout != LayoutClass.Compact, onGo = { nav.openPlace(it) },
+                onBack = onBack, backLabel = backLabel,
+            )
+            Dest.Lists -> ListsScreen(model.lists, model.panels, wide = layout != LayoutClass.Compact, onBack = onBack, backLabel = backLabel)
             Dest.Settings -> SettingsScreen(
                 model.settings, hasDebug = debug && model.debug != null, onOpenDebug = { nav.showDebug = true },
-                wide = layout != LayoutClass.Compact, onOpenPage = { nav.openLearn(it) },
+                wide = layout != LayoutClass.Compact, onOpenPage = { nav.openLearn(it) }, onBack = onBack, backLabel = backLabel,
             )
             Dest.More -> MoreScreen(nav, onShowIntro = { model.panels.save(INTRO_KEY, "") })
         }
@@ -190,20 +201,23 @@ private fun latestPrices(model: AppModel): Map<String, Double> {
 private fun SideRail(nav: NavState) {
     Box(Modifier.width(scaledWithText(72.dp)).fillMaxHeight().testTag("rail"), contentAlignment = Alignment.Center) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-            for (d in BarPlaces) BarItem(d, barPlaceOf(nav.dest) == d, Modifier.fillMaxWidth().height(62.dp)) { nav.go(d) }
+            for (d in BarPlaces) BarItem(d, nav.barPlace == d, Modifier.fillMaxWidth().heightIn(min = 62.dp).padding(vertical = 4.dp)) { nav.go(d) }
         }
     }
 }
 
-/** The bar's five places, side by side across the bottom. */
+/** The bar's five places, side by side across the bottom. As tall as its tallest name needs, and never less than 64 dp. */
 @Composable
 private fun BottomBar(nav: NavState) {
-    Row(Modifier.fillMaxWidth().height(64.dp).testTag("bottom-bar")) {
-        for (d in BarPlaces) BarItem(d, barPlaceOf(nav.dest) == d, Modifier.weight(1f).fillMaxHeight()) { nav.go(d) }
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 64.dp).testTag("bottom-bar")) {
+        for (d in BarPlaces) BarItem(d, nav.barPlace == d, Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp)) { nav.go(d) }
     }
 }
 
-/** A place in a bar: its icon over its name. The chosen one's icon sits on a tinted pill and its name is bright. */
+/**
+ * A place in a bar: its icon over its name. The chosen one's icon sits on a tinted pill and its name is bright. A name too long for its
+ * slot ("Does it work?") takes a second line rather than being cut.
+ */
 @Composable
 private fun BarItem(d: Dest, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val pill by animateColorAsState(if (selected) Palette.AccentTint else Color.Transparent, tween(Motion.FADE_MS), label = "bar")
@@ -215,8 +229,8 @@ private fun BarItem(d: Dest, selected: Boolean, modifier: Modifier, onClick: () 
             Icon(d.icon, contentDescription = null, tint = if (selected) Palette.OnAccentTint else Palette.Muted, modifier = Modifier.size(22.dp))
         }
         Text(
-            d.label, style = Type.Label.copy(color = if (selected) Palette.Strong else Palette.Muted), maxLines = 1,
-            modifier = Modifier.padding(top = 3.dp),
+            d.label, style = Type.Label.copy(color = if (selected) Palette.Strong else Palette.Muted, lineHeight = 15.sp), maxLines = 2,
+            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 3.dp, start = 2.dp, end = 2.dp),
         )
     }
 }

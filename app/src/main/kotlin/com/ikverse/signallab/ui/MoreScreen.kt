@@ -74,5 +74,6 @@ fun MoreScreen(nav: NavState, modifier: Modifier = Modifier, onShowIntro: () -> 
         }
         HRule()
         Text("Signal Lab ${BuildConfig.VERSION_NAME} · research, not financial advice", style = Type.Small, modifier = Modifier.padding(16.dp))
+        EndSpace()
     }
 }

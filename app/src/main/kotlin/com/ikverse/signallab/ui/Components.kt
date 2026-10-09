@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -29,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -41,6 +45,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -48,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -60,9 +66,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -85,7 +92,7 @@ fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier, count: Int? = null) {
     Row(
-        modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
+        modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(text, style = Type.Section)
@@ -130,10 +137,19 @@ fun TonalButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
     ButtonShape(text, onClick, modifier, icon, enabled, fill = Palette.AccentTint, edge = null, color = Palette.OnAccentTint, stretch = stretch)
 }
 
-/** A button beside a [TonalButton] that matters as much but is not the first thing to do. */
+/**
+ * A button beside a [TonalButton] that matters as much but is not the first thing to do. A [danger] one, that undoes or switches something
+ * off ("Turn off"), is red.
+ */
 @Composable
-fun LineButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true, stretch: Boolean = false) {
-    ButtonShape(text, onClick, modifier, icon, enabled, fill = Color.Transparent, edge = Palette.ChipEdge, color = Palette.Strong, stretch = stretch)
+fun LineButton(
+    text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true, stretch: Boolean = false,
+    danger: Boolean = false,
+) {
+    ButtonShape(
+        text, onClick, modifier, icon, enabled, fill = Color.Transparent, edge = if (danger) Palette.Down.copy(alpha = 0.6f) else Palette.ChipEdge,
+        color = if (danger) Palette.Down else Palette.Strong, stretch = stretch,
+    )
 }
 
 @Composable
@@ -145,13 +161,14 @@ private fun ButtonShape(text: String, onClick: () -> Unit, modifier: Modifier, i
             .clickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
+        // At least 40 dp tall, and taller when a long label (or a large text size) needs a second line: the label is never cut.
         Row(
-            Modifier.then(if (stretch) Modifier.fillMaxWidth() else Modifier).height(40.dp).graphicsLayer { alpha = if (enabled) 1f else 0.45f }.clip(shape).background(fill)
-                .then(if (edge != null) Modifier.border(1.dp, edge, shape) else Modifier).padding(horizontal = 16.dp),
+            Modifier.then(if (stretch) Modifier.fillMaxWidth() else Modifier).heightIn(min = 40.dp).graphicsLayer { alpha = if (enabled) 1f else 0.45f }.clip(shape).background(fill)
+                .then(if (edge != null) Modifier.border(1.dp, edge, shape) else Modifier).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         ) {
             if (icon != null) Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
-            Text(text, style = Type.BodyStrong.copy(color = color), maxLines = 1)
+            Text(text, style = Type.BodyStrong.copy(color = color), textAlign = TextAlign.Center)
         }
     }
 }
@@ -181,11 +198,11 @@ fun ChoiceText(text: String, selected: Boolean, onClick: () -> Unit, modifier: M
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            Modifier.height(34.dp).clip(shape).background(fill).border(1.dp, if (selected) Palette.ChipEdge else Palette.Rule, shape)
-                .padding(horizontal = 14.dp),
+            Modifier.heightIn(min = 34.dp).clip(shape).background(fill).border(1.dp, if (selected) Palette.ChipEdge else Palette.Rule, shape)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text, style = Type.BodyStrong.copy(fontSize = 14.sp, color = if (selected) Palette.Strong else Palette.Muted), maxLines = 1)
+            Text(text, style = Type.BodyStrong.copy(fontSize = 14.sp, color = if (selected) Palette.Strong else Palette.Muted), textAlign = TextAlign.Center)
         }
     }
 }
@@ -200,12 +217,12 @@ fun TickChip(text: String, checked: Boolean, onClick: () -> Unit, modifier: Modi
         contentAlignment = Alignment.Center,
     ) {
         Row(
-            Modifier.height(32.dp).clip(shape).background(if (checked) Palette.AccentTint else Color.Transparent)
-                .border(1.dp, if (checked) Palette.AccentTint else Palette.Rule, shape).padding(horizontal = 10.dp),
+            Modifier.heightIn(min = 32.dp).clip(shape).background(if (checked) Palette.AccentTint else Color.Transparent)
+                .border(1.dp, if (checked) Palette.AccentTint else Palette.Rule, shape).padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (checked) Icon(Glyphs.Check, contentDescription = null, tint = Palette.OnAccentTint, modifier = Modifier.size(15.dp))
-            Text(text, style = Type.BodyStrong.copy(fontSize = 14.sp, color = if (checked) Palette.OnAccentTint else Palette.Muted), maxLines = 1)
+            Text(text, style = Type.BodyStrong.copy(fontSize = 14.sp, color = if (checked) Palette.OnAccentTint else Palette.Muted))
         }
     }
 }
@@ -216,21 +233,22 @@ fun TickChip(text: String, checked: Boolean, onClick: () -> Unit, modifier: Modi
  */
 @Composable
 fun <T> Tabs(items: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier, tag: (T) -> String? = { null }) {
-    BoxWithConstraints(modifier.fillMaxWidth().height(MinTouch)) {
+    // At least 48 dp tall; a label too long for its share of the width takes a second line and the whole strip grows with it.
+    BoxWithConstraints(modifier.fillMaxWidth()) {
         val each = maxWidth / items.size.coerceAtLeast(1)
         val index = items.indexOf(selected).coerceAtLeast(0)
         val x by animateDpAsState(each * index, tween(Motion.ENTER_MS, easing = Motion.EaseOut), label = "tab")
-        Row(Modifier.fillMaxWidth().fillMaxHeight()) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = MinTouch)) {
             for (item in items) {
                 val chosen = item == selected
                 val text = label(item)
                 Box(
                     Modifier.weight(1f).fillMaxHeight().selectable(chosen, role = Role.Tab, onClick = { onSelect(item) })
                         .semantics { contentDescription = if (chosen) "$text, chosen" else text }
-                        .then(tag(item)?.let { Modifier.testTag(it) } ?: Modifier),
+                        .then(tag(item)?.let { Modifier.testTag(it) } ?: Modifier).padding(horizontal = 6.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text, style = Type.BodyStrong.copy(color = if (chosen) Palette.Strong else Palette.Muted), maxLines = 1)
+                    Text(text, style = Type.BodyStrong.copy(color = if (chosen) Palette.Strong else Palette.Muted), textAlign = TextAlign.Center)
                 }
             }
         }
@@ -248,22 +266,22 @@ fun <T> Tabs(items: List<T>, selected: T, label: (T) -> String, onSelect: (T) ->
  */
 @Composable
 fun Segmented(items: List<String>, selected: String?, onSelect: (String) -> Unit, modifier: Modifier = Modifier, minItem: Dp = 44.dp) {
-    Box(modifier.height(MinTouch), contentAlignment = Alignment.CenterStart) {
+    Box(modifier.heightIn(min = MinTouch), contentAlignment = Alignment.CenterStart) {
         Box(Modifier.matchParentSize().padding(vertical = 5.dp).clip(RoundedCornerShape(10.dp)).background(Palette.Raised))
         Row(Modifier.padding(horizontal = 3.dp)) {
             for (item in items) {
                 val chosen = item == selected
                 Box(
-                    Modifier.height(MinTouch).widthIn(min = minItem).selectable(chosen, role = Role.Tab, onClick = { onSelect(item) })
+                    Modifier.heightIn(min = MinTouch).widthIn(min = minItem).selectable(chosen, role = Role.Tab, onClick = { onSelect(item) })
                         .semantics { contentDescription = if (chosen) "$item, chosen" else item },
                     contentAlignment = Alignment.Center,
                 ) {
                     Box(
-                        Modifier.height(32.dp).clip(RoundedCornerShape(7.dp)).background(if (chosen) Palette.ChipFill else Color.Transparent)
-                            .padding(horizontal = 10.dp),
+                        Modifier.heightIn(min = 32.dp).clip(RoundedCornerShape(7.dp)).background(if (chosen) Palette.ChipFill else Color.Transparent)
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(item, style = Type.BodyStrong.copy(fontSize = 14.sp, color = if (chosen) Palette.Strong else Palette.Muted), maxLines = 1)
+                        Text(item, style = Type.BodyStrong.copy(fontSize = 14.sp, color = if (chosen) Palette.Strong else Palette.Muted))
                     }
                 }
             }
@@ -306,14 +324,27 @@ fun TouchRow(
 fun CheckRow(checked: Boolean, title: String, subtitle: String?, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.fillMaxWidth().heightIn(min = MinTouch).clickable(role = Role.Checkbox, onClick = onToggle)
-            .semantics { contentDescription = "$title, ${if (checked) "ticked" else "not ticked"}" }.padding(horizontal = 16.dp, vertical = 6.dp),
+            .semantics { contentDescription = "$title, ${if (checked) "ticked" else "not ticked"}" }.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (checked) "[x]" else "[ ]", style = Type.Number.copy(color = if (checked) Palette.Accent else Palette.Muted))
-        Column(Modifier.padding(start = 12.dp).weight(1f)) {
-            Text(title, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null) Text(subtitle, style = Type.Small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        TickBox(checked)
+        Column(Modifier.padding(start = 14.dp).weight(1f)) {
+            Text(title, style = Type.BodyStrong)
+            if (subtitle != null) Text(subtitle, style = Type.Small, modifier = Modifier.padding(top = 2.dp))
         }
+    }
+}
+
+/** A tick box: an outlined square, filled with the accent and a tick when it is on. Always the same width, so the rows beside it line up. */
+@Composable
+fun TickBox(checked: Boolean, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(5.dp)
+    Box(
+        modifier.size(22.dp).clip(shape).background(if (checked) Palette.Accent else Color.Transparent)
+            .border(1.5.dp, if (checked) Palette.Accent else Palette.Muted, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (checked) Icon(Glyphs.Check, contentDescription = null, tint = Palette.Background, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -360,15 +391,99 @@ fun ChartTag(label: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Things that belong together, on a raised surface with rounded corners; with an [edge] colour, outlined in it. */
+/** Things that belong together, on a raised surface with rounded corners and a thin outline; with an [edge] colour, outlined in that instead. */
 @Composable
 fun RaisedGroup(modifier: Modifier = Modifier, edge: Color? = null, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Column(
         modifier.padding(horizontal = 12.dp).fillMaxWidth().clip(shape).background(Palette.Raised)
-            .then(if (edge != null) Modifier.border(1.5.dp, edge, shape) else Modifier),
+            .then(if (edge != null) Modifier.border(1.5.dp, edge, shape) else Modifier.border(1.dp, Palette.Edge, shape)),
         content = content,
     )
+}
+
+/** A thin line between two rows of a raised group, starting where the rows' text starts. */
+@Composable
+fun RowDivider(modifier: Modifier = Modifier) {
+    HRule(modifier.padding(start = 16.dp))
+}
+
+/** The space left at the end of a page that scrolls, so its last line never sits against the bar under it. */
+@Composable
+fun EndSpace() {
+    Spacer(Modifier.height(32.dp))
+}
+
+/**
+ * The buttons of a group or a card, on a row of their own: 12 dp below what comes before, 16 dp in from the edges, and 8 dp apart. When they
+ * do not fit side by side they move onto the next line instead of being squeezed. A row that starts with a [TextAction] passes a smaller
+ * [start], since that action brings its own inset and its words should line up with the text above.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ActionRow(modifier: Modifier = Modifier, start: Dp = 16.dp, content: @Composable FlowRowScope.() -> Unit) {
+    FlowRow(
+        modifier.fillMaxWidth().padding(start = start, end = 16.dp, top = 12.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically, content = content,
+    )
+}
+
+/**
+ * A row of chips (filters, chart sizes, choices) that wraps onto another line when they do not all fit, so none is ever off screen. Its
+ * chips line up with the 16 dp edge of the text around them.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ChipRow(modifier: Modifier = Modifier, content: @Composable FlowRowScope.() -> Unit) {
+    FlowRow(modifier.fillMaxWidth().padding(horizontal = 13.dp), itemVerticalAlignment = Alignment.CenterVertically, content = content)
+}
+
+/** The least a [FitText] shrinks its text to, as a share of its size: past this it takes another line instead. */
+const val MIN_TEXT_SCALE = 0.85f
+
+/**
+ * Text in a space of its own that it should fill on one line, such as a price in a box: when it does not fit it shrinks, a step at a time,
+ * down to [minScale] of its size, and if it still does not fit it goes onto more lines at that size. It is never cut off.
+ */
+@Composable
+fun FitText(text: String, style: TextStyle, modifier: Modifier = Modifier, textAlign: TextAlign? = null, minScale: Float = MIN_TEXT_SCALE) {
+    var scale by remember(text, style) { mutableFloatStateOf(1f) }
+    var wrap by remember(text, style) { mutableStateOf(false) }
+    var settled by remember(text, style) { mutableStateOf(false) }
+    Text(
+        text,
+        // Drawn once it has found its size, so a reader never sees it shrink.
+        modifier.drawWithContent { if (settled) drawContent() },
+        style = style.copy(
+            fontSize = style.fontSize * scale,
+            lineHeight = if (style.lineHeight.isSpecified) style.lineHeight * scale else style.lineHeight,
+        ),
+        textAlign = textAlign, maxLines = if (wrap) Int.MAX_VALUE else 1, softWrap = wrap,
+        onTextLayout = { r ->
+            when {
+                wrap || !r.hasVisualOverflow -> settled = true
+                scale > minScale + 0.001f -> scale = maxOf(minScale, scale - 0.05f)
+                else -> wrap = true
+            }
+        },
+    )
+}
+
+/**
+ * Three prices side by side, each value under its own name, in three equal columns that start at the same edge: a trade's loss limit, entry
+ * and profit goal. A value too long for its column shrinks a little and then takes another line, with a gap kept between the columns.
+ */
+@Composable
+fun LevelTrio(a: String, av: String, b: String, bv: String, c: String, cv: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        for ((name, value) in listOf(a to av, b to bv, c to cv)) {
+            Column(Modifier.weight(1f)) {
+                Text(name, style = Type.Small)
+                FitText(value, Type.Number)
+            }
+        }
+    }
 }
 
 /** Where [value] falls between [low] and [high], from 0 to 1, or null when the range is empty or a number is missing. */
@@ -477,10 +592,10 @@ fun NumberField(value: String, onChange: (String) -> Unit, description: String, 
     BasicTextField(
         value = value, onValueChange = onChange, singleLine = true, keyboardOptions = keyboard,
         textStyle = Type.Number.copy(color = Palette.Strong, textAlign = TextAlign.End), cursorBrush = SolidColor(Palette.Accent),
-        modifier = modifier.width(scaledWithText(100.dp)).heightIn(min = MinTouch).semantics { contentDescription = description },
+        modifier = modifier.width(scaledWithText(84.dp)).heightIn(min = MinTouch).semantics { contentDescription = description },
         decorationBox = { inner ->
             Row(
-                Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(10.dp)).background(Palette.TagFill)
+                Modifier.fillMaxWidth().heightIn(min = 42.dp).clip(RoundedCornerShape(10.dp)).background(Palette.TagFill)
                     .border(1.dp, Palette.Rule, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -493,8 +608,8 @@ fun NumberField(value: String, onChange: (String) -> Unit, description: String, 
 }
 
 /**
- * A switch with its name and a line on what it does. [more], when given, is the full explanation: an info button beside the switch
- * opens it in place under the row, and closes it again.
+ * A switch with its name and a line on what it does. [more], when given, is the full explanation: an info button beside the name opens
+ * it in place under the row, in a box of its own, and closes it again. The name and its line get the full width up to the switch.
  */
 @Composable
 fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier, more: String? = null) {
@@ -505,19 +620,47 @@ fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boo
             modifier.fillMaxWidth().heightIn(min = 56.dp)
                 .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
                 .semantics { contentDescription = "$title, ${if (checked) "on" else "off"}" }
-                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f).padding(end = 4.dp)) {
-                Text(title, style = Type.BodyStrong)
-                if (subtitle != null) Text(subtitle, style = Type.Small)
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = Type.BodyStrong, modifier = Modifier.weight(1f, fill = false))
+                    if (more != null) InlineInfo("About $title", open) { open = !open }
+                }
+                if (subtitle != null) Text(subtitle, style = Type.Small, modifier = Modifier.padding(top = 4.dp))
             }
-            if (more != null) IconAction(Glyphs.Info, "About $title", { open = !open }, tint = if (open) Palette.Accent else Palette.Muted)
+            Spacer(Modifier.width(16.dp))
             Switch(
                 checked = checked, onCheckedChange = null,
                 colors = SwitchDefaults.colors(checkedTrackColor = Palette.Accent, checkedThumbColor = Palette.Strong, uncheckedTrackColor = Palette.Rule, uncheckedThumbColor = Palette.Muted, uncheckedBorderColor = Palette.Rule),
             )
         }
-        if (open && more != null) Text(more, style = Type.Small, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
+        if (open && more != null) {
+            Text(
+                more, style = Type.Small.copy(color = Palette.Text),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                    .background(Palette.TagFill).padding(12.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The small info button that sits right after a name. It takes only a short line's height, so the line under the name stays close to it,
+ * while what it answers to is a full 48 dp touch that reaches a little above and below that line.
+ */
+@Composable
+private fun InlineInfo(description: String, open: Boolean, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    Box(Modifier.height(28.dp).wrapContentHeight(unbounded = true), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(width = 44.dp, height = MinTouch).pressScale(source)
+                .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
+                .semantics { contentDescription = description },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Glyphs.Info, contentDescription = null, tint = if (open) Palette.Accent else Palette.Muted, modifier = Modifier.size(18.dp))
+        }
     }
 }

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,7 +29,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -138,6 +136,8 @@ fun AlertsScreen(
     onOpenCoin: (String, String, Long) -> Unit = { _, _, _ -> },
     onOpenLearn: (String) -> Unit = {},
     now: Long = System.currentTimeMillis(),
+    onBack: (() -> Unit)? = null,
+    backLabel: String = Dest.More.label,
 ) {
     val all by model.alerts.collectAsStateWithLifecycle()
     val group = nav.alertsGroup
@@ -145,8 +145,9 @@ fun AlertsScreen(
     var chosen by rememberSaveable { mutableStateOf<Long?>(null) }
     val listPane = @Composable { m: Modifier ->
         Column(m.testTag("alerts")) {
+            onBack?.let { BackRow(backLabel, it) }
             ScreenTitle("Alerts")
-            Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp)) {
+            ChipRow {
                 // Only the groups that have something in them, plus All.
                 for (g in AlertGroup.entries) if (g == AlertGroup.All || g == group || all.any { g.kinds != null && it.kind in g.kinds }) ChoiceText(g.label, group == g, { nav.alertsGroup = g })
             }
@@ -163,6 +164,7 @@ fun AlertsScreen(
                             HRule()
                         }
                     }
+                    item(key = "end") { EndSpace() }
                 }
             }
         }
@@ -197,7 +199,7 @@ private fun AlertRow(a: AlertUi, selected: Boolean, onClick: () -> Unit) {
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             if (f != null && a.symbol != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(a.symbol.removeSuffix("USDT"), style = Type.BodyStrong, maxLines = 1)
+                    Text(a.symbol.removeSuffix("USDT"), style = Type.BodyStrong)
                     a.timeframe?.let {
                         Spacer(Modifier.width(8.dp))
                         ChartTag(it)
@@ -206,18 +208,18 @@ private fun AlertRow(a: AlertUi, selected: Boolean, onClick: () -> Unit) {
                     Text(Fmt.time(a.time), style = Type.Small.copy(fontFeatureSettings = "tnum"))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${alertOutcome(a)} · ${f.pattern}", style = Type.Small, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text("${alertOutcome(a)} · ${f.pattern}", style = Type.Small, modifier = Modifier.weight(1f))
                     if (a.kind == "exit" && f.net != null) {
                         Text(Fmt.signedPercent(f.net), style = Type.NumberStrong.copy(color = Fmt.changeColor(f.net), fontSize = 16.sp), modifier = Modifier.padding(start = 8.dp))
                     }
                 }
-                alertFigures(a)?.let { Text(it, style = Type.Small.copy(color = Palette.TagText, fontFeatureSettings = "tnum"), maxLines = 2) }
+                alertFigures(a)?.let { Text(it, style = Type.Small.copy(color = Palette.TagText, fontFeatureSettings = "tnum")) }
             } else {
                 Row {
                     Text(a.title, style = Type.BodyStrong.copy(color = kindColor(a.kind)), modifier = Modifier.weight(1f))
                     Text(Fmt.time(a.time), style = Type.Small.copy(fontFeatureSettings = "tnum"), modifier = Modifier.padding(start = 8.dp))
                 }
-                Text(a.body, style = Type.Small, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Text(a.body, style = Type.Small)
             }
         }
     }

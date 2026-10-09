@@ -25,11 +25,15 @@ internal fun splitTitle(title: String): Pair<String, String?> {
  * the page, with a divider that can be dragged or the list hidden.
  */
 @Composable
-fun LearnScreen(model: LearnModel, panels: PanelPrefs, selected: String?, onSelect: (String?) -> Unit, wide: Boolean, modifier: Modifier = Modifier, onGo: (String) -> Unit = {}) {
+fun LearnScreen(
+    model: LearnModel, panels: PanelPrefs, selected: String?, onSelect: (String?) -> Unit, wide: Boolean, modifier: Modifier = Modifier, onGo: (String) -> Unit = {},
+    onBack: (() -> Unit)? = null, backLabel: String = Dest.More.label,
+) {
     val page = model.pages.firstOrNull { it.id == selected }
     val current = page ?: if (wide) model.pages.firstOrNull() else null
     val index = @Composable {
         Column(Modifier.fillMaxSize()) {
+            onBack?.let { BackRow(backLabel, it) }
             ScreenTitle("Learn")
             LazyColumn(Modifier.weight(1f)) {
                 val groups = model.pages.groupBy { it.group }
@@ -48,6 +52,7 @@ fun LearnScreen(model: LearnModel, panels: PanelPrefs, selected: String?, onSele
                         HRule()
                     }
                 }
+                item(key = "end") { EndSpace() }
             }
         }
     }

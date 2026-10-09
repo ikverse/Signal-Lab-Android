@@ -80,6 +80,9 @@ class KeptWeb(context: Context, val page: WebPage) {
     @Volatile
     var memory: ChartMemory = ChartMemory.Shared
 
+    /** Whether the chart page has one of its menus (indicators, drawing tools) open, so Back can close it first. */
+    var menuOpen by mutableStateOf(false)
+
     /** What the Learn page was last told to show, so coming back to the same page leaves it, and where it was scrolled to, alone. */
     var showing: String? = null
 
@@ -92,6 +95,12 @@ class KeptWeb(context: Context, val page: WebPage) {
 
                     @JavascriptInterface
                     fun drawingsChanged(json: String) = memory.rememberReport(json)
+
+                    // Called on the page's own thread: the state is set on the main one.
+                    @JavascriptInterface
+                    fun menuChanged(open: String) {
+                        v.post { menuOpen = open == "true" }
+                    }
                 },
                 "Android",
             )

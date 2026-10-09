@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -53,7 +55,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
@@ -297,7 +298,9 @@ fun MarketsScreen(
                 val totalH = maxHeight.value
                 val coinsHidden = pane.isHidden("medium.coins")
                 val detailsHidden = pane.isHidden("medium.details")
-                val c = PaneMath.fitOne(totalW, pane.size("medium.coins", 220f), coinsHidden, PaneMath.MIN_SIDE, PaneMath.MIN_CHART, PaneMath.DIVIDER)
+                // The chart is what this screen is for: it keeps at least this much width, more at a larger text size, however wide the coins are dragged.
+                val minChart = maxOf(PaneMath.MIN_CHART, scaledWithText(MIN_CHART_DP.dp).value)
+                val c = PaneMath.fitOne(totalW, pane.size("medium.coins", 220f), coinsHidden, PaneMath.MIN_SIDE, minChart, PaneMath.DIVIDER)
                 val h = PaneMath.fitOne(totalH, pane.size("medium.details", 190f), detailsHidden, PaneMath.MIN_PANE_HEIGHT, PaneMath.MIN_CHART_HEIGHT, PaneMath.DIVIDER)
                 val shownC = animatedPaneSize(c, pane.dragging)
                 val shownH = animatedPaneSize(h, pane.dragging)
@@ -305,7 +308,7 @@ fun MarketsScreen(
                     if (paneOpen(coinsHidden, shownC)) Column(Modifier.width(shownC.dp).pane("coins")) { list(false) }
                     PaneDivider(
                         vertical = true, hidden = coinsHidden, label = "coins",
-                        onDrag = { pane.set("medium.coins", PaneMath.dragged(c, it, max = totalW - PaneMath.DIVIDER - PaneMath.MIN_CHART)) },
+                        onDrag = { pane.set("medium.coins", PaneMath.dragged(c, it, max = totalW - PaneMath.DIVIDER - minChart)) },
                         onToggle = { pane.toggle("medium.coins") }, modifier = Modifier.testTag("divider-coins"),
                         onDragging = { pane.dragging = it },
                     )
@@ -326,6 +329,9 @@ fun MarketsScreen(
         }
     }
 }
+
+/** The least width the chart is left beside the coins on a mid-sized screen, before the text size grows it. */
+private const val MIN_CHART_DP = 320
 
 /** A thin rule down the left edge of what it holds: the edge of a panel that slides over another. */
 @Composable
@@ -364,11 +370,11 @@ private fun WatchHeader(lists: List<ListUi>, coinCount: Int, scanning: Boolean, 
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 4.dp).testTag("watch-header"), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(name, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(name, style = Type.BodyStrong, modifier = Modifier.weight(1f, fill = false))
                 Spacer(Modifier.width(8.dp))
                 ScanDot(scanning, withWord = !compact)
             }
-            if (!compact) Text("$coinCount ${if (coinCount == 1) "coin" else "coins"}" + charts.joinToString("") { " · $it" }, style = Type.Small, maxLines = 1)
+            if (!compact) Text("$coinCount ${if (coinCount == 1) "coin" else "coins"}" + charts.joinToString("") { " · $it" }, style = Type.Small)
         }
         IconAction(Glyphs.Bell, "Alerts", onOpenAlerts, tint = Palette.Muted)
     }
@@ -420,7 +426,7 @@ private fun CoinList(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            c.base, style = if (compact) Type.BodyStrong.copy(fontSize = 16.sp) else Type.Heading, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            c.base, style = if (compact) Type.BodyStrong.copy(fontSize = 16.sp) else Type.Heading,
                             modifier = Modifier.weight(1f, fill = false),
                         )
                         if (c.symbol in warned) {
@@ -430,14 +436,14 @@ private fun CoinList(
                             )
                         }
                     }
-                    if (!compact) notes[c.symbol]?.let { Text(it, style = Type.Small, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("note-${c.symbol}")) }
+                    if (!compact) notes[c.symbol]?.let { Text(it, style = Type.Small, modifier = Modifier.testTag("note-${c.symbol}")) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (c.openTrades > 0) {
                             Box(Modifier.size(7.dp).clip(CircleShape).background(Palette.Accent))
                             Spacer(Modifier.width(6.dp))
-                            Text("${c.openTrades} open", style = Type.Small, maxLines = 1)
+                            Text("${c.openTrades} open", style = Type.Small)
                         } else {
-                            Text(c.timeframes.joinToString(" "), style = Type.Small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(c.timeframes.joinToString(" "), style = Type.Small)
                         }
                     }
                 }
@@ -452,7 +458,10 @@ private fun CoinList(
             }
             HRule()
         }
-        item(key = "footer") { footer() }
+        item(key = "footer") {
+            footer()
+            EndSpace()
+        }
     }
 }
 
@@ -473,7 +482,7 @@ private fun AddCoins(model: ListsModel?, lists: List<ListUi>, have: List<CoinUi>
         TouchRow({ scope.launch { model.addCoin(target.id, o.symbol) } }, modifier = Modifier.testTag("add-${o.symbol}")) {
             Column(Modifier.weight(1f)) {
                 Text(o.base, style = Type.Heading)
-                Text("Among the most traded today: ${Fmt.compact(o.quoteVolume)} USDT in 24 hours", style = Type.Small, maxLines = 2)
+                Text("Among the most traded today: ${Fmt.compact(o.quoteVolume)} USDT in 24 hours", style = Type.Small)
             }
             TonalButton("Add", { scope.launch { model.addCoin(target.id, o.symbol) } }, Modifier.testTag("add-button-${o.symbol}"))
         }
@@ -502,6 +511,7 @@ private fun Sparkline(points: List<Double>, color: Color, modifier: Modifier = M
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChartPane(
     coin: CoinUi,
@@ -532,7 +542,7 @@ private fun ChartPane(
     Column(modifier) {
         if (sideways) {
             Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(coin.base, style = Type.Heading, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(coin.base, style = Type.Heading, modifier = Modifier.weight(1f, fill = false))
                 Spacer(Modifier.width(8.dp))
                 Text(Fmt.price(price), style = Type.Kpi, modifier = Modifier.testTag("live-price"))
                 Spacer(Modifier.width(6.dp))
@@ -543,17 +553,23 @@ private fun ChartPane(
                 if (onOpenTrades != null && open.isNotEmpty()) TonalButton("${open.size} trades", onOpenTrades, Modifier.padding(start = 2.dp).testTag("open-trades"))
             }
         } else {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(coin.base, style = Type.Title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                Spacer(Modifier.weight(1f))
-                Text(Fmt.price(price), style = Type.Big, modifier = Modifier.testTag("live-price"))
-                Spacer(Modifier.width(10.dp))
-                ChangePill(coin.changeFraction)
+            // The coin's name and its price are never cut: where they do not fit side by side, the price moves under the name.
+            FlowRow(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween,
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(coin.base, style = Type.Title, modifier = Modifier.padding(end = 12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(Fmt.price(price), style = Type.Big, modifier = Modifier.testTag("live-price"))
+                    Spacer(Modifier.width(10.dp))
+                    ChangePill(coin.changeFraction)
+                }
             }
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            // The chart sizes, then the tools; where there is no room for both, the tools move to a line of their own.
+            FlowRow(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
                 Segmented(coin.timeframes, tf, onChoose)
                 Spacer(Modifier.weight(1f))
-                tools()
+                Row { tools() }
             }
         }
         CoinNote(note, unwatched, onOpenLists)
@@ -581,7 +597,7 @@ private fun ChartPane(
                 val on = here.count { it.id in onChart }
                 Text(
                     "$on of ${here.size} ${if (here.size == 1) "trade" else "trades"} on", style = Type.BodyStrong.copy(fontFeatureSettings = "tnum"),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).testTag("level-count"),
+                    modifier = Modifier.weight(1f).testTag("level-count"),
                 )
             }
         }
@@ -636,7 +652,7 @@ private fun Details(
             val c = t.closed!!
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 ChartTag(t.timeframe)
-                Text(t.short, style = Type.Body, modifier = Modifier.weight(1f).padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t.short, style = Type.Body, modifier = Modifier.weight(1f).padding(start = 8.dp))
                 Text(Fmt.signedPercent(c.net), style = Type.NumberStrong.copy(color = Fmt.changeColor(c.net)))
             }
         }
@@ -648,7 +664,7 @@ private fun Details(
                 Text(w.body, style = Type.Small)
             }
         }
-        Spacer(Modifier.height(12.dp))
+        EndSpace()
     }
 }
 
@@ -665,7 +681,7 @@ private fun OpenTradeCard(t: TradeUi, live: Double?, onChart: Boolean, onToggle:
             Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ChartTag(t.timeframe)
-                    Text(t.short, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                    Text(t.short, style = Type.BodyStrong, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
                     Text(Fmt.signedPercent(now), style = Type.NumberStrong.copy(color = Fmt.changeColor(now), fontSize = 17.sp))
                 }
                 Text(
@@ -679,11 +695,11 @@ private fun OpenTradeCard(t: TradeUi, live: Double?, onChart: Boolean, onToggle:
                         // A stop that follows the price up has no target: the bar runs as far above the entry as the stop is below it, and fades.
                         val top = t.entryPrice + (t.entryPrice - stop)
                         RangeBar(0.5f, rangeFraction(stop, top, live), Fmt.changeColor(now), Modifier.padding(top = 12.dp, bottom = 4.dp), openEnded = true)
-                        PriceTrio("Loss limit", Fmt.price(stop), "Entry price", Fmt.price(t.entryPrice), "Then", "follows the price")
+                        LevelTrio("Loss limit", Fmt.price(stop), "Entry price", Fmt.price(t.entryPrice), "Then", "follows the price", Modifier.padding(top = 4.dp))
                     }
                     stop != null && target != null -> {
                         RangeBar(rangeFraction(stop, target, t.entryPrice) ?: 0.5f, rangeFraction(stop, target, live), Fmt.changeColor(now), Modifier.padding(top = 12.dp, bottom = 4.dp))
-                        PriceTrio("Loss limit", Fmt.price(stop), "Entry price", Fmt.price(t.entryPrice), "Profit goal", Fmt.price(target))
+                        LevelTrio("Loss limit", Fmt.price(stop), "Entry price", Fmt.price(t.entryPrice), "Profit goal", Fmt.price(target), Modifier.padding(top = 4.dp))
                     }
                     else -> {
                         Text("Entry price ${Fmt.price(t.entryPrice)}", style = Type.Number, modifier = Modifier.padding(top = 8.dp))
@@ -691,21 +707,9 @@ private fun OpenTradeCard(t: TradeUi, live: Double?, onChart: Boolean, onToggle:
                     }
                 }
             }
-            Row(Modifier.padding(start = 2.dp, bottom = 2.dp)) {
-                TextAction("Show on chart", onShowOnChart)
-                TextAction("About this pattern", onAbout)
-            }
+            // The same two buttons as a trade in All trades, side by side where they fit and one under the other where they do not.
+            TradeActions(onShowOnChart, onAbout)
         }
-    }
-}
-
-/** Three prices side by side, each under its name: start, middle and end. */
-@Composable
-private fun PriceTrio(a: String, av: String, b: String, bv: String, c: String, cv: String) {
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-        Stat(a, av, Modifier.weight(1f))
-        Stat(b, bv, Modifier.weight(1f), align = Alignment.CenterHorizontally)
-        Stat(c, cv, Modifier.weight(1f), align = Alignment.End)
     }
 }
 

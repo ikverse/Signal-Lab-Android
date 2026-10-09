@@ -31,7 +31,9 @@ import com.ikverse.signallab.R
  */
 object Palette {
     val Background = Color(0xFF050505)
-    val Raised = Color(0xFF0E1014)
+    val Raised = Color(0xFF12151B)
+    /** The outline of a raised group, so a group stands apart from the background and from the next one. */
+    val Edge = Color(0xFF1E222B)
     val Rule = Color(0xFF15181E)
     val Text = Color(0xFFCDD1D9)
     val Strong = Color(0xFFF4F5F7)
@@ -81,8 +83,8 @@ object Type {
     val Body = style(15)
     val BodyStrong = style(15, FontWeight.Medium, Palette.Strong)
     val Small = style(13, color = Palette.Muted, tracking = 0.01)
-    /** A section's name, in sentence case. */
-    val Section = style(13, FontWeight.Medium, Palette.Muted, tracking = 0.01)
+    /** A section's name, in sentence case: a step brighter and larger than the small text under it, so sections stand apart. */
+    val Section = style(14, FontWeight.Medium, Palette.TagText, tracking = 0.01)
     val Label = style(12, FontWeight.Medium, Palette.Muted, tracking = 0.01)
     val Number = style(15, tabular = true)
     val NumberStrong = style(15, FontWeight.Medium, Palette.Strong, tabular = true)
