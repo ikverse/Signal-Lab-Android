@@ -158,6 +158,8 @@ data class SettingsUi(
     val dimLevel: DimLevel = DimLevel.DIM,
     /** Where the side bar sits when there is one: on the right edge instead of the left. */
     val railOnRight: Boolean = false,
+    /** Whether an alert also shows as a notification. Off, alerts still land in the inbox. */
+    val alertNotifications: Boolean = true,
 )
 
 /** Sync between devices, for its group in Settings. */
@@ -366,6 +368,7 @@ interface SettingsModel {
     suspend fun setDimScreen(on: Boolean)
     suspend fun setDimLevel(level: DimLevel)
     suspend fun setRailOnRight(on: Boolean)
+    suspend fun setAlertNotifications(on: Boolean)
 
     val update: StateFlow<UpdateUi>
 

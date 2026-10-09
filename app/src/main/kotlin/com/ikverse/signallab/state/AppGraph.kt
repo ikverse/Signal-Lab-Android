@@ -71,7 +71,7 @@ class AppGraph(context: Context, scope: CoroutineScope) {
 
     // Background scanning: the notifier is where alerts go, the controller decides when to scan, and the
     // alarm wakes it. None of them depends on a screen being open.
-    val notifier = Notifier(context)
+    val notifier = Notifier(context, alertsOn = { settings.getBoolean(SettingsStore.ALERT_NOTIFICATIONS, true) })
     val health = ScanHealth()
     val alarms = AndroidAlarms(context) { server -> server - (market.nowMs() - System.currentTimeMillis()) }
     val scanner = Scanner(
