@@ -367,4 +367,23 @@ class NavigationLinksTest {
     fun `a link's target page is not the page it is on`() {
         for (e in LearnIndex.entries) assertNotEquals("learn:${e.id}", Regex("""\]\((learn:[a-z-]+)\)""").findAll(page(e.id)).map { it.groupValues[1] }.firstOrNull { it == "learn:${e.id}" })
     }
+
+    @Test
+    fun `a place behind More keeps lit the tab it was jumped from, and Back is named for where it leads`() {
+        val nav = NavState()
+        nav.go(Dest.Scorecard)
+        nav.openLearn("trend")
+        assertEquals(Dest.Scorecard, nav.barPlace, "a pattern's page opened from Does it work? keeps Does it work? lit")
+        assertEquals(Dest.Scorecard, nav.backTo)
+        nav.openTrades(null, TradeFilter.All, null, fromApp = true)
+        assertEquals(Dest.Scorecard, nav.barPlace, "a second jump behind More still lights the tab the user started from")
+        assertEquals(Dest.Learn, nav.backTo)
+        nav.go(Dest.More)
+        nav.go(Dest.Learn)
+        assertEquals(Dest.More, nav.barPlace, "reached through More, it is More")
+        assertEquals(Dest.More, nav.backTo)
+        nav.go(Dest.Markets)
+        assertEquals(Dest.Markets, nav.barPlace)
+        assertNull(nav.backTo, "a place in the bar has no way back of its own")
+    }
 }

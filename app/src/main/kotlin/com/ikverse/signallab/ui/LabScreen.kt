@@ -10,8 +10,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,9 +39,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
@@ -113,8 +118,12 @@ fun LabScreen(
     val setView = { v: LabView -> viewText = v.text }
     val wide = layout != LayoutClass.Compact
     val scope = rememberCoroutineScope()
+    var width by remember { mutableStateOf(0.dp) }
+    // The tests beside the idea only where the idea still keeps a comfortable width at the phone's text size; otherwise the idea (or the
+    // test, or Claude's ideas) gets the whole screen, with a way back, as on a phone.
+    val split = wide && (view == LabView.Home || width >= scaledWithText(MIN_TESTS_DP.dp) + scaledWithText(MIN_IDEA_DP.dp) + PaneMath.DIVIDER.dp)
 
-    BackHandler(enabled = !wide && view != LabView.Home) { setView(LabView.Home) }
+    BackHandler(enabled = !split && view != LabView.Home) { setView(LabView.Home) }
     // A test that no longer exists (the record was cleared) is not shown.
     if (view is LabView.Test && tests.none { it.id == view.id }) {
         LaunchedEffect(view) { setView(LabView.Home) }
@@ -135,23 +144,23 @@ fun LabScreen(
     }
     val page = @Composable {
         when (view) {
-            LabView.Home -> if (wide) Hint("Pick a test on the left, or build a new idea.") else Unit
+            LabView.Home -> if (split) Hint("Pick a test on the left, or build a new idea.") else Unit
             is LabView.Test -> tests.firstOrNull { it.id == view.id }?.let { t ->
                 TestPage(
-                    analyst, t, progressOf(t.id), tradesOf(t.id), wide, scope, help, onOpenLearn,
+                    analyst, t, progressOf(t.id), tradesOf(t.id), split, scope, help, onOpenLearn,
                     onBack = { setView(LabView.Home) },
                     onCopy = { d -> draft = d; setView(LabView.Build) },
-                    onShowTrade = { tr -> if (wide) chartTrade = tr.id else onShowTrade(tr) },
-                    compactChart = if (wide) null else { { ChartForTrade(markets, tradesOf(t.id).firstOrNull(), Modifier.fillMaxWidth().height(260.dp)) } },
+                    onShowTrade = { tr -> if (split) chartTrade = tr.id else onShowTrade(tr) },
+                    compactChart = if (split) null else { { ChartForTrade(markets, tradesOf(t.id).firstOrNull(), Modifier.fillMaxWidth().height(260.dp)) } },
                 )
             }
             LabView.Build -> BuilderPage(
-                analyst, draft, { draft = it }, wide, scope, help,
+                analyst, draft, { draft = it }, split, scope, help,
                 onBack = { setView(LabView.Home) },
                 onStarted = { message = "Live test started. It trades from the next setup on."; setView(LabView.Home) },
             )
             LabView.Ideas -> IdeasPage(
-                reports, wide, onBack = { setView(LabView.Home) },
+                reports, split, onBack = { setView(LabView.Home) },
                 onOpenInBuilder = { d -> draft = d; setView(LabView.Build) },
                 onAsk = { scope.launch { message = (analyst.ask("suggest-patterns") as? Outcome.Refused)?.message } },
             )
@@ -168,25 +177,33 @@ fun LabScreen(
         }
     }
 
-    if (!wide) {
-        Box(modifier.fillMaxSize().testTag("lab")) { if (view == LabView.Home) home() else page() }
-        return
+    val density = LocalDensity.current
+    Box(modifier.fillMaxSize().testTag("lab").onSizeChanged { width = with(density) { it.width.toDp() } }) {
+        if (!split) {
+            if (view == LabView.Home) home() else page()
+        } else {
+            SplitPane(
+                panels, "lab", "tests", 330f, list = home,
+                page = {
+                    if (layout == LayoutClass.Wide) {
+                        SplitPane(panels, "lab-idea", "the idea", 420f, list = { Column(Modifier.fillMaxSize()) { page() } }, page = side)
+                    } else {
+                        Column(Modifier.fillMaxSize()) { page() }
+                    }
+                },
+            )
+        }
     }
-    SplitPane(
-        panels, "lab", "tests", 330f, list = home, modifier = modifier.testTag("lab"),
-        page = {
-            if (layout == LayoutClass.Wide) {
-                SplitPane(panels, "lab-idea", "the idea", 420f, list = { Column(Modifier.fillMaxSize()) { page() } }, page = side)
-            } else {
-                Column(Modifier.fillMaxSize()) { page() }
-            }
-        },
-    )
 }
 
+/** The narrowest the list of tests is given beside an idea, and the narrowest the idea beside it, before the text size grows them. */
+private const val MIN_TESTS_DP = 280
+private const val MIN_IDEA_DP = 400
+
+/** A quiet line in an empty pane, at its top where the eye starts, not lost in the middle. */
 @Composable
 private fun Hint(text: String) {
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.TopStart) {
         Text(text, style = Type.Small, modifier = Modifier.testTag("lab-hint"))
     }
 }
@@ -261,17 +278,24 @@ private fun LabHome(
         message?.let { m -> item(key = "message") { Text(m, style = Type.Body.copy(color = Palette.Warn), modifier = Modifier.padding(16.dp).testTag("lab-message")) } }
         item(key = "new") {
             SectionLabel("New idea")
-            Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TonalButton("Build your own", onBuild, Modifier.fillMaxWidth().testTag("lab-build"))
-                LineButton("Ask Claude for ideas", onAsk, Modifier.fillMaxWidth().testTag("lab-ask"))
-                LineButton(if (examples) "Hide the examples" else "Start from an example", { examples = !examples }, Modifier.fillMaxWidth().testTag("lab-examples"))
+            // The three ways to start, one width each, so they read as a set of equal choices.
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                val each = Modifier.widthIn(max = 420.dp).fillMaxWidth()
+                TonalButton("Build your own", onBuild, each.testTag("lab-build"), stretch = true)
+                LineButton("Ask Claude for ideas", onAsk, each.testTag("lab-ask"), stretch = true)
+                LineButton(if (examples) "Hide the examples" else "Start from an example", { examples = !examples }, each.testTag("lab-examples"), stretch = true)
             }
             if (examples) {
+                Spacer(Modifier.height(8.dp))
+                HRule()
                 for ((i, e) in LabDraft.examples.withIndex()) {
                     TouchRow({ onExample(e) }, modifier = Modifier.testTag("example-$i")) {
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
                             Text(e.name, style = Type.BodyStrong)
-                            Text(e.sentence, style = Type.Small, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            Text(e.sentence, style = Type.Small, modifier = Modifier.padding(top = 4.dp))
                         }
                     }
                     HRule()
@@ -299,7 +323,7 @@ private fun LabHome(
             item(key = "done") { SectionLabel("Stopped", count = finished.size) }
             items(finished, key = { "s-${it.id}" }) { t -> TestRow(t, progressOf(t.id), view == LabView.Test(t.id), { onOpen(t.id) }) }
         }
-        item(key = "end") { Spacer(Modifier.height(16.dp)) }
+        item(key = "end") { EndSpace() }
     }
 }
 
@@ -321,17 +345,17 @@ private fun TestRow(t: LabPatternUi, p: LabProgress, selected: Boolean, onClick:
     TouchRow(onClick, selected = selected, modifier = Modifier.testTag("lab-${t.id}"), minHeight = 72.dp) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.title, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(t.title, style = Type.BodyStrong, modifier = Modifier.weight(1f))
                 if (t.stoppedAt == null) {
                     Text(
-                        p.status, style = Type.Label.copy(color = statusColor(p)), maxLines = 1,
+                        p.status, style = Type.Label.copy(color = statusColor(p)),
                         modifier = Modifier.padding(start = 8.dp).border(1.dp, statusColor(p), RoundedCornerShape(12.dp)).padding(horizontal = 8.dp, vertical = 1.dp),
                     )
                 } else {
                     Text("Stopped", style = Type.Small)
                 }
             }
-            Text("${p.closed} of ${PlainWords.MIN_VERDICT} trades · ${p.result}", style = Type.Small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${p.closed} of ${PlainWords.MIN_VERDICT} trades · ${p.result}", style = Type.Small)
             if (t.stoppedAt == null) Bar(p.closed.coerceAtMost(PlainWords.MIN_VERDICT), PlainWords.MIN_VERDICT, statusColor(p))
         }
     }
@@ -454,8 +478,10 @@ private const val MAX_TRADES_SHOWN = 30
 
 // --- The builder ----------------------------------------------------------------------------------------------------------
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BuilderPage(
+
     analyst: AnalystModel,
     draft: LabDraft,
     onChange: (LabDraft) -> Unit,
@@ -478,10 +504,11 @@ private fun BuilderPage(
             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                 draft.conditions.forEachIndexed { i, c ->
                     if (i > 0) Text("and", style = Type.Small, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Pill(LabVocab.label(c.left), editing == "$i:0", Modifier.weight(1f, fill = false).testTag("part-$i-0")) { editing = if (editing == "$i:0") null else "$i:0" }
+                    // The three pieces wrap onto another line when they do not fit side by side: each always shows its words in full.
+                    FlowRow(Modifier.fillMaxWidth(), itemVerticalAlignment = Alignment.CenterVertically) {
+                        Pill(LabVocab.label(c.left), editing == "$i:0", Modifier.testTag("part-$i-0")) { editing = if (editing == "$i:0") null else "$i:0" }
                         Pill(LabVocab.compareWords(c.compare), editing == "$i:1", Modifier.testTag("part-$i-1")) { editing = if (editing == "$i:1") null else "$i:1" }
-                        Pill(LabVocab.label(c.right), editing == "$i:2", Modifier.weight(1f, fill = false).testTag("part-$i-2")) { editing = if (editing == "$i:2") null else "$i:2" }
+                        Pill(LabVocab.label(c.right, c.left), editing == "$i:2", Modifier.testTag("part-$i-2")) { editing = if (editing == "$i:2") null else "$i:2" }
                         if (draft.conditions.size > 1) IconAction(Glyphs.Close, "Remove condition ${i + 1}", {
                             editing = null
                             onChange(draft.copy(conditions = draft.conditions.filterIndexed { j, _ -> j != i }))
@@ -500,7 +527,7 @@ private fun BuilderPage(
             }
         }
         SectionLabel("On these charts")
-        Row(Modifier.padding(horizontal = 12.dp)) {
+        ChipRow {
             for (c in LabVocab.charts) {
                 TickChip(c, c in draft.charts, {
                     onChange(draft.copy(charts = if (c in draft.charts) draft.charts - c else draft.charts + c))
@@ -509,7 +536,7 @@ private fun BuilderPage(
         }
         SectionLabel("How a trade ends")
         val holdN = LabVocab.holdOf(draft.exit)
-        Row(Modifier.padding(horizontal = 12.dp)) {
+        ChipRow {
             ChoiceText("Trailing stop", draft.exit == "trail", { onChange(draft.copy(exit = "trail")) }, Modifier.testTag("exit-trail"))
             ChoiceText("Learned goal", draft.exit == "learned", { onChange(draft.copy(exit = "learned")) }, Modifier.testTag("exit-learned"))
             ChoiceText("After N candles", holdN != null, { onChange(draft.copy(exit = "hold(${LabVocab.DEFAULT_HOLD})")) }, Modifier.testTag("exit-hold"))
@@ -552,21 +579,20 @@ private fun BuilderPage(
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
+        EndSpace()
     }
 }
 
+/** One piece of a condition, as a button: its words in full, on more lines when it needs them, at least a full touch tall. */
 @Composable
 private fun Pill(text: String, open: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     Text(
-        text, style = Type.BodyStrong.copy(color = if (open) Palette.OnAccentTint else Palette.Strong), maxLines = 2, overflow = TextOverflow.Ellipsis,
-        modifier = modifier.padding(2.dp).heightIn48().clip(shape).background(if (open) Palette.AccentTint else Palette.Background)
+        text, style = Type.BodyStrong.copy(color = if (open) Palette.OnAccentTint else Palette.Strong),
+        modifier = modifier.padding(2.dp).heightIn(min = MinTouch).clip(shape).background(if (open) Palette.AccentTint else Palette.Background)
             .border(1.dp, if (open) Palette.AccentTint else Palette.Rule, shape).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 12.dp),
     )
 }
-
-private fun Modifier.heightIn48(): Modifier = this.then(Modifier.height(MinTouch))
 
 /** The choices for one piece of a condition, opened in place under it. */
 @Composable
@@ -588,7 +614,7 @@ private fun PartEditor(part: Int, c: DraftCondition, onChange: (DraftCondition) 
                 val v = if (b.takesN) "${b.id}(${b.defaultN})" else b.id
                 onChange(if (part == 0) c.copy(left = v) else c.copy(right = v))
             }, selected = block?.id == b.id, minHeight = 44.dp, modifier = Modifier.testTag("block-${b.id}")) {
-                Text(b.menu.replace("N candles", "a number of candles").replace(" N ", " a number of "), style = Type.Body)
+                Text(menuWords(b.menu), style = Type.Body)
             }
         }
         if (part == 2) {
@@ -610,6 +636,13 @@ private fun PartEditor(part: Int, c: DraftCondition, onChange: (DraftCondition) 
         block?.learn?.let { id -> help(id)?.let { open -> TextAction("What is this?", open) } }
     }
 }
+
+/**
+ * A building block's name in the menu, with its length said in words: "Average price over a number of candles". "The last N candles" keeps
+ * its N, since "the last a number of candles" does not read.
+ */
+internal fun menuWords(menu: String): String =
+    if ("last N candles" in menu) menu else menu.replace("N candles", "a number of candles").replace(" N ", " a number of ")
 
 /** A whole number changed with − and + buttons, held between [min] and [max]. */
 @Composable

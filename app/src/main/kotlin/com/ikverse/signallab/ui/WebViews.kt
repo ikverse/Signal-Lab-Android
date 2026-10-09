@@ -8,6 +8,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -196,12 +197,23 @@ fun ChartView(
     LaunchedEffect(livePrice, chart, kept.loaded) {
         if (kept.loaded && chart != null && livePrice != null && livePrice > 0) kept.view.evaluateJavascript("signalLab.setLastPrice($livePrice)", null)
     }
-    // The view is the pool's, built once: put on screen here, taken off when this screen goes, and kept for the next visit.
+    // Back closes an open menu first, rather than leaving the chart with the menu still open behind it.
+    BackHandler(enabled = kept.menuOpen) { closeChartMenu(kept) }
+    // The view is the pool's, built once: put on screen here, taken off when this screen goes, and kept for the next visit. A menu left open
+    // is closed as it goes, so the chart never comes back with it open.
     AndroidView(
         modifier = modifier.fillMaxSize().testTag("chart"),
         factory = { pool.attach(WebPage.Chart) },
-        onRelease = { pool.detach(WebPage.Chart) },
+        onRelease = {
+            closeChartMenu(kept)
+            pool.detach(WebPage.Chart)
+        },
     )
+}
+
+private fun closeChartMenu(kept: KeptWeb) {
+    if (kept.loaded) kept.view.evaluateJavascript("signalLab.closeMenu()", null)
+    kept.menuOpen = false
 }
 
 /** One Learn page: the Markdown shown by the marked and Mermaid libraries bundled in the app. A link written as learn:id opens that page. */

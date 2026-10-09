@@ -204,7 +204,8 @@ fun PaneDivider(
 /**
  * A list on the left and the page it opens on the right, with a divider between them that drags and a button that hides the
  * list (or brings it back). The list's width is kept between runs under [key]. Used by Lists and Learn on a screen wide enough
- * for two panes.
+ * for two panes. [pageTop], when given, is drawn over the page and told whether the list is hidden and how to toggle it, so a page
+ * can offer a plain button to bring the list back rather than only the small grip on the divider.
  */
 @Composable
 fun SplitPane(
@@ -215,6 +216,7 @@ fun SplitPane(
     list: @Composable () -> Unit,
     page: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    pageTop: (@Composable (hidden: Boolean, toggle: () -> Unit) -> Unit)? = null,
 ) {
     val pane = rememberPaneLayout(panels, key)
     val fold = LocalFold.current
@@ -235,7 +237,10 @@ fun SplitPane(
                 onToggle = { pane.toggle("list") }, modifier = Modifier.testTag("divider-$key"),
                 onDragging = { pane.dragging = it },
             )
-            Column(Modifier.weight(1f).pane("page")) { page() }
+            Column(Modifier.weight(1f).pane("page")) {
+                pageTop?.invoke(hidden) { pane.toggle("list") }
+                Column(Modifier.weight(1f)) { page() }
+            }
         }
     }
 }

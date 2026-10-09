@@ -21,9 +21,15 @@ object Fmt {
     fun percent(fraction: Double?, digits: Int = 2): String =
         if (fraction == null || fraction.isNaN()) "—" else "%.${digits}f%%".format(Locale.ROOT, fraction * 100)
 
-    /** 0.0123 as "+1.23%", -0.01 as "−1.00%": a true minus sign, as wide as the plus, so signed columns line up. */
-    fun signedPercent(fraction: Double?, digits: Int = 2): String =
-        if (fraction == null || fraction.isNaN()) "—" else "%+.${digits}f%%".format(Locale.ROOT, fraction * 100).replace('-', MINUS)
+    /**
+     * 0.0123 as "+1.23%", -0.01 as "−1.00%": a true minus sign, as wide as the plus, so signed columns line up. A change that rounds to
+     * nothing has no sign at all ("0.00%"), never "−0.00%".
+     */
+    fun signedPercent(fraction: Double?, digits: Int = 2): String {
+        if (fraction == null || fraction.isNaN()) return "—"
+        val text = "%+.${digits}f%%".format(Locale.ROOT, fraction * 100)
+        return if (text.none { it in '1'..'9' }) text.drop(1) else text.replace('-', MINUS)
+    }
 
     /** The minus sign used on screen. Notifications keep the plain hyphen. */
     const val MINUS = '−'

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
@@ -80,10 +80,12 @@ fun AnalystScreen(
     onOpenPage: (String) -> Unit,
     modifier: Modifier = Modifier,
     onGo: (String) -> Unit = {},
+    onBack: (() -> Unit)? = null,
+    backLabel: String = Dest.More.label,
 ) {
     val reports by model.reports.collectAsStateWithLifecycle()
     val current = reports.firstOrNull { it.id == selected } ?: if (wide) reports.firstOrNull() else null
-    val index = @Composable { AnalystIndex(model, trades, reports, current?.id, onSelect, onOpenPage, compact = wide) }
+    val index = @Composable { AnalystIndex(model, trades, reports, current?.id, onSelect, onOpenPage, compact = wide, onBack = onBack, backLabel = backLabel) }
     val content = @Composable {
         when {
             current != null -> ReportView(model, current, wide, onSelect, onOpenPage, onGo)
@@ -106,7 +108,7 @@ private fun ReportView(model: AnalystModel, report: ReportUi, wide: Boolean, onS
     Column(Modifier.fillMaxSize()) {
         if (!wide) BackRow("Ask Claude", { onSelect(null) })
         Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-            Text(report.title, style = Type.Heading, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("report-title"))
+            Text(report.title, style = Type.Heading, modifier = Modifier.testTag("report-title"))
             Text("Kept ${Fmt.dateTime(report.receivedAt)}", style = Type.Small)
         }
         if (report.suggestions.isNotEmpty()) {
@@ -182,6 +184,8 @@ private fun AnalystIndex(
     onSelect: (Long?) -> Unit,
     onOpenPage: (String) -> Unit,
     compact: Boolean = false,
+    onBack: (() -> Unit)? = null,
+    backLabel: String = Dest.More.label,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -221,6 +225,7 @@ private fun AnalystIndex(
 
     LazyColumn(Modifier.fillMaxSize().testTag("analyst-index")) {
         item(key = "title") {
+            onBack?.let { BackRow(backLabel, it) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ScreenTitle("Ask Claude", Modifier.weight(1f))
                 IconAction(Glyphs.Info, "How this works", { onOpenPage("analyst") }, Modifier.padding(end = 4.dp).testTag("analyst-learn"), tint = Palette.Muted)
@@ -244,13 +249,14 @@ private fun AnalystIndex(
             }
         }
         problem?.let { text -> item(key = "problem") { ProblemState(text) } }
-        item(key = "ask") { SectionLabel("Ask Claude") }
+        // The questions follow the title straight on: a label saying "Ask Claude" again under it would only repeat the page's name.
+        item(key = "ask") { Spacer(Modifier.height(12.dp)); HRule() }
         items(model.cards, key = { "card-${it.id}" }) { c ->
-            // Beside an open report the list is narrow: each question keeps to one line of description.
+            // Beside an open report the list is narrow, and each description simply takes the lines it needs there.
             TouchRow({ if (c.needsTrade) picking = !picking else ask(c.id) }, modifier = Modifier.testTag("card-${c.id}"), minHeight = if (compact) 54.dp else RowHeight) {
                 Column(Modifier.weight(1f)) {
                     Text(c.title, style = Type.BodyStrong)
-                    Text(c.description, style = Type.Small, maxLines = if (compact) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
+                    Text(c.description, style = Type.Small, modifier = Modifier.padding(top = 2.dp))
                 }
                 // A question opens Claude; Explain a trade first opens a list of trades to choose from, here.
                 Icon(
@@ -279,7 +285,7 @@ private fun AnalystIndex(
                                 "${t.symbol.removeSuffix("USDT")} · ${t.timeframe} · ${Fmt.signedPercent(t.closed?.net)}",
                                 style = Type.BodyStrong.copy(color = Fmt.changeColor(t.closed?.net)),
                             )
-                            Text("${t.label} · closed ${Fmt.dateTime(t.closed!!.exitTime)}", style = Type.Small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${t.label} · closed ${Fmt.dateTime(t.closed!!.exitTime)}", style = Type.Small)
                         }
                     }
                 }
@@ -313,8 +319,8 @@ private fun AnalystIndex(
         items(lab, key = { "lab-${it.id}" }) { p ->
             Row(Modifier.fillMaxWidth().padding(start = 16.dp).testTag("lab-${p.id}")) {
                 Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                    Text("Lab ${p.id}: ${p.title}", style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(p.summary, style = Type.Small, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text("Lab ${p.id}: ${p.title}", style = Type.BodyStrong)
+                    Text(p.summary, style = Type.Small)
                     Text(
                         p.stoppedAt?.let { "Stopped ${Fmt.dateTime(it)}" } ?: "Forward-testing since ${Fmt.dateTime(p.startedAt)}",
                         style = Type.Small,
@@ -340,7 +346,7 @@ private fun AnalystIndex(
         }
         item(key = "reports") {
             SectionLabel("Reports")
-            TonalButton("Paste an answer", ::paste, Modifier.padding(horizontal = 12.dp).testTag("paste"), icon = Glyphs.Plus)
+            TonalButton("Paste an answer", ::paste, Modifier.padding(horizontal = 16.dp).testTag("paste"), icon = Glyphs.Plus)
         }
         if (reports.isEmpty()) {
             item(key = "no-reports") {
@@ -353,7 +359,7 @@ private fun AnalystIndex(
         items(reports, key = { "report-${it.id}" }) { r ->
             TouchRow({ onSelect(r.id) }, selected = r.id == currentId, modifier = Modifier.testTag("report-${r.id}")) {
                 Column(Modifier.weight(1f)) {
-                    Text(r.title, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(r.title, style = Type.BodyStrong)
                     Text(
                         Fmt.dateTime(r.receivedAt) + if (r.suggestions.isNotEmpty()) " · ${r.suggestions.size} patterns suggested" else "",
                         style = Type.Small,
@@ -363,5 +369,6 @@ private fun AnalystIndex(
             }
             HRule()
         }
+        item(key = "end") { EndSpace() }
     }
 }

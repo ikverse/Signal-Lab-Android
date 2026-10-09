@@ -20,7 +20,7 @@ A candle that closes above the highest high of the previous {{DONCHIAN_LOOKBACKS
 <line x1="215" y1="40" x2="215" y2="74" stroke="#089981"/><rect x="210" y="46" width="10" height="20" fill="#089981"/>
 <line x1="270" y1="14" x2="270" y2="50" stroke="#089981"/><rect x="265" y="20" width="10" height="22" fill="#089981"/>
 </g>
-<text x="214" y="108" fill="#868993" font-size="11">this candle closes above: signal</text>
+<text x="310" y="108" fill="#868993" font-size="11" text-anchor="end">this candle closes above: signal</text>
 </svg></div>
 
 ## Where it runs

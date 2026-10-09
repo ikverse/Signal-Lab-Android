@@ -4,7 +4,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -43,7 +42,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -109,6 +107,8 @@ fun TradesScreen(
     modifier: Modifier = Modifier,
     wide: Boolean = false,
     prices: Map<String, Double> = emptyMap(),
+    onBack: (() -> Unit)? = null,
+    backLabel: String = Dest.More.label,
 ) {
     val all by model.trades.collectAsStateWithLifecycle()
     val status = nav.tradesStatus
@@ -122,9 +122,9 @@ fun TradesScreen(
     val list = rememberLazyListState()
     // A trade a link asked to be opened is brought into view once it has arrived in the list; one already on screen (a row just touched) stays put.
     LaunchedEffect(expanded, shown.size) {
-        // Each group adds a header row ahead of its trades.
+        // Each group adds a header row ahead of its trades; beside the trade's panel the page's own header is the list's first row too.
         var at = -1
-        var index = 0
+        var index = if (wide) 1 else 0
         for ((pattern, trades) in groups) {
             index++
             if (pattern in folded) continue
@@ -135,31 +135,49 @@ fun TradesScreen(
         if (expanded != null && at >= 0 && list.layoutInfo.visibleItemsInfo.none { it.index == at }) list.animateScrollToItem(at)
     }
     val toggle = { t: TradeUi -> nav.tradesExpanded = if (expanded == t.id) null else t.id }
-    val listPane = @Composable { m: Modifier ->
-        Column(m.testTag("trades")) {
+    val header = @Composable {
+        Column {
             if (wide) {
-                // Beside the trade's panel the height is short: the title and the filters share a row, and the totals are one line.
-                Row(Modifier.fillMaxWidth().padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ScreenTitle("All trades", Modifier.weight(1f))
-                    for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { nav.tradesStatus = f })
+                // Beside the trade's panel the height is short: the way back sits beside the title, the status and the chart sizes share one
+                // row (which wraps rather than running off the edge), and the totals are one line.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    onBack?.let { IconAction(Glyphs.Back, "Back to $backLabel", it, Modifier.padding(start = 4.dp)) }
+                    ScreenTitle("All trades")
                 }
                 SearchField(query, { nav.tradesQuery = it }, "Coin, pattern or chart", description = "Filter by coin, pattern or chart")
-                if (sizes.size > 1) TimeframeChips(sizes, timeframe) { nav.tradesTimeframe = it }
+                ChipRow(Modifier.testTag("trades-charts")) {
+                    for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { nav.tradesStatus = f })
+                    if (sizes.size > 1) {
+                        ChoiceText("Any chart", timeframe == null, { nav.tradesTimeframe = null })
+                        for (s in sizes) ChoiceText(s, timeframe == s, { nav.tradesTimeframe = s })
+                    }
+                }
                 Totals(shown, oneLine = true)
             } else {
+                onBack?.let { BackRow(backLabel, it) }
                 ScreenTitle("All trades")
                 SearchField(query, { nav.tradesQuery = it }, "Coin, pattern or chart", description = "Filter by coin, pattern or chart")
-                Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp)) {
+                // The status and the chart sizes on rows that wrap: a filter that does not fit moves to the next line and is never off screen.
+                ChipRow {
                     for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { nav.tradesStatus = f })
                 }
                 if (sizes.size > 1) TimeframeChips(sizes, timeframe) { nav.tradesTimeframe = it }
                 Totals(shown)
             }
             HRule()
+        }
+    }
+    val listPane = @Composable { m: Modifier ->
+        // Beside the trade's panel (a phone held sideways, where height is short) the header scrolls away with the trades, so the trades
+        // always have the height; on a phone held upright it stays put over them.
+        val headerInList = wide && shown.isNotEmpty()
+        Column(m.testTag("trades")) {
+            if (!headerInList) header()
             when {
                 all.isEmpty() -> EmptyState("No practice trades yet", "When a pattern appears on a coin you are watching, a pretend trade is recorded here. No real money is used.")
                 shown.isEmpty() -> EmptyState("Nothing matches", "Change the filters or the search.")
-                else -> LazyColumn(Modifier.weight(1f), state = list) {
+                else -> LazyColumn(Modifier.weight(1f).testTag("trades-list"), state = list) {
+                    if (headerInList) item(key = "header") { header() }
                     for ((pattern, trades) in groups) {
                         val isFolded = pattern in folded
                         stickyHeader(key = "group-$pattern") {
@@ -175,6 +193,7 @@ fun TradesScreen(
                             HRule()
                         }
                     }
+                    item(key = "end") { EndSpace() }
                 }
             }
         }
@@ -213,10 +232,10 @@ fun TradesScreen(
     }
 }
 
-/** "Any chart" and one choice per chart size the trades were taken on; a row that scrolls sideways when the sizes do not fit. */
+/** "Any chart" and one choice per chart size the trades were taken on, on a row that wraps when the sizes do not fit. */
 @Composable
 private fun TimeframeChips(sizes: List<String>, chosen: String?, onChoose: (String?) -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 13.dp).testTag("trades-charts")) {
+    ChipRow(Modifier.testTag("trades-charts")) {
         ChoiceText("Any chart", chosen == null, { onChoose(null) })
         for (s in sizes) ChoiceText(s, chosen == s, { onChoose(s) })
     }
@@ -260,7 +279,7 @@ private fun GroupHeader(trades: List<TradeUi>, folded: Boolean, modifier: Modifi
     val open = trades.size - closed
     val mean = closedMean(trades)
     TouchRow(onToggle, modifier.background(Palette.Raised), minHeight = 52.dp) {
-        Text(trades.first().short, style = Type.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(trades.first().short, style = Type.BodyStrong, modifier = Modifier.weight(1f))
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
             Text("$closed closed" + if (open > 0) " · $open open" else "", style = Type.Small)
             if (mean != null) Text("avg ${Fmt.signedPercent(mean)}", style = Type.Small.copy(color = Fmt.changeColor(mean), fontFeatureSettings = "tnum"))
@@ -278,7 +297,7 @@ private fun TradeRow(t: TradeUi, selected: Boolean, onToggle: () -> Unit) {
     TouchRow(onToggle, modifier = Modifier.testTag("trade-${t.id}"), selected = selected, minHeight = 58.dp) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.symbol.removeSuffix("USDT"), style = Type.BodyStrong, maxLines = 1)
+                Text(t.symbol.removeSuffix("USDT"), style = Type.BodyStrong)
                 Spacer(Modifier.width(8.dp))
                 ChartTag(t.timeframe)
             }
@@ -362,19 +381,11 @@ fun TradeDetail(t: TradeUi, price: Double?, onShowOnChart: () -> Unit, onAbout: 
                 when {
                     t.exitMode == "trail" && stop != null -> {
                         RangeBar(0.5f, rangeFraction(stop, t.entryPrice + (t.entryPrice - stop), price), Fmt.changeColor(now), Modifier.padding(top = 14.dp, bottom = 4.dp), openEnded = true)
-                        Row(Modifier.fillMaxWidth()) {
-                            Stat("Loss limit", Fmt.price(stop), Modifier.weight(1f))
-                            Stat("Entry price", Fmt.price(t.entryPrice), Modifier.weight(1f), align = Alignment.CenterHorizontally)
-                            Stat("Then", "follows the price", Modifier.weight(1f), align = Alignment.End)
-                        }
+                        LevelTrio("Loss limit", Fmt.price(stop), "Entry price", Fmt.price(t.entryPrice), "Then", "follows the price")
                     }
                     stop != null && target != null -> {
                         RangeBar(rangeFraction(stop, target, t.entryPrice) ?: 0.5f, rangeFraction(stop, target, price), Fmt.changeColor(now), Modifier.padding(top = 14.dp, bottom = 4.dp))
-                        Row(Modifier.fillMaxWidth()) {
-                            Stat("Loss limit", Fmt.price(stop), Modifier.weight(1f))
-                            Stat("Entry price", Fmt.price(t.entryPrice), Modifier.weight(1f), align = Alignment.CenterHorizontally)
-                            Stat("Profit goal", Fmt.price(target), Modifier.weight(1f), align = Alignment.End)
-                        }
+                        LevelTrio("Loss limit", Fmt.price(stop), "Entry price", Fmt.price(t.entryPrice), "Profit goal", Fmt.price(target))
                     }
                     else -> {
                         Stat("Entry price", Fmt.price(t.entryPrice), Modifier.padding(top = 8.dp))
@@ -383,9 +394,27 @@ fun TradeDetail(t: TradeUi, price: Double?, onShowOnChart: () -> Unit, onAbout: 
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            TonalButton("Show on chart", onShowOnChart, Modifier.weight(1f), stretch = true)
-            LineButton("About this pattern", onAbout, Modifier.weight(1f), stretch = true)
+        TradeActions(onShowOnChart, onAbout)
+    }
+}
+
+/**
+ * A trade's two buttons: side by side in equal halves where both labels fit, and one under the other, full width, where they would not,
+ * so neither label is ever cut.
+ */
+@Composable
+fun TradeActions(onShowOnChart: () -> Unit, onAbout: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 6.dp)) {
+        if (maxWidth >= scaledWithText(340.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TonalButton("Show on chart", onShowOnChart, Modifier.weight(1f), stretch = true)
+                LineButton("About this pattern", onAbout, Modifier.weight(1f), stretch = true)
+            }
+        } else {
+            Column(Modifier.fillMaxWidth()) {
+                TonalButton("Show on chart", onShowOnChart, Modifier.fillMaxWidth(), stretch = true)
+                LineButton("About this pattern", onAbout, Modifier.fillMaxWidth(), stretch = true)
+            }
         }
     }
 }

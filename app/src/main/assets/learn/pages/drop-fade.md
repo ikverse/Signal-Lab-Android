@@ -11,7 +11,7 @@ A fall over the last {{FADE_HOURS}} hours (three versions) that is bigger than {
 <div class="figure"><svg viewBox="0 0 320 110" width="320" height="110" xmlns="http://www.w3.org/2000/svg">
 <polyline points="10,40 50,42 90,38 130,44 160,80 190,70 230,62 280,56" fill="none" stroke="#d1d4dc" stroke-width="2"/>
 <circle cx="160" cy="80" r="5" fill="#089981"/>
-<text x="120" y="100" fill="#868993" font-size="11">sharp fall: signal when the candle closes</text>
+<text x="310" y="100" fill="#868993" font-size="11" text-anchor="end">sharp fall: signal when the candle closes</text>
 </svg></div>
 
 ## Where it runs

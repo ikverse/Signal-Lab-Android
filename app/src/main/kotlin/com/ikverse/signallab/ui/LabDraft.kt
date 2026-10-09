@@ -54,15 +54,26 @@ object LabVocab {
 
     fun isNumber(operand: String): Boolean = split(operand).first == null && operand.trim().toDoubleOrNull() != null
 
-    /** An operand in a sentence: `rsi(14)` as "RSI(14)", `sma(200)` as "the 200-candle average price", `30` as "30". */
-    fun phrase(operand: String): String {
+    /**
+     * An operand in a sentence: `rsi(14)` as "RSI(14)", `sma(200)` as "the 200-candle average price", `30` as "30". A plain number compared
+     * with a change ([against] is `return(N)`) is a fraction of the price, so it reads as a percentage: `-0.05` as "−5%".
+     */
+    fun phrase(operand: String, against: String? = null): String {
         val (b, n) = split(operand)
-        if (b == null) return operand.trim()
+        if (b == null) {
+            val number = operand.trim().toDoubleOrNull()
+            if (number != null && against != null && split(against).first?.id == "return") return percentWords(number)
+            return operand.trim()
+        }
         return if (b.takesN) b.phrase.replace("N", (n ?: b.defaultN).toString()) else b.phrase
     }
 
-    /** An operand on a button: the same words, short. */
-    fun label(operand: String): String = phrase(operand)
+    /** A fraction as a plain percentage: -0.05 as "−5%", 0.025 as "2.5%". */
+    private fun percentWords(fraction: Double): String =
+        java.math.BigDecimal(fraction).movePointRight(2).round(java.math.MathContext(6)).stripTrailingZeros().toPlainString().replace('-', Fmt.MINUS) + "%"
+
+    /** An operand on a button: the same words, short. [against] is the operand on the other side, as for [phrase]. */
+    fun label(operand: String, against: String? = null): String = phrase(operand, against)
 
     fun compareWords(id: String): String = compares.firstOrNull { it.first == id }?.second ?: id
 
@@ -88,7 +99,7 @@ object LabVocab {
 
 /** One line of an idea: "RSI(14) crosses above 30". The three parts are written as the engine reads them. */
 data class DraftCondition(val left: String, val compare: String, val right: String) {
-    val words: String get() = "${LabVocab.phrase(left)} ${LabVocab.compareWords(compare)} ${LabVocab.phrase(right)}"
+    val words: String get() = "${LabVocab.phrase(left, right)} ${LabVocab.compareWords(compare)} ${LabVocab.phrase(right, left)}"
 }
 
 /** An idea being built: what must hold, on which charts, and how a trade ends. */

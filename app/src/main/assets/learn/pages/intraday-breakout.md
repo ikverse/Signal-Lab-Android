@@ -15,7 +15,7 @@ At each time of day, Signal Lab works out how far the price usually strays from 
 <text x="12" y="46" fill="#868993" font-size="11">open plus the usual stray</text>
 <polyline points="10,64 60,68 110,58 160,60 200,48 240,34 290,28" fill="none" stroke="#d1d4dc" stroke-width="2"/>
 <circle cx="240" cy="34" r="5" fill="#089981"/>
-<text x="190" y="108" fill="#868993" font-size="11">closes above the range: signal</text>
+<text x="310" y="108" fill="#868993" font-size="11" text-anchor="end">closes above the range: signal</text>
 </svg></div>
 
 It needs the previous {{BREAKOUT_DAYS}} days to have the same time of day, so a gap in the data means no signal, never a wrong one. The last candle of a day is never a signal.

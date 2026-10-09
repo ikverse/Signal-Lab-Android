@@ -12,12 +12,14 @@
   #hint { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); max-width: 90%; padding: 4px 10px; border-radius: 12px; background: rgba(14,16,20,0.92); color: #cdd1d9; font: 12px Roboto, "Helvetica Neue", Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 3; display: none; }
   #empty { position: absolute; left: 0; right: 0; top: 40%; text-align: center; color: #8f95a1; font: 14px Roboto, sans-serif; display: none; }
   #shade { position: absolute; inset: 0; z-index: 4; display: none; }
-  /* A menu drops from the top right, under the app's buttons that open it. */
-  #menu { position: absolute; top: 0; right: 0; min-width: 240px; max-width: 100%; background: #0e1014; border: 1px solid #15181e; border-right: 0; border-top: 0; border-radius: 0 0 0 12px; z-index: 5; display: none; font: 14px Roboto, "Helvetica Neue", Arial, sans-serif; }
-  #menu .row { display: flex; align-items: center; height: 44px; padding: 0 14px; color: #cdd1d9; border-bottom: 1px solid #15181e; }
+  /* A menu drops from the top right, under the app's buttons that open it, kept 16px in from the screen's edge. A long item wraps. */
+  #menu { position: absolute; top: 0; right: 16px; min-width: 220px; max-width: calc(100% - 32px); box-sizing: border-box; background: #12151b; border: 1px solid #1e222b; border-top: 0; border-radius: 0 0 12px 12px; z-index: 5; display: none; font: 14px Roboto, "Helvetica Neue", Arial, sans-serif; }
+  #menu .row { display: flex; align-items: center; min-height: 44px; padding: 10px 14px; box-sizing: border-box; line-height: 1.3; color: #cdd1d9; border-bottom: 1px solid #15181e; }
   #menu .row:last-child { border-bottom: 0; }
-  #menu .row .box { width: 28px; color: #8f95a1; font-family: monospace; }
-  #menu .row.on .box { color: #5b8dff; }
+  /* A tick box: an outlined square, filled with the accent and ticked when on. It never shrinks, so the names beside it line up. */
+  #menu .row .box { flex: 0 0 auto; width: 18px; height: 18px; margin-right: 12px; box-sizing: border-box; border: 1.5px solid #8f95a1; border-radius: 4px; position: relative; }
+  #menu .row.on .box { background: #5b8dff; border-color: #5b8dff; }
+  #menu .row.on .box::after { content: ''; position: absolute; left: 5px; top: 1px; width: 4px; height: 9px; border: solid #050505; border-width: 0 2px 2px 0; transform: rotate(45deg); }
   #menu .row.quiet { color: #8f95a1; }
 </style>
 </head>
@@ -115,8 +117,10 @@
       var c = args.coordinates[0], d = args.overlay.extendData || {}, y = c.y, below = false;
       (d.others || []).forEach(function (p) {
         var oy = args.yAxis.convertToPixel(p);
-        if (oy < y && y - oy < 20) below = true;
+        if (oy < y && y - oy < LABEL_ROOM) below = true;
       });
+      // A label above a line near the top would sit on the price readout (O H L C), so it goes under its line there.
+      if (y - LABEL_ROOM < READOUT_HEIGHT) below = true;
       return [
         { type: 'line', attrs: { coordinates: [{ x: 0, y: y }, { x: args.bounding.width, y: y }] },
           styles: { style: 'dashed', color: d.color, size: 1, dashedValue: [4, 4] }, ignoreEvent: true },
@@ -126,6 +130,12 @@
       ];
     }
   });
+
+  // How tall a level's label is with the space around it, and how far down the price readout reaches.
+  var LABEL_ROOM = 24, READOUT_HEIGHT = 30;
+
+  // The price axis shows as many decimals as the coin's prices need, the same as the app writes them, so its marks never repeat.
+  function decimalsFor(p) { return !(p > 0) ? 2 : p >= 100 ? 2 : p >= 1 ? 3 : p >= 0.01 ? 5 : 8; }
 
   // --- Size: the library only learns of a new container size when it is told, so tell it whenever the page or the chart's box changes.
   function fit() { try { chart.resize(); } catch (e) { /* a failed resize must never take the chart down */ } }
@@ -267,33 +277,40 @@
   var menu = document.getElementById('menu'), shade = document.getElementById('shade');
   var openMenu = null;
 
+  // The app is told whether a menu is open, so its Back button closes the menu first instead of leaving the chart.
   function closeMenu() {
+    var wasOpen = openMenu !== null;
     openMenu = null;
     menu.style.display = 'none';
     shade.style.display = 'none';
+    if (wasOpen) tellApp('menuChanged', 'false');
   }
 
-  function row(text, box, on, quiet, onTap) {
+  // A menu row: [ticked] true or false draws a tick box before the name; undefined draws none (the drawing tools).
+  function row(text, ticked, quiet, onTap) {
     var r = document.createElement('div');
-    r.className = 'row' + (on ? ' on' : '') + (quiet ? ' quiet' : '');
-    var b = document.createElement('span');
-    b.className = 'box';
-    b.textContent = box;
-    r.appendChild(b);
-    r.appendChild(document.createTextNode(text));
+    r.className = 'row' + (ticked ? ' on' : '') + (quiet ? ' quiet' : '');
+    if (ticked !== undefined) {
+      var b = document.createElement('span');
+      b.className = 'box';
+      r.appendChild(b);
+    }
+    var t = document.createElement('span');
+    t.textContent = text;
+    r.appendChild(t);
     r.addEventListener('click', onTap);
     return r;
   }
 
   function showMenu(which) {
     if (openMenu === which) { closeMenu(); return; }
-    closeMenu();
+    var wasOpen = openMenu !== null;
     openMenu = which;
     menu.innerHTML = '';
     if (which === 'ind') {
       INDICATORS.forEach(function (d) {
         var on = !!activeIndicators[d.id];
-        menu.appendChild(row(d.label, on ? '[x]' : '[ ]', on, false, function () {
+        menu.appendChild(row(d.label, on, false, function () {
           setIndicator(d.id, !activeIndicators[d.id]);
           tellApp('indicatorsChanged', indicatorList().join(','));
           showMenuAgain('ind');
@@ -301,12 +318,13 @@
       });
     } else {
       TOOLS.forEach(function (t) {
-        menu.appendChild(row(t.label, '', false, false, function () { closeMenu(); setHint(t.hint); startDraw(t.name); }));
+        menu.appendChild(row(t.label, undefined, false, function () { closeMenu(); setHint(t.hint); startDraw(t.name); }));
       });
-      menu.appendChild(row('Clear drawings', '', false, true, function () { closeMenu(); clearDrawings(); }));
+      menu.appendChild(row('Clear drawings', undefined, true, function () { closeMenu(); clearDrawings(); }));
     }
     menu.style.display = 'block';
     shade.style.display = 'block';
+    if (!wasOpen) tellApp('menuChanged', 'true');
   }
 
   // Ticking an indicator keeps its menu open so several can be set in one go.
@@ -319,6 +337,8 @@
     // The app's buttons over the chart: open (or close) a menu, or go back to the newest candle.
     openIndicators: function () { showMenu('ind'); },
     openDraw: function () { showMenu('draw'); },
+    // The app's Back button, and the chart leaving the screen: an open menu closes, so it is never found open on the next visit.
+    closeMenu: function () { closeMenu(); },
     latest: function () { closeMenu(); try { chart.scrollToRealTime(300); } catch (e) {} },
     // data = { key, candles: [[time, open, high, low, close, volume], ...], levels: [{kind, label, price}, ...], drawings: [{name, points}, ...] }
     setData: function (data) {
@@ -334,6 +354,7 @@
       // The user's drawings belong to a coin and chart size: a refresh of the same chart keeps them, another chart gets its own.
       var key = data.key || '';
       if (key !== drawingsKey) {
+        closeMenu();
         clearGroup('draw');
         drawIds = [];
         pendingId = null;
@@ -342,6 +363,7 @@
         restoreDrawings(data.drawings);
       }
       if (haveData) {
+        try { chart.setPriceVolumePrecision(decimalsFor(rows[rows.length - 1].close), 0); } catch (e) { /* the library's own precision stays */ }
         var last = rows[rows.length - 1].timestamp;
         var levels = data.levels || [];
         levels.forEach(function (l, i) {

@@ -26,8 +26,15 @@ class El {
   get innerHTML() { return ''; }
 }
 
-/** One row of a menu as the person reads it: its tick box, then its words. */
-const rowText = (row) => `${row.children[0].textContent}|${row.children.slice(1).map((c) => c.text).join('')}`;
+/**
+ * One row of a menu as the person reads it: its tick box ("[x]" ticked, "[ ]" not, nothing for a row without one), then its words. The box
+ * is drawn, not written, so whether it is ticked is read from the row being marked on.
+ */
+const rowText = (row) => {
+  const box = row.children.find((c) => c.className === 'box');
+  const words = row.children.filter((c) => c.className !== 'box').map((c) => c.text ?? c.textContent).join('');
+  return `${box ? (row.className.split(' ').includes('on') ? '[x]' : '[ ]') : ''}|${words}`;
+};
 
 function load({ observer = true } = {}) {
   const calls = [];
@@ -35,7 +42,7 @@ function load({ observer = true } = {}) {
   const els = new Map();
   const observers = [];
   const windowListeners = [];
-  const reported = { indicators: [], drawings: [] };
+  const reported = { indicators: [], drawings: [], menu: [] };
   let overlaySeq = 0, paneSeq = 0, dataList = [];
 
   const registered = {};
@@ -84,6 +91,7 @@ function load({ observer = true } = {}) {
     Android: {
       indicatorsChanged: (csv) => reported.indicators.push(csv),
       drawingsChanged: (json) => reported.drawings.push(JSON.parse(json)),
+      menuChanged: (open) => reported.menu.push(open),
     },
   };
   if (observer) ctx.ResizeObserver = ResizeObserver;
@@ -203,6 +211,28 @@ t('the menu closes when its button is touched again or anywhere outside it', () 
   env.lab.openIndicators();
   env.lab.openDraw(); // another button while one is open: switches
   assert.equal(rowText(env.el('menu').children[0]), '|Trend line');
+});
+
+t('the app is told when a menu opens and closes, and can close it itself (its Back button)', () => {
+  const env = load();
+  env.lab.openIndicators();
+  env.lab.openDraw(); // switching menus keeps one open: nothing new to tell
+  assert.deepEqual(env.reported.menu, ['true']);
+  env.lab.closeMenu();
+  assert.equal(env.el('menu').style.display, 'none');
+  assert.equal(env.el('shade').style.display, 'none');
+  assert.deepEqual(env.reported.menu, ['true', 'false']);
+  env.lab.closeMenu(); // already closed: said once only
+  assert.deepEqual(env.reported.menu, ['true', 'false']);
+});
+
+t('a menu left open is closed when another chart is shown', () => {
+  const env = load();
+  show(env, 'BTCUSDT|1h');
+  env.lab.openIndicators();
+  show(env, 'ETHUSDT|1h');
+  assert.equal(env.el('menu').style.display, 'none');
+  assert.deepEqual(env.reported.menu, ['true', 'false']);
 });
 
 t('indicators the app sets while the menu is open are shown in it', () => {

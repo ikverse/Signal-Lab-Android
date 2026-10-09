@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -103,7 +106,7 @@ fun TodayScreen(
             items(setups, key = { it.id }) { t ->
                 SetupCard(t, priceOf(t.symbol), rowOf(t, card.rows), now, onOpenLearn, onOpenPage, { openChart(t) }, Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
             }
-            item(key = "end") { Spacer(Modifier.height(16.dp)) }
+            item(key = "end") { EndSpace() }
         }
         return
     }
@@ -115,6 +118,7 @@ fun TodayScreen(
                 items(setups, key = { it.id }) { t ->
                     SetupRow(t, t.id == chosen?.id, now) { picked = t.id }
                 }
+                item(key = "end") { EndSpace() }
             }
         },
         page = {
@@ -133,8 +137,8 @@ private fun SetupRow(t: TradeUi, selected: Boolean, now: Long, onClick: () -> Un
                 Text(baseOf(t.symbol), style = Type.Heading, modifier = Modifier.weight(1f))
                 Text(PlainWords.ago(t.openedAt, now), style = Type.Small)
             }
-            Text(PlainWords.headline(baseOf(t.symbol), PlainWords.isLab(t.variant)), style = Type.Body, maxLines = 2)
-            Text("${t.short} · ${Fmt.chartAdjective(t.timeframe)} chart", style = Type.Small, maxLines = 1)
+            Text(PlainWords.headline(baseOf(t.symbol), PlainWords.isLab(t.variant)), style = Type.Body)
+            Text("${t.short} · ${Fmt.chartAdjective(t.timeframe)} chart", style = Type.Small)
         }
     }
     HRule()
@@ -156,8 +160,12 @@ private fun SetupCard(
         modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Palette.Raised).padding(14.dp).testTag("setup-${t.id}"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // The coin and its chart size: two setups on the same coin are told apart by the chart they are on.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(baseOf(t.symbol), style = Type.Heading, modifier = Modifier.weight(1f))
+            Text(baseOf(t.symbol), style = Type.Heading)
+            Spacer(Modifier.width(8.dp))
+            ChartTag(t.timeframe, Modifier.testTag("setup-chart-size-${t.id}"))
+            Spacer(Modifier.weight(1f))
             Text(PlainWords.ago(t.openedAt, now), style = Type.Small)
         }
         Text(PlainWords.headline(baseOf(t.symbol), PlainWords.isLab(t.variant)), style = Type.Title)
@@ -199,10 +207,13 @@ private fun SetupDetail(markets: MarketsModel, t: TradeUi, price: Double?, row: 
     }
 }
 
-/** Entry price / Profit goal / Loss limit. A level the trade does not have (a trailing exit has no fixed exit price) says so. */
+/**
+ * Entry price / Profit goal / Loss limit. A level the trade does not have (a trailing exit has no fixed exit price) says so. The three boxes
+ * are always the same height: when one needs a second line, all three grow.
+ */
 @Composable
 private fun PlanGrid(t: TradeUi) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PlanCell("Entry price", Fmt.price(t.entryPrice), null, Palette.Strong, Modifier.weight(1f))
         PlanCell(
             "Profit goal", t.target?.let { Fmt.price(it) } ?: "—", PlainWords.move(t.entryPrice, t.target)?.let(PlainWords::signed) ?: trailNote(t),
@@ -220,12 +231,12 @@ private fun trailNote(t: TradeUi): String? = if (t.target == null && t.exitMode 
 @Composable
 private fun PlanCell(label: String, value: String, note: String?, color: Color, modifier: Modifier = Modifier) {
     Column(
-        modifier.clip(RoundedCornerShape(8.dp)).border(1.dp, Palette.Rule, RoundedCornerShape(8.dp)).background(Palette.Background).padding(8.dp),
+        modifier.fillMaxHeight().clip(RoundedCornerShape(8.dp)).border(1.dp, Palette.Rule, RoundedCornerShape(8.dp)).background(Palette.Background).padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(label, style = Type.Label, textAlign = TextAlign.Center)
-        Text(value, style = Type.NumberStrong.copy(color = color), maxLines = 1)
-        Text(note ?: " ", style = Type.Label.copy(color = color), maxLines = 1)
+        FitText(value, Type.NumberStrong.copy(color = color), textAlign = TextAlign.Center)
+        Text(note ?: " ", style = Type.Label.copy(color = color), textAlign = TextAlign.Center)
     }
 }
 

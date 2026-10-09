@@ -1,6 +1,5 @@
 package com.ikverse.signallab.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -76,12 +75,13 @@ fun CoinPicker(
     }
     Column(modifier) {
         SearchField(query, { query = it }, "Search coins")
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp).testTag("sources")) {
+        // The ways to rank coins wrap onto a second line rather than running off the edge, so every one of them can be seen.
+        ChipRow(Modifier.testTag("sources")) {
             for (s in PickSource.entries) ChoiceText(s.label, s == source, { sourceName = s.name }, Modifier.testTag("source-${s.name}"))
         }
         if (source == PickSource.GAINERS || source == PickSource.LOSERS) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp).testTag("windows"), verticalAlignment = Alignment.CenterVertically) {
-                Text("Over", style = Type.Small, modifier = Modifier.padding(horizontal = 10.dp))
+            ChipRow(Modifier.testTag("windows")) {
+                Text("Over", style = Type.Small, modifier = Modifier.padding(start = 3.dp, end = 8.dp))
                 for (w in PickWindow.entries) ChoiceText(w.label, w == window, { windowName = w.name }, Modifier.testTag("window-${w.name}"))
             }
         }
@@ -138,13 +138,18 @@ private fun ListingProgress(check: ListingCheckUi, onRetry: () -> Unit) {
 fun ChartPicker(all: List<Pair<String, String>>, chosen: Set<String>, onChange: (Set<String>) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier) {
         SectionLabel("Charts to watch")
-        FlowRow(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal = 13.dp)) {
             for ((label, _) in all) {
                 TickChip(label, label in chosen, { onChange(if (label in chosen) chosen - label else chosen + label) })
             }
         }
-        val notes = all.filter { it.first in chosen }.joinToString("  ·  ") { "${it.first}: ${it.second}" }
-        if (notes.isNotEmpty()) Text(notes, style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        // What each chosen chart is for, one to a line, so they can be read down the page.
+        val notes = all.filter { it.first in chosen }
+        if (notes.isNotEmpty()) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                for ((label, what) in notes) Text("$label: $what", style = Type.Small)
+            }
+        }
     }
 }
 
@@ -182,8 +187,10 @@ fun SetupScreen(
     intro: Boolean = true,
     onDone: (() -> Unit)? = null,
     onCancel: (() -> Unit)? = null,
+    defaultName: String = "My coins",
+    backLabel: String? = null,
 ) {
-    var name by rememberSaveable { mutableStateOf("My coins") }
+    var name by rememberSaveable { mutableStateOf(defaultName) }
     var chosen by rememberSaveable { mutableStateOf(listOf<String>()) }
     var charts by rememberSaveable { mutableStateOf(listOf("15m", "1h", "4h")) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -193,6 +200,7 @@ fun SetupScreen(
         val pickerHeight = maxOf(360.dp, maxHeight * 0.65f)
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                if (backLabel != null && onCancel != null) BackRow(backLabel, onCancel)
                 ScreenTitle(title)
                 if (intro) Text(
                     "Signal Lab watches the coins you choose. When a pattern appears on one, it records a pretend trade: no real money is ever used. " +

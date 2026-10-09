@@ -10,7 +10,7 @@ import androidx.compose.runtime.setValue
 
 /** Where in the app the user is. Ten places, and More, the page that leads to the five used least. */
 enum class Dest(val label: String) {
-    Today("Today"), Markets("Coins"), Trades("All trades"), Scorecard("Does it work?"), Lab("Lab"), Analyst("Ask Claude"), Alerts("Warnings"), Learn("Learn"),
+    Today("Today"), Markets("Coins"), Trades("All trades"), Scorecard("Does it work?"), Lab("Lab"), Analyst("Ask Claude"), Alerts("Alerts"), Learn("Learn"),
     Lists("My coin lists"), Settings("Fees and app"), More("Settings"),
 }
 
@@ -182,6 +182,21 @@ class NavState(
         dest = to
         trail = emptyList()
     }
+
+    /**
+     * The place the bar lights up. A place behind More that was jumped to from a tab (a pattern's Learn page from Does it work?, a trade from
+     * Today) keeps that tab lit, so the bar still says where the user is working; reached through More, it is More.
+     */
+    val barPlace: Dest
+        get() = if (dest in MorePlaces) trail.lastOrNull { it !in MorePlaces }?.let(::barPlaceOf) ?: Dest.More else barPlaceOf(dest)
+
+    /** Where Back leads from a place behind More: the place it was jumped to from, or else More. Null for a place in the bar. */
+    val backTo: Dest?
+        get() = when {
+            dest !in MorePlaces -> null
+            trail.isNotEmpty() -> trail.last()
+            else -> Dest.More
+        }
 
     /** True while [back] has somewhere to go, so the system back button is only taken over when it matters. */
     val canBack: Boolean
