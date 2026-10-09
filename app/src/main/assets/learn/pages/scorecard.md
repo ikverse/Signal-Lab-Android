@@ -1,4 +1,6 @@
-# How the scorecard judges a pattern
+# How we tell if it is working
+
+> **In short:** The app does not ask whether a pattern won. It asks whether the pattern did better than random entries on the same coin, after fees. Only a pattern that clearly does is called Working, and it takes about 30 finished trades before the app says anything.
 
 A pattern that wins 55% of the time proves nothing on its own: in a rising market, entries at random times win about as often. So Signal Lab never asks "did it win?". It asks **"did it beat random entries, after costs?"**
 

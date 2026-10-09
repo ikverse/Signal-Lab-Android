@@ -43,19 +43,33 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+/** Where the first-run introduction is remembered as seen. */
+const val INTRO_KEY = "intro"
+
 /**
  * The whole app: one frame that picks its shape from the width it is given. [debug] is true in debug builds, which adds the
  * debug page behind a long press on the version in Settings.
  */
 @Composable
-fun SignalLabApp(model: AppModel, debug: Boolean, webViews: Boolean = true, nav: NavState = rememberNavState(), webPool: WebPool? = null) {
-    CompositionLocalProvider(LocalWebPool provides webPool) {
+fun SignalLabApp(
+    model: AppModel, debug: Boolean, webViews: Boolean = true, nav: NavState = rememberNavState(), webPool: WebPool? = null, fold: FoldInfo? = null,
+) {
+    CompositionLocalProvider(LocalWebPool provides webPool, LocalFold provides fold) {
         SignalLabTheme(webViews) {
             PermissionDialogs(model.prompts)
             // Clear of the system bars and of the notch or punch hole, whatever size and side the phone reports them on.
             BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Background).windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout)).imePadding()) {
                 val layout = LayoutClass.of(maxWidth.value)
-                Frame(model, debug, layout, nav)
+                if (fold?.tabletop == true) {
+                    // A half-open phone standing like a laptop: the coin on the held-up half, the app on the half that lies flat.
+                    val top = FoldMath.topHalf(fold, maxHeight.value)
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxWidth().height(top.dp)) { TableTopHeader(model, nav) }
+                        Box(Modifier.weight(1f).fillMaxWidth()) { Frame(model, debug, layout, nav) }
+                    }
+                } else {
+                    Frame(model, debug, layout, nav)
+                }
             }
         }
     }
@@ -80,11 +94,18 @@ private fun Frame(model: AppModel, debug: Boolean, layout: LayoutClass, nav: Nav
         }
     }
     BackHandler(enabled = nav.canBack) { nav.back() }
+    val panelPrefs by model.panels.saved.collectAsStateWithLifecycle()
+    // Seen once: after the lists are set up, and until it is finished or skipped.
+    val showIntro = loaded && lists.isNotEmpty() && panelPrefs != null && panelPrefs!![INTRO_KEY].isNullOrBlank()
 
     when {
         !loaded -> Column(Modifier.fillMaxSize().testTag("loading")) {}
         lists.isEmpty() -> SetupScreen(model.lists)
         nav.showDebug && debug && model.debug != null -> DebugScreen(model.debug!!, onBack = { nav.showDebug = false })
+        showIntro -> IntroOverlay(
+            onDone = { model.panels.save(INTRO_KEY, "seen") },
+            onLearn = { model.panels.save(INTRO_KEY, "seen"); nav.openLearn("paper-trade") },
+        )
         else -> Column(Modifier.fillMaxSize()) {
             DownloadBanner(download)
             if (layout == LayoutClass.Compact) {
@@ -117,15 +138,25 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
     val holder = rememberSaveableStateHolder()
     holder.SaveableStateProvider(nav.dest.name) {
         when (nav.dest) {
+            Dest.Today -> TodayScreen(model.markets, model.trades, model.scorecard, model.panels, layout, nav, onOpenLearn = openVariant, onOpenPage = { nav.openLearn(it) })
             Dest.Markets -> MarketsScreen(
                 model.markets, model.trades, model.alerts, model.panels, layout, nav, onOpenLearn = openVariant, onOpenLists = { nav.go(Dest.Lists) },
-                lists = lists, scanning = scanning, onOpenAlerts = { nav.openAlerts(AlertGroup.All, fromApp = true) },
+                lists = lists, scanning = scanning, onOpenAlerts = { nav.openAlerts(AlertGroup.All, fromApp = true) }, listsModel = model.lists,
             )
             Dest.Trades -> TradesScreen(
                 model.trades, nav, onOpenCoin = { s, tf, id -> nav.openCoin(s, tf, fromApp = true, trade = id) }, onOpenLearn = openVariant,
                 wide = layout != LayoutClass.Compact, prices = latestPrices(model),
             )
-            Dest.Scorecard -> ScorecardScreen(model.scorecard, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact, onOpenPage = { nav.openLearn(it) })
+            Dest.Scorecard -> ScorecardScreen(
+                model.scorecard, model.trades, model.panels, onOpenLearn = openVariant, wide = layout != LayoutClass.Compact,
+                onOpenPage = { nav.openLearn(it) }, onOpenTrades = { nav.openTrades(null, TradeFilter.All, null, fromApp = true) },
+                onAsk = { nav.openAnalyst(null, fromApp = true) },
+            )
+            Dest.Lab -> LabScreen(
+                model.analyst, model.scorecard, model.trades, model.markets, model.panels, layout,
+                hasPage = { id -> model.learn.pages.any { it.id == id } }, onOpenLearn = { nav.openLearn(it) },
+                onShowTrade = { t -> nav.openCoin(t.symbol, t.timeframe, fromApp = true, trade = t.id) },
+            )
             Dest.Analyst -> AnalystScreen(
                 model.analyst, model.trades, model.panels, nav.analystReport, { nav.analystReport = it }, wide = layout != LayoutClass.Compact,
                 onOpenPage = { nav.openLearn(it) }, onGo = { nav.openPlace(it) },
@@ -141,7 +172,7 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
                 model.settings, hasDebug = debug && model.debug != null, onOpenDebug = { nav.showDebug = true },
                 wide = layout != LayoutClass.Compact, onOpenPage = { nav.openLearn(it) },
             )
-            Dest.More -> MoreScreen(nav)
+            Dest.More -> MoreScreen(nav, onShowIntro = { model.panels.save(INTRO_KEY, "") })
         }
     }
 }

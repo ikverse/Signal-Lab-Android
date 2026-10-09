@@ -1,5 +1,7 @@
 # Day momentum: a strong start to the day
 
+> **In short:** If a coin starts the day strongly, it sometimes keeps rising into the end of the day.
+
 **Evidence: some proof, for Bitcoin.** Signal Lab runs a simpler version, on every coin you watch.
 
 ## What it looks for

@@ -34,6 +34,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -215,10 +217,15 @@ fun SplitPane(
     modifier: Modifier = Modifier,
 ) {
     val pane = rememberPaneLayout(panels, key)
-    BoxWithConstraints(modifier.fillMaxSize().testTag("split-$key")) {
+    val fold = LocalFold.current
+    val density = LocalDensity.current.density
+    var originDp by remember { mutableStateOf(0f) }
+    BoxWithConstraints(modifier.fillMaxSize().testTag("split-$key").onGloballyPositioned { originDp = it.positionInWindow().x / density }) {
         val total = maxWidth.value
         val hidden = pane.isHidden("list")
-        val target = PaneMath.fitOne(total, pane.size("list", defaultWidth), hidden, PaneMath.MIN_SIDE, PaneMath.MIN_PAGE, PaneMath.DIVIDER)
+        // On a book-like foldable the divider starts on the fold, until the user drags it somewhere else.
+        val start = FoldMath.firstPane(fold, originDp, total) ?: defaultWidth
+        val target = PaneMath.fitOne(total, pane.size("list", start), hidden, PaneMath.MIN_SIDE, PaneMath.MIN_PAGE, PaneMath.DIVIDER)
         val w = animatedPaneSize(target, pane.dragging)
         Row(Modifier.fillMaxSize()) {
             if (paneOpen(hidden, w)) Column(Modifier.width(w.dp).pane("list")) { list() }

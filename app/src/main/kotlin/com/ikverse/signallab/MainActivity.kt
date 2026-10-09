@@ -21,6 +21,12 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
+import com.ikverse.signallab.ui.FoldInfo
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.ikverse.signallab.analyst.ClaudeHandoff
 import com.ikverse.signallab.analyst.Handoff
 import com.ikverse.signallab.scan.Notifier
@@ -43,6 +49,9 @@ class MainActivity : ComponentActivity() {
     /** The chart's and Learn's web views, built once and kept while this screen lives; see [WebPool]. */
     private val webPool by lazy { WebPool(this) }
 
+    /** Where the fold is, while the screen has one. */
+    private val fold = MutableStateFlow<FoldInfo?>(null)
+
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         lifecycleScope.launch { app.graph.permissions.evaluate() }
     }
@@ -56,7 +65,24 @@ class MainActivity : ComponentActivity() {
             app.model.open(intent.getStringExtra(Notifier.EXTRA_LINK))
             receiveShared(intent)
         }
-        setContent { SignalLabApp(app.model, debug = BuildConfig.DEBUG, webPool = webPool) }
+        setContent {
+            val fold by fold.collectAsState()
+            SignalLabApp(app.model, debug = BuildConfig.DEBUG, webPool = webPool, fold = fold)
+        }
+        lifecycleScope.launch {
+            // A foldable's fold, as the app's panes and the held-up half of a half-open phone need it. A phone that does not fold never emits one.
+            WindowInfoTracker.getOrCreate(this@MainActivity).windowLayoutInfo(this@MainActivity).collect { info ->
+                val density = resources.displayMetrics.density
+                fold.value = info.displayFeatures.filterIsInstance<FoldingFeature>().firstOrNull()?.let { f ->
+                    val horizontal = f.orientation == FoldingFeature.Orientation.HORIZONTAL
+                    FoldInfo(
+                        horizontal, f.state == FoldingFeature.State.HALF_OPENED,
+                        (if (horizontal) f.bounds.top else f.bounds.left) / density,
+                        (if (horizontal) f.bounds.height() else f.bounds.width()) / density,
+                    )
+                }
+            }
+        }
         applyStatusBar(resources.configuration)
         lifecycleScope.launch {
             app.graph.permissions.accepted.collect { openSystemPrompt(it) }

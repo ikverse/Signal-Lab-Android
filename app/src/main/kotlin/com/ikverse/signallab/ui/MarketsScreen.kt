@@ -35,6 +35,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -57,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 
 /** The chart sizes in the order the app lists them. */
 private val CHART_ORDER = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d")
@@ -131,6 +133,7 @@ fun MarketsScreen(
     lists: List<ListUi> = emptyList(),
     scanning: Boolean = true,
     onOpenAlerts: () -> Unit = {},
+    listsModel: ListsModel? = null,
 ) {
     val coins by markets.coins.collectAsStateWithLifecycle()
     val prices by markets.prices.collectAsStateWithLifecycle()
@@ -175,8 +178,14 @@ fun MarketsScreen(
         nav.timeframe = null
         if (layout == LayoutClass.Compact) nav.marketsTab = MarketsTab.Chart
     }
+    // What each coin's own finished trades say, and which coins have a warning, for the line under its name.
+    val notes = coins.associate { c ->
+        val done = allTrades.filter { it.symbol == c.symbol && it.closed != null }
+        c.symbol to PlainWords.coinNote(done.size, done.count { it.closed!!.net > 0 })
+    }
+    val warned = allAlerts.filter { it.kind == "warning" }.mapNotNull { it.symbol }.toSet()
     val list = @Composable { compact: Boolean ->
-        CoinList(coins, prices, coin.symbol, pickCoin, Modifier.fillMaxSize(), compact) {
+        CoinList(coins, prices, coin.symbol, pickCoin, Modifier.fillMaxSize(), compact, notes, warned, footer = { AddCoins(listsModel, lists, coins) }) {
             WatchHeader(lists, coins.size, scanning, onOpenAlerts, compact)
         }
     }
@@ -199,15 +208,23 @@ fun MarketsScreen(
         )
     }
 
+    // Under the chart on a phone the note is already above it, so the details do not say it again.
+    val detailsBelow = @Composable {
+        Details(
+            coin, live, mine, allAlerts.filter { it.symbol == coin.symbol && it.kind == "warning" }, onOpenLearn, onChart, toggleOnChart, showOnChart, null,
+            false, onOpenLists, Modifier.fillMaxSize(), false, null,
+        )
+    }
     if (layout == LayoutClass.Compact) {
+        // The list of coins, or the coin you opened: its chart over its trades, on one page.
         Column(modifier.fillMaxSize().testTag("markets-compact")) {
-            Tabs(MarketsTab.entries, nav.marketsTab, { it.label }, { nav.marketsTab = it }, tag = { "markets-tab-${it.name}" })
-            Column(Modifier.weight(1f)) {
-                when (nav.marketsTab) {
-                    MarketsTab.Coins -> list(false)
-                    MarketsTab.Chart -> chartPane(false, null)
-                    MarketsTab.Details -> details(true, null, showOnChart)
-                }
+            if (nav.marketsTab == MarketsTab.Coins) {
+                Column(Modifier.weight(1f)) { list(false) }
+            } else {
+                BackRow("Coins", { nav.marketsTab = MarketsTab.Coins })
+                Column(Modifier.weight(1.3f).testTag("coin-page")) { chartPane(false, null) }
+                HRule()
+                Column(Modifier.weight(1f)) { detailsBelow() }
             }
         }
         return
@@ -377,6 +394,9 @@ private fun CoinList(
     onSelect: (CoinUi) -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    notes: Map<String, String> = emptyMap(),
+    warned: Set<String> = emptySet(),
+    footer: @Composable () -> Unit = {},
     header: @Composable () -> Unit,
 ) {
     LazyColumn(modifier.testTag("coin-list")) {
@@ -398,7 +418,19 @@ private fun CoinList(
                 modifier = Modifier.testTag("coin-${c.symbol}"),
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(c.base, style = if (compact) Type.BodyStrong.copy(fontSize = 16.sp) else Type.Heading, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            c.base, style = if (compact) Type.BodyStrong.copy(fontSize = 16.sp) else Type.Heading, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (c.symbol in warned) {
+                            Text(
+                                "Warning", style = Type.Label.copy(color = Palette.Warn),
+                                modifier = Modifier.padding(start = 8.dp).testTag("warn-${c.symbol}"),
+                            )
+                        }
+                    }
+                    if (!compact) notes[c.symbol]?.let { Text(it, style = Type.Small, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("note-${c.symbol}")) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (c.openTrades > 0) {
                             Box(Modifier.size(7.dp).clip(CircleShape).background(Palette.Accent))
@@ -420,8 +452,36 @@ private fun CoinList(
             }
             HRule()
         }
+        item(key = "footer") { footer() }
     }
 }
+
+/**
+ * Coins you might add: the most traded on Binance today that are not in your lists yet, each with a button that puts it in the first list
+ * that is switched on. Nothing is shown when there is no such list or Binance cannot be reached.
+ */
+@Composable
+private fun AddCoins(model: ListsModel?, lists: List<ListUi>, have: List<CoinUi>) {
+    val target = lists.firstOrNull { it.active } ?: return
+    if (model == null) return
+    val scope = rememberCoroutineScope()
+    val offers by produceState<List<OfferUi>>(emptyList(), have.size) { value = model.offers("", PickSource.VOLUME).coins }
+    val fresh = offers.filter { o -> have.none { it.symbol == o.symbol } }.take(ADD_SHOWN)
+    if (fresh.isEmpty()) return
+    SectionLabel("Coins you might add")
+    for (o in fresh) {
+        TouchRow({ scope.launch { model.addCoin(target.id, o.symbol) } }, modifier = Modifier.testTag("add-${o.symbol}")) {
+            Column(Modifier.weight(1f)) {
+                Text(o.base, style = Type.Heading)
+                Text("Among the most traded today: ${Fmt.compact(o.quoteVolume)} USDT in 24 hours", style = Type.Small, maxLines = 2)
+            }
+            TonalButton("Add", { scope.launch { model.addCoin(target.id, o.symbol) } }, Modifier.testTag("add-button-${o.symbol}"))
+        }
+        HRule()
+    }
+}
+
+private const val ADD_SHOWN = 3
 
 /** A day of closes as a thin line, in the colour of the day's change. Nothing is drawn with fewer than three points. */
 @Composable
@@ -564,13 +624,13 @@ private fun Details(
         header?.invoke()
         if (strip) CoinStrip(coin, live)
         CoinNote(note, unwatched, onOpenLists)
-        SectionLabel("Open paper trades", count = open.size)
+        SectionLabel("Open practice trades", count = open.size)
         if (open.isEmpty()) Text("None on ${coin.base} right now.", style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         for (t in open) {
             OpenTradeCard(t, live, t.id in onChart, { onToggle(t) }, { onShowOnChart(t) }, { onOpenLearn(t.variant) })
             Spacer(Modifier.height(10.dp))
         }
-        SectionLabel("Recent results")
+        SectionLabel("Finished trades")
         if (recent.isEmpty()) Text("No closed trades on ${coin.base} yet.", style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         for (t in recent) {
             val c = t.closed!!
@@ -619,14 +679,14 @@ private fun OpenTradeCard(t: TradeUi, live: Double?, onChart: Boolean, onToggle:
                         // A stop that follows the price up has no target: the bar runs as far above the entry as the stop is below it, and fades.
                         val top = t.entryPrice + (t.entryPrice - stop)
                         RangeBar(0.5f, rangeFraction(stop, top, live), Fmt.changeColor(now), Modifier.padding(top = 12.dp, bottom = 4.dp), openEnded = true)
-                        PriceTrio("Safety stop", Fmt.price(stop), "Entry", Fmt.price(t.entryPrice), "Then", "trails up")
+                        PriceTrio("Loss limit", Fmt.price(stop), "Entry price", Fmt.price(t.entryPrice), "Then", "follows the price")
                     }
                     stop != null && target != null -> {
                         RangeBar(rangeFraction(stop, target, t.entryPrice) ?: 0.5f, rangeFraction(stop, target, live), Fmt.changeColor(now), Modifier.padding(top = 12.dp, bottom = 4.dp))
-                        PriceTrio("Stop", Fmt.price(stop), "Entry", Fmt.price(t.entryPrice), "Target", Fmt.price(target))
+                        PriceTrio("Loss limit", Fmt.price(stop), "Entry price", Fmt.price(t.entryPrice), "Profit goal", Fmt.price(target))
                     }
                     else -> {
-                        Text("Entry ${Fmt.price(t.entryPrice)}", style = Type.Number, modifier = Modifier.padding(top = 8.dp))
+                        Text("Entry price ${Fmt.price(t.entryPrice)}", style = Type.Number, modifier = Modifier.padding(top = 8.dp))
                         Text(exitText(t), style = Type.Small)
                     }
                 }
@@ -651,8 +711,8 @@ private fun PriceTrio(a: String, av: String, b: String, bv: String, c: String, c
 
 /** How an open trade will end, in a sentence. */
 fun exitText(t: TradeUi): String = when (t.exitMode) {
-    "trail" -> "Safety stop ${Fmt.price(t.stop)}, then a stop that follows the price up."
-    "learned" -> if (t.target != null) "Target ${Fmt.price(t.target)}, stop ${Fmt.price(t.stop)}." else "Held for a fixed time."
+    "trail" -> "Loss limit ${Fmt.price(t.stop)}, then a limit that follows the price up."
+    "learned" -> if (t.target != null) "Profit goal ${Fmt.price(t.target)}, loss limit ${Fmt.price(t.stop)}." else "Held for a fixed time."
     "held" -> "Held for a fixed time."
-    else -> if (t.target != null && t.stop != null) "Target ${Fmt.price(t.target)}, stop ${Fmt.price(t.stop)}." else "Held for a fixed time."
+    else -> if (t.target != null && t.stop != null) "Profit goal ${Fmt.price(t.target)}, loss limit ${Fmt.price(t.stop)}." else "Held for a fixed time."
 }

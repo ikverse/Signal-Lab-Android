@@ -1,8 +1,10 @@
 # Chart sizes
 
+> **In short:** A chart size is how much time one candle covers. It is the size of candle a pattern looks at, not how long a trade lasts.
+
 A chart size is how much time one candle covers: 1 minute, 5 minutes, 15 minutes, 30 minutes, 1 hour, 4 hours or 1 day. You choose which sizes each list is watched on.
 
-**A chart size is not how long a trade lasts.** It is the size of the candles the pattern is looked for in. A trade can end in minutes or in days; each pattern's exit decides (see [What a paper trade is](learn:paper-trade)).
+**A chart size is not how long a trade lasts.** It is the size of the candles the pattern is looked for in. A trade can end in minutes or in days; each pattern's exit decides (see [What a practice trade is](learn:paper-trade)).
 
 ## Which patterns run where
 

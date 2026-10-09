@@ -1,4 +1,6 @@
-# What a paper trade is
+# What a practice trade is
+
+> **In short:** A practice trade is a pretend trade. The app writes down what a pattern would have done, with real prices and real fees, and checks later how it turned out. No real money is ever involved.
 
 A paper trade is a pretend trade. Signal Lab never touches your money and never places an order. It writes down what a pattern would have done, and checks later how that turned out.
 
@@ -23,7 +25,7 @@ flowchart LR
 3. **The pretend trade enters at the open of the next candle.** That is the first price you could actually have had.
 4. **It ends** in one of the ways below.
 5. **Costs are charged** (see [What costs are charged](learn:costs)).
-6. **The result is compared** with trades entered at random times (see [How the scorecard judges](learn:scorecard)).
+6. **The result is compared** with trades entered at random times (see [How we tell if it is working](learn:scorecard)).
 
 ## Missed signals
 

@@ -266,8 +266,9 @@ class FakePrompts : PermissionPrompts {
     override fun decline(prompt: PermissionPrompt) { log += "decline ${prompt.name}"; state.value = null }
 }
 
+/** Panel sizes kept between runs. By default the introduction has been seen, so it does not cover the screen a test is about. */
 class FakePanels(initial: Map<String, String>? = emptyMap()) : PanelPrefs {
-    val state = MutableStateFlow(initial)
+    val state = MutableStateFlow(initial?.let { mapOf("intro" to "seen") + it })
     val log = mutableListOf<String>()
     override val saved: StateFlow<Map<String, String>?> = state
     override fun save(key: String, text: String) {

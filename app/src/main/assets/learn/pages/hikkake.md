@@ -1,4 +1,6 @@
-# Hikkake: a false break that reverses
+# Hikkake: a false move that reverses
+
+> **In short:** A move that looks like it is breaking down and then reverses can mean the real move is up.
 
 **Evidence: some proof.** From the same 400-coin study as the Harami.
 
@@ -24,7 +26,7 @@ Every chart size. The published test used 1-hour charts.
 
 ## How a paper trade ends
 
-Learned: a target and time limit from what this pattern did before (see [What a paper trade is](learn:paper-trade)).
+Learned: a target and time limit from what this pattern did before (see [What a practice trade is](learn:paper-trade)).
 
 ## What the research says
 

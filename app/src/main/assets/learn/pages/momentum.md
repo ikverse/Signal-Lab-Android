@@ -1,5 +1,7 @@
 # Momentum: a coin's own strong week
 
+> **In short:** A coin that has risen strongly lately, compared with its own past, may keep rising for a while.
+
 **Evidence: moderate, but old and fragile.**
 
 ## What it looks for

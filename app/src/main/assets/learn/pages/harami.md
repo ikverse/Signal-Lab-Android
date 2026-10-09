@@ -1,4 +1,6 @@
-# Bullish Harami: a small candle inside a big red one
+# Bullish Harami: a small candle after a big fall
+
+> **In short:** A small candle that fits inside a large falling one can mean the sellers are running out of strength.
 
 **Evidence: some proof.** Tested on 400 coins; the size of the effect after fees is not stated.
 
@@ -22,7 +24,7 @@ Every chart size. The published test used 1-hour charts.
 
 ## How a paper trade ends
 
-Learned: a target and time limit from what this pattern did before (see [What a paper trade is](learn:paper-trade)).
+Learned: a target and time limit from what this pattern did before (see [What a practice trade is](learn:paper-trade)).
 
 ## What the research says
 

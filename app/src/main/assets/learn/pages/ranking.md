@@ -1,5 +1,7 @@
 # Ranking: the strongest coins in your list
 
+> **In short:** Once a week the strongest coins in your list are picked, on the idea that winners tend to keep winning for a while.
+
 **Evidence: moderate in published studies, contested since.**
 
 ## What it looks for

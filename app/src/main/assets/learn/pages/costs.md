@@ -1,5 +1,7 @@
 # What costs are charged
 
+> **In short:** Each practice trade pays the exchange's fee when it starts and again when it ends, so results are what a real trade would have kept.
+
 Every paper trade pays what a real one would: the exchange's fee, once to open and once to close.
 
 ## The default

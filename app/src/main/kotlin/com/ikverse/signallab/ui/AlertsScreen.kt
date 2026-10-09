@@ -60,26 +60,27 @@ fun alertLink(a: AlertUi): Link? = parseLink(a.link) ?: a.symbol?.let { Link(it,
 /** How a closed trade's alert ended: from its numbers, or from the words of one stored before alerts kept numbers. */
 internal fun alertReason(a: AlertUi): String? = a.facts?.reason ?: when {
     a.kind != "exit" -> null
-    a.title.endsWith("target hit") -> "target"
-    a.title.endsWith("stopped out") -> "stop"
-    a.title.endsWith("time limit") -> "time"
+    // Alerts stored before the wording changed end in the old words, so both are read.
+    a.title.endsWith("profit goal reached") || a.title.endsWith("target hit") -> "target"
+    a.title.endsWith("loss limit reached") || a.title.endsWith("stopped out") -> "stop"
+    a.title.endsWith("time limit reached") || a.title.endsWith("time limit") -> "time"
     else -> null
 }
 
-/** What happened, in a word or two: "Opened", "Target hit", "Stopped out", "Time limit". */
+/** What happened, in a word or two: "Started", "Profit goal reached", "Loss limit reached", "Time limit reached". */
 internal fun alertOutcome(a: AlertUi): String = when (a.kind) {
-    "signal" -> "Opened"
+    "signal" -> "Started"
     "exit" -> when (alertReason(a)) {
-        "target" -> "Target hit"
-        "stop" -> "Stopped out"
-        "time" -> "Time limit"
-        else -> "Closed"
+        "target" -> "Profit goal reached"
+        "stop" -> "Loss limit reached"
+        "time" -> "Time limit reached"
+        else -> "Finished"
     }
     else -> a.title
 }
 
 /**
- * The figures of an alert about a trade, on one line: where an opened trade stands ("Entry 2.126 → target 2.207 (+3.79%) · stop 2.036"),
+ * The figures of an alert about a trade, on one line: where an opened trade stands ("Entry price 2.126 → profit goal 2.207 (+3.79%) · loss limit 2.036"),
  * or what random entries did for a closed one. Null when there is nothing to add.
  */
 internal fun alertFigures(a: AlertUi): String? {
@@ -88,10 +89,10 @@ internal fun alertFigures(a: AlertUi): String? {
         "signal" -> {
             val entry = f.entry ?: return null
             when {
-                f.trails && f.stop != null -> "Entry ${Fmt.price(entry)} · safety stop ${Fmt.price(f.stop)}, then trails up"
+                f.trails && f.stop != null -> "Entry price ${Fmt.price(entry)} · loss limit ${Fmt.price(f.stop)}, then it follows the price up"
                 f.target != null && f.stop != null ->
-                    "Entry ${Fmt.price(entry)} → target ${Fmt.price(f.target)} (${Fmt.signedPercent(f.target / entry - 1)}) · stop ${Fmt.price(f.stop)}"
-                else -> "Entry ${Fmt.price(entry)}"
+                    "Entry price ${Fmt.price(entry)} → profit goal ${Fmt.price(f.target)} (${Fmt.signedPercent(f.target / entry - 1)}) · loss limit ${Fmt.price(f.stop)}"
+                else -> "Entry price ${Fmt.price(entry)}"
             }
         }
         "exit" -> f.random?.let { "Random entries averaged ${Fmt.signedPercent(it)}" }
@@ -151,7 +152,7 @@ fun AlertsScreen(
             }
             HRule()
             when {
-                all.isEmpty() -> EmptyState("No alerts yet", "Alerts appear here when a pattern opens or closes a paper trade, when something needs your attention, and when a signal was too late to trade.")
+                all.isEmpty() -> EmptyState("No alerts yet", "Alerts appear here when a pattern starts or finishes a practice trade, when something needs your attention, and when a setup came too late to trade.")
                 shown.isEmpty() -> EmptyState("Nothing in ${group.label}", "Choose another group.")
                 else -> LazyColumn(Modifier.weight(1f)) {
                     for ((day, alerts) in shown.groupBy { Fmt.day(it.time, now) }) {

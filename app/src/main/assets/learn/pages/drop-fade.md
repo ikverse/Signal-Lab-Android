@@ -1,5 +1,7 @@
 # Drop fade: a sharp fall that may bounce
 
+> **In short:** After a sharp fall the price sometimes bounces back. This pattern watches for falls much larger than that coin usually has.
+
 **Evidence: weak.** An experiment, not a proven pattern.
 
 ## What it looks for
@@ -18,7 +20,7 @@ The 1-hour chart only.
 
 ## How a paper trade ends
 
-- **Fade 1h** (and 2h, 4h): the exit is **learned** from what this pattern did before (see [What a paper trade is](learn:paper-trade)).
+- **Fade 1h** (and 2h, 4h): the exit is **learned** from what this pattern did before (see [What a practice trade is](learn:paper-trade)).
 - **Fade 1h, held 24 candles**: the same entry, held for 24 candles with no target or stop. It was added after an early look at the data hinted at a 24-hour bounce, so a backtest cannot promote it. Only its live trades count towards its verdict.
 
 ## What the research says

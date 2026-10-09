@@ -293,6 +293,12 @@ data class LabPatternUi(
     val stoppedAt: Long?,
     val unwatched: List<String> = emptyList(),
     val neverTrades: Boolean = false,
+    /** The written form the record keeps (see the lab's format); the screens turn it into a sentence and into a draft to change. */
+    val definition: String = "",
+    /** What in the data suggested it, when whoever suggested it said. */
+    val reason: String? = null,
+    /** The report it was suggested in, when it came from one. */
+    val reportId: Long? = null,
 )
 
 /** How many lab patterns run now and how many more may start in the current window. */

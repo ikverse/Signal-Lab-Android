@@ -42,22 +42,22 @@ class AlertTextTest {
     @Test
     fun anOpenedTradeSaysPaperTradeAndGivesEntryTargetAndStop() {
         val t = AlertText.opened(plan())
-        assertEquals("Paper trade opened: SOL 1h", t.title)
-        assertEquals("Breakout: close above the 20-candle high. Entry 142.35, target 145.90, stop 140.60.", t.body)
+        assertEquals("Practice trade started: SOL 1h", t.title)
+        assertEquals("Breakout: close above the 20-candle high. Entry price 142.35, profit goal 145.90, loss limit 140.60.", t.body)
         assertEquals("signallab://coin/SOLUSDT?tf=1h", t.link)
     }
 
     @Test
     fun aHeldTradeSaysHowLongItIsHeld() {
         val t = AlertText.opened(plan(target = null, stop = null, limit = 24))
-        assertTrue(t.body.endsWith("Entry 142.35, held 24 candles."), t.body)
+        assertTrue(t.body.endsWith("Entry price 142.35, held 24 candles."), t.body)
         assertTrue(AlertText.opened(plan(null, null, 1)).body.endsWith("held 1 candle."))
     }
 
     @Test
     fun aTrendTradeSaysItHasASafetyStopAndAStopThatFollowsThePriceUp() {
         val t = AlertText.opened(plan(target = null, stop = 140.6, limit = 72, mode = ExitMode.TRAIL, variant = "trend_ma20_1h"))
-        assertEquals("Trend: close crossed above its 20-candle average. Entry 142.35, safety stop 140.60, then a stop that follows the price up.", t.body)
+        assertEquals("Trend: close crossed above its 20-candle average. Entry price 142.35, loss limit 140.60, then a limit that follows the price up.", t.body)
     }
 
     @Test
@@ -69,9 +69,9 @@ class AlertTextTest {
     @Test
     fun aLearnedTradeSaysWhereItsTargetCameFromAndAFallbackSaysItHadNothingToLearnFrom() {
         val learned = AlertText.opened(plan(target = 148.0, stop = 137.0, limit = 4, mode = ExitMode.LEARNED, variant = "bullish_harami_1h"))
-        assertEquals("Bullish harami: a small candle inside the body of a big red one. Entry 142.35, target 148.00 (+3.97%, from this pattern's earlier signals), stop 137.00, within 4 candles.", learned.body)
+        assertEquals("Bullish harami: a small candle inside the body of a big red one. Entry price 142.35, profit goal 148.00 (+3.97%, learned from this pattern's earlier setups), loss limit 137.00, within 4 candles.", learned.body)
         val fallback = AlertText.opened(plan(target = null, stop = null, limit = 6, mode = ExitMode.LEARNED, variant = "bullish_hikkake_1h"))
-        assertTrue(fallback.body.endsWith("Entry 142.35, held 6 candles: too few earlier signals to learn a target from."), fallback.body)
+        assertTrue(fallback.body.endsWith("Entry price 142.35, held 6 candles: too few earlier setups to learn a profit goal from."), fallback.body)
     }
 
     @Test
@@ -86,7 +86,7 @@ class AlertTextTest {
         val pump = AlertText.pump("PMPUSDT", Timeframe.M1, com.ikverse.signallab.engine.Warnings.Pump(0.062, 14.4, 5), newCoin = false)
         val spike = AlertText.volumeSpike("VOLUSDT", 4.1, newCoin = true)
         assertEquals("Pump warning: PMP", pump.title)
-        assertEquals("PMP rose 6.2% in 5 minutes on 14 times its usual volume. Pumps like this usually peak within about a minute, and late buyers lose. No paper trade is opened.", pump.body)
+        assertEquals("PMP rose 6.2% in 5 minutes on 14 times its usual volume. Pumps like this usually peak within about a minute, and late arrivals lose. No practice trade is opened.", pump.body)
         assertEquals("Volume spike: VOL", spike.title)
         assertTrue(spike.body.startsWith("VOL traded 4.1 times its usual daily volume.") && spike.body.contains("listed on Binance"))
         for (t in listOf(pump, spike)) {
@@ -121,11 +121,11 @@ class AlertTextTest {
     @Test
     fun aClosedTradeSaysHowItEndedAndWhatRandomEntriesDid() {
         val t = AlertText.closed("donchian20_1h", "SOLUSDT", Timeframe.H1, ExitReason.TARGET, 0.0182, 0.002)
-        assertEquals("Paper trade closed: SOL 1h, target hit", t.title)
-        assertEquals("Breakout: close above the 20-candle high. Net +1.82% after costs; random entries averaged +0.20%.", t.body)
-        assertEquals("Paper trade closed: SOL 1h, stopped out", AlertText.closed("x", "SOLUSDT", Timeframe.H1, ExitReason.STOP, -0.01, Double.NaN).title)
-        assertTrue(AlertText.closed("x", "SOLUSDT", Timeframe.H1, ExitReason.STOP, -0.01, Double.NaN).body.endsWith("Net -1.00% after costs."))
-        assertTrue(AlertText.closed("x", "SOLUSDT", Timeframe.H4, ExitReason.TIME, 0.0, 0.0).title.endsWith("time limit"))
+        assertEquals("Practice trade finished: SOL 1h, profit goal reached", t.title)
+        assertEquals("Breakout: close above the 20-candle high. Result +1.82% after fees; random entries averaged +0.20%.", t.body)
+        assertEquals("Practice trade finished: SOL 1h, loss limit reached", AlertText.closed("x", "SOLUSDT", Timeframe.H1, ExitReason.STOP, -0.01, Double.NaN).title)
+        assertTrue(AlertText.closed("x", "SOLUSDT", Timeframe.H1, ExitReason.STOP, -0.01, Double.NaN).body.endsWith("Result -1.00% after fees."))
+        assertTrue(AlertText.closed("x", "SOLUSDT", Timeframe.H4, ExitReason.TIME, 0.0, 0.0).title.endsWith("time limit reached"))
     }
 
     @Test

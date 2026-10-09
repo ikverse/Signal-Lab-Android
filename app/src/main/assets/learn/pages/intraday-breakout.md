@@ -1,5 +1,7 @@
 # Intraday breakout: leaving the usual range
 
+> **In short:** The price has moved further from the day's open than it usually does, which can mean a bigger move is under way.
+
 **Evidence: weak.** The reported result is before fees.
 
 ## What it looks for

@@ -140,14 +140,14 @@ fun TradesScreen(
             if (wide) {
                 // Beside the trade's panel the height is short: the title and the filters share a row, and the totals are one line.
                 Row(Modifier.fillMaxWidth().padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ScreenTitle("Paper trades", Modifier.weight(1f))
+                    ScreenTitle("All trades", Modifier.weight(1f))
                     for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { nav.tradesStatus = f })
                 }
                 SearchField(query, { nav.tradesQuery = it }, "Coin, pattern or chart", description = "Filter by coin, pattern or chart")
                 if (sizes.size > 1) TimeframeChips(sizes, timeframe) { nav.tradesTimeframe = it }
                 Totals(shown, oneLine = true)
             } else {
-                ScreenTitle("Paper trades")
+                ScreenTitle("All trades")
                 SearchField(query, { nav.tradesQuery = it }, "Coin, pattern or chart", description = "Filter by coin, pattern or chart")
                 Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp)) {
                     for (f in TradeFilter.entries) ChoiceText(f.label, status == f, { nav.tradesStatus = f })
@@ -157,7 +157,7 @@ fun TradesScreen(
             }
             HRule()
             when {
-                all.isEmpty() -> EmptyState("No paper trades yet", "When a pattern appears on a coin you are watching, a pretend trade is recorded here. No real money is used.")
+                all.isEmpty() -> EmptyState("No practice trades yet", "When a pattern appears on a coin you are watching, a pretend trade is recorded here. No real money is used.")
                 shown.isEmpty() -> EmptyState("Nothing matches", "Change the filters or the search.")
                 else -> LazyColumn(Modifier.weight(1f), state = list) {
                     for ((pattern, trades) in groups) {
@@ -294,9 +294,9 @@ private fun TradeRow(t: TradeUi, selected: Boolean, onToggle: () -> Unit) {
 
 /** How a closed trade ended, as a word and a mark. */
 private fun outcome(reason: String): Triple<String, ImageVector, Color> = when (reason) {
-    "target" -> Triple("Target hit", Glyphs.Check, Palette.Up)
-    "stop" -> Triple("Stopped out", Glyphs.Close, Palette.Down)
-    "time" -> Triple("Time limit", Glyphs.Clock, Palette.Muted)
+    "target" -> Triple("Profit goal reached", Glyphs.Check, Palette.Up)
+    "stop" -> Triple("Loss limit reached", Glyphs.Close, Palette.Down)
+    "time" -> Triple("Time limit reached", Glyphs.Clock, Palette.Muted)
     else -> Triple(exitWords(reason).replaceFirstChar { it.uppercase() }, Glyphs.Dash, Palette.Muted)
 }
 
@@ -363,21 +363,21 @@ fun TradeDetail(t: TradeUi, price: Double?, onShowOnChart: () -> Unit, onAbout: 
                     t.exitMode == "trail" && stop != null -> {
                         RangeBar(0.5f, rangeFraction(stop, t.entryPrice + (t.entryPrice - stop), price), Fmt.changeColor(now), Modifier.padding(top = 14.dp, bottom = 4.dp), openEnded = true)
                         Row(Modifier.fillMaxWidth()) {
-                            Stat("Safety stop", Fmt.price(stop), Modifier.weight(1f))
-                            Stat("Entry", Fmt.price(t.entryPrice), Modifier.weight(1f), align = Alignment.CenterHorizontally)
-                            Stat("Then", "trails up", Modifier.weight(1f), align = Alignment.End)
+                            Stat("Loss limit", Fmt.price(stop), Modifier.weight(1f))
+                            Stat("Entry price", Fmt.price(t.entryPrice), Modifier.weight(1f), align = Alignment.CenterHorizontally)
+                            Stat("Then", "follows the price", Modifier.weight(1f), align = Alignment.End)
                         }
                     }
                     stop != null && target != null -> {
                         RangeBar(rangeFraction(stop, target, t.entryPrice) ?: 0.5f, rangeFraction(stop, target, price), Fmt.changeColor(now), Modifier.padding(top = 14.dp, bottom = 4.dp))
                         Row(Modifier.fillMaxWidth()) {
-                            Stat("Stop", Fmt.price(stop), Modifier.weight(1f))
-                            Stat("Entry", Fmt.price(t.entryPrice), Modifier.weight(1f), align = Alignment.CenterHorizontally)
-                            Stat("Target", Fmt.price(target), Modifier.weight(1f), align = Alignment.End)
+                            Stat("Loss limit", Fmt.price(stop), Modifier.weight(1f))
+                            Stat("Entry price", Fmt.price(t.entryPrice), Modifier.weight(1f), align = Alignment.CenterHorizontally)
+                            Stat("Profit goal", Fmt.price(target), Modifier.weight(1f), align = Alignment.End)
                         }
                     }
                     else -> {
-                        Stat("Entry", Fmt.price(t.entryPrice), Modifier.padding(top = 8.dp))
+                        Stat("Entry price", Fmt.price(t.entryPrice), Modifier.padding(top = 8.dp))
                         Text(exitText(t), style = Type.Small, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
@@ -391,8 +391,8 @@ fun TradeDetail(t: TradeUi, price: Double?, onShowOnChart: () -> Unit, onAbout: 
 }
 
 fun exitWords(reason: String) = when (reason) {
-    "target" -> "target hit"
-    "stop" -> "stopped out"
-    "time" -> "time limit"
+    "target" -> "profit goal reached"
+    "stop" -> "loss limit reached"
+    "time" -> "time limit reached"
     else -> reason
 }

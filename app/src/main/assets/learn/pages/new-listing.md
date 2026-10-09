@@ -1,5 +1,7 @@
 # Warning: a new coin
 
+> **In short:** A coin listed only recently has very little history, so anything about it is less reliable.
+
 **This is a warning, never a paper trade.**
 
 ## What it means

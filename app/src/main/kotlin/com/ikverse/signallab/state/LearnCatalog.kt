@@ -16,25 +16,35 @@ object LearnIndex {
     class Entry(val id: String, val group: String, val title: String)
 
     const val HOW = "How it works"
+    const val BUILDING = "Building blocks"
     const val PATTERNS = "Patterns"
     const val WARNINGS = "Warnings"
 
     val entries: List<Entry> = listOf(
-        Entry("paper-trade", HOW, "What a paper trade is"),
-        Entry("scorecard", HOW, "How the scorecard judges"),
+        Entry("paper-trade", HOW, "What a practice trade is"),
+        Entry("scorecard", HOW, "How we tell if it is working"),
+        Entry("plan", HOW, "Profit goal and loss limit"),
         Entry("costs", HOW, "What costs are charged"),
         Entry("chart-sizes", HOW, "Chart sizes"),
         Entry("analyst", HOW, "Asking Claude about your results"),
         Entry("pattern-lab", HOW, "The pattern lab"),
-        Entry("trend", PATTERNS, "Trend: price crosses above its average"),
-        Entry("breakout", PATTERNS, "Breakout: close above the recent high"),
+        Entry("past-data", HOW, "Why past results do not decide"),
+        Entry("rsi", BUILDING, "RSI"),
+        Entry("average", BUILDING, "Moving averages"),
+        Entry("highest", BUILDING, "Highest and lowest of the last N candles"),
+        Entry("volratio", BUILDING, "Volume compared with normal"),
+        Entry("change", BUILDING, "Change over N candles"),
+        Entry("crosses", BUILDING, "Crosses above and is above"),
+        Entry("trailing", BUILDING, "How a lab trade ends"),
+        Entry("trend", PATTERNS, "Trend: a coin starts rising above its average"),
+        Entry("breakout", PATTERNS, "Breakout: price passes its recent high"),
         Entry("momentum", PATTERNS, "Momentum: a coin's own strong week"),
         Entry("ranking", PATTERNS, "Ranking: the strongest coins in your list"),
         Entry("drop-fade", PATTERNS, "Drop fade: a sharp fall that may bounce"),
         Entry("day-momentum", PATTERNS, "Day momentum: a strong start to the day"),
         Entry("intraday-breakout", PATTERNS, "Intraday breakout: leaving the usual range"),
-        Entry("harami", PATTERNS, "Bullish Harami"),
-        Entry("hikkake", PATTERNS, "Hikkake"),
+        Entry("harami", PATTERNS, "Bullish Harami: a small candle after a big fall"),
+        Entry("hikkake", PATTERNS, "Hikkake: a false move that reverses"),
         Entry("pump", WARNINGS, "A pump in progress"),
         Entry("new-listing", WARNINGS, "A new coin"),
         Entry("volume-spike", WARNINGS, "A volume spike"),
