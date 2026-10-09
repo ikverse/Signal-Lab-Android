@@ -3,6 +3,18 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 1.3.0 - 2026-10-10
+
+- Nothing is cut off any more: names, titles and descriptions take another line instead of ending in "…", and a price in a box shrinks a little before it wraps.
+- Buttons, chips and tabs grow with their words, and rows of chips wrap instead of running off the screen. It all follows the phone's text size.
+- Settings is easier to read: a line between rows, outlined groups, more room around each setting, buttons on a row of their own, and the info button beside each name. Turning sync off is shown in red.
+- Every page under Settings has a back arrow, and the bar keeps lit the tab you came from. "Does it work?" shows in full in the bar.
+- Alerts and My coin lists are called the same everywhere, and a new list is offered a name that is not taken.
+- Today shows each setup's chart size. Does it work? shows patterns in full and in chart-size order, with the open trades in words.
+- On a big screen, Does it work? and the Lab builder show one pane at a time where two would not fit, and the chart keeps its width.
+- The chart's Indicators menu has tick boxes, Back closes a chart menu, and the price axis has enough decimals not to repeat itself.
+- Learn diagrams keep their labels inside the picture.
+
 ## 1.2.0 - 2026-10-09
 
 - New: sync between devices. Sign in with Google in Settings, Sync, and your paper trades, lists, lab patterns, reports and costs are the same on every device signed in to that account.
