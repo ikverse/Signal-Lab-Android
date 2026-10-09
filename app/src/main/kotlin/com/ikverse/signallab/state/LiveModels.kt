@@ -41,6 +41,7 @@ import com.ikverse.signallab.ui.ScorecardModel
 import com.ikverse.signallab.ui.ScorecardUi
 import com.ikverse.signallab.ui.SettingsModel
 import com.ikverse.signallab.ui.SettingsUi
+import com.ikverse.signallab.ui.SyncUi
 import com.ikverse.signallab.ui.TradeUi
 import com.ikverse.signallab.ui.TradesModel
 import com.ikverse.signallab.ui.UpdateUi
@@ -325,7 +326,8 @@ class LiveSettingsModel(
     override val settings: StateFlow<SettingsUi> = state
 
     init {
-        scope.launch { refresh() }
+        // Read now, and again whenever a setting that travels between devices changes, here or by sync.
+        scope.launch { graph.settings.version.collect { refresh() } }
     }
 
     private fun read(costs: CostModel, scanning: Boolean, followFast: Boolean, us: Boolean, dim: Boolean, level: DimLevel, railRight: Boolean): SettingsUi {
@@ -335,8 +337,8 @@ class LiveSettingsModel(
             backgroundScanning = scanning, followFastCharts = followFast, binanceUs = us,
             permissions = PermissionsUi(g.notifications, g.exactAlarms, g.batteryExempt),
             version = BuildConfig.VERSION_NAME,
-            dataNote = "Everything Signal Lab records stays on this phone, unless you share it to Claude from the Analyst. It downloads prices " +
-                "from Binance and sends nothing about you anywhere.",
+            dataNote = "Everything Signal Lab records stays on this phone, unless you turn on sync (it then also goes to a hidden folder in your " +
+                "own Google Drive) or share it to Claude from the Analyst. It downloads prices from Binance and sends nothing about you anywhere else.",
             dimScreen = dim, dimLevel = level, railOnRight = railRight,
         )
     }
@@ -420,6 +422,16 @@ class LiveSettingsModel(
     override fun openSystemScreen(prompt: PermissionPrompt) {
         systemScreens.tryEmit(prompt)
     }
+
+    override val sync: StateFlow<SyncUi> = graph.deviceSync.status
+        .map { SyncUi(it.enabled, it.account, it.lastSyncedAt, it.devices, it.busy, it.needsSignIn, it.problem) }
+        .stateIn(scope, SharingStarted.Eagerly, SyncUi())
+
+    override suspend fun signInToSync() = graph.deviceSync.signIn()
+
+    override suspend fun syncNow() = graph.deviceSync.syncNow()
+
+    override suspend fun turnOffSync() = graph.deviceSync.turnOff()
 
     private companion object {
         const val MAX_FEE = 0.01

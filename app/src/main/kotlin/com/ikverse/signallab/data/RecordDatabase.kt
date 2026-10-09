@@ -117,7 +117,35 @@ class RecordDatabase(context: Context?, name: String? = "signal_lab.db") :
             // Step 5: the numbers behind an alert about a trade (its pattern, prices and result), as JSON, so the inbox shows them as figures.
             // Nullable: alerts from before, and alerts that are not about a trade, have none and show their words as they always did.
             listOf("ALTER TABLE alerts ADD COLUMN facts TEXT"),
+            // Step 6: sync between devices. Row ids are this phone's own, so what another device must recognise gets a random sync_id
+            // (lists, lab patterns, reports), and what can change gets a time to decide which copy is newer (lists, settings). A deleted
+            // list leaves a tombstone, which keeps its local id too, so trades that point at it can still name it to another device.
+            // lab_patterns refuses updates, so its trigger is lifted for the one fill and put back exactly as it was.
+            listOf(
+                "ALTER TABLE watchlists ADD COLUMN sync_id TEXT",
+                "ALTER TABLE watchlists ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+                "UPDATE watchlists SET sync_id = lower(hex(randomblob(16))), updated_at = created_at",
+                "CREATE UNIQUE INDEX watchlists_by_sync ON watchlists (sync_id)",
+                """CREATE TABLE watchlist_tombstones (
+                    sync_id TEXT PRIMARY KEY, local_id INTEGER NOT NULL UNIQUE, deleted_at INTEGER NOT NULL) WITHOUT ROWID""",
+                // Lists deleted before this step: their trades still carry the id, so each gets a tombstone of unknown time.
+                """INSERT INTO watchlist_tombstones (sync_id, local_id, deleted_at)
+                    SELECT lower(hex(randomblob(16))), list_id, 0 FROM (SELECT DISTINCT list_id FROM live_trades
+                    WHERE list_id != 0 AND list_id NOT IN (SELECT id FROM watchlists))""",
+                "ALTER TABLE settings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE lab_patterns ADD COLUMN sync_id TEXT",
+                "DROP TRIGGER lab_patterns_no_update",
+                "UPDATE lab_patterns SET sync_id = lower(hex(randomblob(16)))",
+                "CREATE TRIGGER lab_patterns_no_update BEFORE UPDATE ON lab_patterns BEGIN SELECT RAISE(ABORT, 'lab_patterns is append-only'); END",
+                "CREATE UNIQUE INDEX lab_patterns_by_sync ON lab_patterns (sync_id)",
+                "ALTER TABLE analyst_reports ADD COLUMN sync_id TEXT",
+                "UPDATE analyst_reports SET sync_id = lower(hex(randomblob(16)))",
+                "CREATE UNIQUE INDEX reports_by_sync ON analyst_reports (sync_id)",
+            ),
         )
+
+        /** A new random sync id, in the same form step 6 gives the rows that existed before it. */
+        fun newSyncId(): String = java.util.UUID.randomUUID().toString().replace("-", "")
 
         val SCHEMA_VERSION: Int = MIGRATIONS.size
     }

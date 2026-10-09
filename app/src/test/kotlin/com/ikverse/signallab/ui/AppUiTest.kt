@@ -969,8 +969,8 @@ class AppUiTest {
     private fun openUpdates(app: FakeApp) {
         show(app)
         click("nav-Settings")
-        // With room for two panels, Settings shows one group at a time: choose Updates.
-        if (exists("settings-section-Updates")) click("settings-section-Updates")
+        // With room for two panels, Settings shows one group at a time: choose Updates (scrolled to: on a short screen it is below the fold).
+        if (exists("settings-section-Updates")) tag("settings-section-Updates").performScrollTo().performClick()
         tag("updates").performScrollTo()
     }
 

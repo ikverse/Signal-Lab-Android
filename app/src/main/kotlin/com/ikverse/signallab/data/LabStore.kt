@@ -73,6 +73,7 @@ class LabStore(
         val id = access { d ->
             val cv = android.content.ContentValues().apply {
                 put("started_at", clock()); put("report_id", reportId); put("title", title); put("reason", reason); put("definition", definition)
+                put("sync_id", RecordDatabase.newSyncId())
             }
             d.insertOrThrow("lab_patterns", null, cv)
         }
@@ -91,6 +92,12 @@ class LabStore(
         }
         if (done) changes.value = changes.value + 1
         return done
+    }
+
+    /** Tells whoever watches [version] that sync added patterns or stops straight to the database, and learns their titles. */
+    suspend fun changedElsewhere() {
+        changes.value = changes.value + 1
+        all()
     }
 
     /** Every lab pattern, newest first. Reading also tells [PatternLabels] their titles. */

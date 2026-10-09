@@ -3,6 +3,15 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 1.2.0 - 2026-10-09
+
+- New: sync between devices. Sign in with Google in Settings, Sync, and your paper trades, lists, lab patterns, reports and costs are the same on every device signed in to that account.
+- The records go to a hidden folder in your own Google Drive that only Signal Lab can see; the app asks for no other access to your Drive.
+- The same signal seen on two devices is one trade, and the copy a device already has stays. A list changed on two devices keeps the newer change, and a list deleted on one is deleted on the others unless it was changed after.
+- Alerts, and settings that belong to one device (scanning, the screen), are not synced.
+- Sync runs when the app opens, soon after something changes, and when you tap Sync now. A problem shows in Settings and never stops scanning.
+- A privacy page for the app is now online at ikverse.github.io/Signal-Lab-Android.
+
 ## 1.1.0 - 2026-10-09
 
 - New bar along the bottom: Today, Does it work?, Lab, Coins and Settings.

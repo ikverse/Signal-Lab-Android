@@ -41,7 +41,8 @@ fun percentInput(fraction: Double): String = "%.4f".format(java.util.Locale.ROOT
 
 /** The groups of Settings, in order. With room for two panels they are listed on the left and the chosen one is shown on the right. */
 enum class SettingsSection(val label: String) {
-    Costs("Costs"), Scanning("Scanning"), Screen("Screen"), DataSource("Data source"), Android("What Android allows"), Updates("Updates"), About("About"),
+    Costs("Costs"), Scanning("Scanning"), Screen("Screen"), DataSource("Data source"), Sync("Sync"), Android("What Android allows"),
+    Updates("Updates"), About("About"),
 }
 
 /**
@@ -60,6 +61,7 @@ fun SettingsScreen(
 ) {
     val s by model.settings.collectAsStateWithLifecycle()
     val u by model.update.collectAsStateWithLifecycle()
+    val sync by model.sync.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var fee by remember(s.feePerSide) { mutableStateOf(percentInput(s.feePerSide)) }
     var extraMajors by remember(s.extraMajors) { mutableStateOf(percentInput(s.extraMajors)) }
@@ -133,6 +135,14 @@ fun SettingsScreen(
                 SwitchRow(
                     "Use Binance.US", "Choose this if Binance.com is not available from your network (it answers with error 451).",
                     s.binanceUs, { scope.launch { model.setBinanceUs(it) } },
+                )
+            }
+            SettingsSection.Sync -> Group("Sync between devices") {
+                SyncSection(
+                    sync,
+                    onSignIn = { scope.launch { model.signInToSync() } },
+                    onSyncNow = { scope.launch { model.syncNow() } },
+                    onTurnOff = { scope.launch { model.turnOffSync() } },
                 )
             }
             SettingsSection.Android -> Group("What Android allows") {
@@ -245,6 +255,47 @@ private fun UpdateSection(u: UpdateUi, onCheck: () -> Unit, onInstall: () -> Uni
         }
         Text(
             "Updates come from this app's releases on GitHub. Signal Lab downloads the file, checks it is signed with the same key as this app, and then opens Android's installer, which asks you before it installs anything.",
+            style = Type.Small, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+        )
+    }
+}
+
+/** What sync is doing, in one line. */
+fun syncHeadline(s: SyncUi): String = when {
+    !s.enabled -> "Off"
+    s.busy -> "Syncing…"
+    s.needsSignIn -> "Sign in again to keep syncing."
+    s.lastSyncedAt == null -> "Not synced yet."
+    else -> "Last synced ${Fmt.dateTime(s.lastSyncedAt)}."
+}
+
+@Composable
+private fun SyncSection(s: SyncUi, onSignIn: () -> Unit, onSyncNow: () -> Unit, onTurnOff: () -> Unit) {
+    Column(Modifier.testTag("sync")) {
+        Text(syncHeadline(s), style = Type.BodyStrong, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp).testTag("sync-status"))
+        if (s.enabled) {
+            s.account?.let { Text("Google account: $it", style = Type.Small, modifier = Modifier.padding(horizontal = 14.dp)) }
+            if (s.lastSyncedAt != null) {
+                Text(
+                    if (s.devices == 0) "No other device has synced yet." else "Other devices syncing: ${s.devices}",
+                    style = Type.Small, modifier = Modifier.padding(horizontal = 14.dp),
+                )
+            }
+        }
+        s.problem?.let { Text(it, style = Type.Small.copy(color = Palette.Warn), modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp).testTag("sync-problem")) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!s.enabled || s.needsSignIn) {
+                TextAction(if (s.enabled) "Sign in again" else "Sign in with Google", onSignIn, enabled = !s.busy, modifier = Modifier.testTag("sync-sign-in"))
+            }
+            if (s.enabled) {
+                if (!s.needsSignIn) TextAction("Sync now", onSyncNow, enabled = !s.busy, modifier = Modifier.testTag("sync-now"))
+                TextAction("Turn off", onTurnOff, modifier = Modifier.testTag("sync-off"))
+            }
+        }
+        Text(
+            "Keeps paper trades, lists, lab patterns, reports and costs the same on every device signed in to the same Google account. " +
+                "They go to a hidden folder in your Google Drive that only Signal Lab can see. Alerts, and what belongs to one device (scanning, " +
+                "the screen), stay where they are.",
             style = Type.Small, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
         )
     }

@@ -2,16 +2,27 @@ package com.ikverse.signallab.data
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** Small named settings, in the record database so they travel with the backup. */
+/**
+ * Small named settings, in the record database. Each remembers when it was last set, so that of two devices' copies of a
+ * [SYNCED] setting the newer one wins.
+ */
 class SettingsStore(
     private val db: RecordDatabase,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val lock = Mutex()
+    private val changes = MutableStateFlow(0L)
+
+    /** Goes up by one after every change to a [SYNCED] setting, so sync knows there is something to send. */
+    val version: StateFlow<Long> = changes.asStateFlow()
 
     suspend fun get(key: String): String? = lock.withLock {
         withContext(io) {
@@ -22,9 +33,15 @@ class SettingsStore(
     suspend fun set(key: String, value: String) {
         lock.withLock {
             withContext(io) {
-                db.writableDatabase.execSQL("INSERT OR REPLACE INTO settings VALUES (?,?)", arrayOf<Any?>(key, value))
+                db.writableDatabase.execSQL("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?,?,?)", arrayOf<Any?>(key, value, clock()))
             }
         }
+        if (key in SYNCED) changes.value = changes.value + 1
+    }
+
+    /** Tells whoever watches [version] that sync wrote settings straight to the database. */
+    fun changedElsewhere() {
+        changes.value = changes.value + 1
     }
 
     suspend fun getDouble(key: String, default: Double): Double = get(key)?.toDoubleOrNull() ?: default
@@ -66,5 +83,11 @@ class SettingsStore(
 
         /** Which permission prompts have already been shown, so none is asked twice. */
         const val ASKED_PREFIX = "asked_"
+
+        /**
+         * The settings that follow the user from device to device. Everything else (scanning, the screen, panel sizes, scan cursors,
+         * what was asked) belongs to the device it was set on and is never sent.
+         */
+        val SYNCED: Set<String> = setOf(FEE_PER_SIDE, EXTRA_COST_MAJORS, EXTRA_COST_OTHERS, DATA_HOST)
     }
 }

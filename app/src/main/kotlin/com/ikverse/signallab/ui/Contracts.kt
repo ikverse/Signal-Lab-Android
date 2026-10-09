@@ -160,6 +160,20 @@ data class SettingsUi(
     val railOnRight: Boolean = false,
 )
 
+/** Sync between devices, for its group in Settings. */
+data class SyncUi(
+    val enabled: Boolean = false,
+    /** The Google account whose Drive holds the records, once known. */
+    val account: String? = null,
+    val lastSyncedAt: Long? = null,
+    /** Other devices seen at the last sync. */
+    val devices: Int = 0,
+    val busy: Boolean = false,
+    /** Google needs the user to sign in again before sync can go on. */
+    val needsSignIn: Boolean = false,
+    val problem: String? = null,
+)
+
 /** How dim the screen goes when it is kept on. [brightness] is a fraction of full, never 0, because 0 turns some screens off. */
 enum class DimLevel(val label: String, val brightness: Float) {
     VERY_DIM("Very dim", 0.02f), DIM("Dim", 0.1f), SOFT("Soft", 0.25f),
@@ -363,6 +377,16 @@ interface SettingsModel {
 
     /** Opens Android's own screen for one of the permissions. */
     fun openSystemScreen(prompt: PermissionPrompt)
+
+    val sync: StateFlow<SyncUi>
+
+    /** Turns sync on: Google's account picker the first time, then a first sync. Also how a lapsed sign-in is renewed. */
+    suspend fun signInToSync()
+
+    suspend fun syncNow()
+
+    /** Stops syncing from this device; nothing is deleted here or in Drive. */
+    suspend fun turnOffSync()
 }
 
 /** Where a [Link] leads. */

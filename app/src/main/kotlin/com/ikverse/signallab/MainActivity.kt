@@ -14,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -56,6 +57,11 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { app.graph.permissions.evaluate() }
     }
 
+    /** Google's account picker and consent screen for sync, and what the user chose there. */
+    private val syncConsent = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        lifecycleScope.launch { app.graph.deviceSync.onConsent(result.resultCode == RESULT_OK, result.data) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val dark = SystemBarStyle.dark(0xFF050505.toInt())
@@ -92,6 +98,9 @@ class MainActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             app.model.handoffs.collect { openClaude(it) }
+        }
+        lifecycleScope.launch {
+            app.graph.deviceSync.consent.collect { syncConsent.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
         }
         lifecycleScope.launch {
             // While the app is on screen: keep the screen on and dim if the user asked for that.
@@ -193,6 +202,8 @@ class MainActivity : ComponentActivity() {
         }
         // The quiet daily look for a newer release; skipped if one answered in the last day.
         lifecycleScope.launch { app.graph.updates.checkIfDue() }
+        // Opening the app brings in what the other devices did (no more often than sync's own spacing allows).
+        app.graph.deviceSync.requestSync()
     }
 
     private fun launch(intent: Intent) {

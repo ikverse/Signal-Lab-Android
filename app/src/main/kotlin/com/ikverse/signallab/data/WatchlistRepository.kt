@@ -63,6 +63,11 @@ class WatchlistRepository(
 
     private fun find(id: Long): Watchlist? = state.value.firstOrNull { it.id == id }
 
+    /** Marks a list as changed now, so that its copy here is the newer one when devices compare. */
+    private fun touch(id: Long) {
+        db.writableDatabase.execSQL("UPDATE watchlists SET updated_at=? WHERE id=?", arrayOf<Any?>(clock(), id))
+    }
+
     suspend fun create(name: String): WatchlistResult<Watchlist> = lock.withLock {
         val (clean, refusal) = WatchlistRules.cleanName(name, state.value.map { it.name })
         if (clean == null) return@withLock WatchlistResult.Refused(refusal!!)
@@ -70,8 +75,9 @@ class WatchlistRepository(
             val d = db.writableDatabase
             val next = d.rawQuery("SELECT COALESCE(MAX(position), 0) + 1 FROM watchlists", null).use { it.moveToFirst(); it.getInt(0) }
             d.insert("watchlists", null, ContentValues().apply {
-                put("name", clean); put("name_key", clean.lowercase()); put("active", 0); put("created_at", clock()); put("position", next)
-                put("timeframes", Timeframe.formatSet(Timeframe.NEW_LIST_DEFAULT))
+                val now = clock()
+                put("name", clean); put("name_key", clean.lowercase()); put("active", 0); put("created_at", now); put("position", next)
+                put("timeframes", Timeframe.formatSet(Timeframe.NEW_LIST_DEFAULT)); put("sync_id", RecordDatabase.newSyncId()); put("updated_at", now)
             })
         }
         reload()
@@ -103,7 +109,7 @@ class WatchlistRepository(
                     val now = clock()
                     val made = d.insert("watchlists", null, ContentValues().apply {
                         put("name", clean); put("name_key", clean.lowercase()); put("active", if (activate) 1 else 0); put("created_at", now); put("position", next)
-                        put("timeframes", Timeframe.formatSet(timeframes))
+                        put("timeframes", Timeframe.formatSet(timeframes)); put("sync_id", RecordDatabase.newSyncId()); put("updated_at", now)
                     })
                     // One tick apart, so the list keeps the order the coins were chosen in.
                     coins.forEachIndexed { i, s -> d.execSQL("INSERT INTO watchlist_coins VALUES (?,?,?)", arrayOf<Any?>(made, s, now + i)) }
@@ -123,7 +129,7 @@ class WatchlistRepository(
         val (clean, refusal) = WatchlistRules.cleanName(name, state.value.filter { it.id != id }.map { it.name })
         if (clean == null) return@withLock WatchlistResult.Refused(refusal!!)
         withContext(io) {
-            db.writableDatabase.execSQL("UPDATE watchlists SET name=?, name_key=? WHERE id=?", arrayOf<Any?>(clean, clean.lowercase(), id))
+            db.writableDatabase.execSQL("UPDATE watchlists SET name=?, name_key=?, updated_at=? WHERE id=?", arrayOf<Any?>(clean, clean.lowercase(), clock(), id))
         }
         reload()
         WatchlistResult.Ok(Unit)
@@ -132,7 +138,18 @@ class WatchlistRepository(
     /** Deletes a list. Paper trades already open on its coins are not touched. Returns the coins it held. */
     suspend fun delete(id: Long): WatchlistResult<List<String>> = lock.withLock {
         val list = find(id) ?: return@withLock WatchlistResult.Refused(Refusal.LIST_NOT_FOUND)
-        withContext(io) { db.writableDatabase.execSQL("DELETE FROM watchlists WHERE id=?", arrayOf<Any?>(id)) }
+        withContext(io) {
+            val d = db.writableDatabase
+            d.beginTransaction()
+            try {
+                // The tombstone tells other devices the list is gone, and keeps the id its trades still carry.
+                d.execSQL("INSERT OR REPLACE INTO watchlist_tombstones (sync_id, local_id, deleted_at) SELECT sync_id, id, ? FROM watchlists WHERE id=? AND sync_id IS NOT NULL", arrayOf<Any?>(clock(), id))
+                d.execSQL("DELETE FROM watchlists WHERE id=?", arrayOf<Any?>(id))
+                d.setTransactionSuccessful()
+            } finally {
+                d.endTransaction()
+            }
+        }
         reload()
         WatchlistResult.Ok(list.symbols)
     }
@@ -143,6 +160,7 @@ class WatchlistRepository(
         WatchlistRules.checkAdd(state.value, list, symbol)?.let { return@withLock WatchlistResult.Refused(it) }
         withContext(io) {
             db.writableDatabase.execSQL("INSERT OR IGNORE INTO watchlist_coins VALUES (?,?,?)", arrayOf<Any?>(id, symbol, clock()))
+            touch(id)
         }
         reload()
         WatchlistResult.Ok(Unit)
@@ -152,6 +170,7 @@ class WatchlistRepository(
         if (find(id) == null) return@withLock WatchlistResult.Refused(Refusal.LIST_NOT_FOUND)
         withContext(io) {
             db.writableDatabase.execSQL("DELETE FROM watchlist_coins WHERE list_id=? AND symbol=?", arrayOf<Any?>(id, symbol))
+            touch(id)
         }
         reload()
         WatchlistResult.Ok(Unit)
@@ -162,7 +181,7 @@ class WatchlistRepository(
         val list = find(id) ?: return@withLock WatchlistResult.Refused(Refusal.LIST_NOT_FOUND)
         WatchlistRules.checkTimeframes(state.value, list, timeframes)?.let { return@withLock WatchlistResult.Refused(it) }
         withContext(io) {
-            db.writableDatabase.execSQL("UPDATE watchlists SET timeframes=? WHERE id=?", arrayOf<Any?>(Timeframe.formatSet(timeframes), id))
+            db.writableDatabase.execSQL("UPDATE watchlists SET timeframes=?, updated_at=? WHERE id=?", arrayOf<Any?>(Timeframe.formatSet(timeframes), clock(), id))
         }
         reload()
         WatchlistResult.Ok(Unit)
@@ -173,7 +192,7 @@ class WatchlistRepository(
         val list = find(id) ?: return@withLock WatchlistResult.Refused(Refusal.LIST_NOT_FOUND)
         if (active) WatchlistRules.checkActivate(state.value, list)?.let { return@withLock WatchlistResult.Refused(it) }
         withContext(io) {
-            db.writableDatabase.execSQL("UPDATE watchlists SET active=? WHERE id=?", arrayOf<Any?>(if (active) 1 else 0, id))
+            db.writableDatabase.execSQL("UPDATE watchlists SET active=?, updated_at=? WHERE id=?", arrayOf<Any?>(if (active) 1 else 0, clock(), id))
         }
         reload()
         WatchlistResult.Ok(Unit)

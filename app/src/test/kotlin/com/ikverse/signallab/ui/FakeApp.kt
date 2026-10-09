@@ -250,6 +250,24 @@ class FakeSettings(initial: SettingsUi = defaultSettings()) : SettingsModel {
         log += "open ${prompt.name}"
     }
 
+    val syncState = MutableStateFlow(SyncUi())
+    override val sync: StateFlow<SyncUi> = syncState
+
+    override suspend fun signInToSync() {
+        log += "sync sign in"
+        syncState.value = syncState.value.copy(enabled = true, account = "me@example.com", needsSignIn = false)
+    }
+
+    override suspend fun syncNow() {
+        log += "sync now"
+        syncState.value = syncState.value.copy(lastSyncedAt = 1_000L)
+    }
+
+    override suspend fun turnOffSync() {
+        log += "sync off"
+        syncState.value = SyncUi()
+    }
+
     companion object {
         fun defaultSettings() = SettingsUi(
             feePerSide = 0.001, extraMajors = 0.0, extraOthers = 0.0, backgroundScanning = true, followFastCharts = true, binanceUs = false,
