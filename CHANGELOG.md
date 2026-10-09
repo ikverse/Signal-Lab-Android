@@ -3,6 +3,20 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 1.1.0 - 2026-10-09
+
+- New bar along the bottom: Today, Does it work?, Lab, Coins and Settings.
+- Today lists your open setups with the entry price, the profit goal and the loss limit.
+- Does it work? leads with the practice account and a plain verdict for each pattern; the numbers sit behind a tap.
+- Lab is now its own tab: the builder, examples, ideas from Claude, live tests with their progress, and the past-data check. At most 10 tests run at once and 15 can start in 30 days; a test stopped before 5 trades gives its place back.
+- Coins has notes and warnings for each coin, coins to add, and one page per coin on a phone.
+- Learn has ten new pages and a short summary at the top of every page, with plainer titles.
+- Plainer wording in alerts and trades, a short intro the first time the app opens, and a shared chat link is refused as an answer.
+- Trades can be filtered by chart size.
+- In Markets, an open trade's card switches its levels on the chart, and the live price is drawn white.
+- On a foldable: a divider on a book fold, and the price header on a half-open phone.
+- New: the app has a launcher icon.
+
 ## 1.0.0 - 2026-10-07
 
 - New look across the app, made for reading on a dark screen: clearer text sizes, figures that line up in columns, short pattern names ("Bullish hikkake", "Breakout · 20 high") instead of whole sentences, and colour only on results. The green, red and amber are the same as before.
