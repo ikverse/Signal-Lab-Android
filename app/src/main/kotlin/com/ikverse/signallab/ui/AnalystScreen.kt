@@ -104,7 +104,7 @@ fun AnalystScreen(
 private fun ReportView(model: AnalystModel, report: ReportUi, wide: Boolean, onSelect: (Long?) -> Unit, onOpenPage: (String) -> Unit, onGo: (String) -> Unit) {
     var patterns by rememberSaveable(report.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        if (!wide) BackRow("Analyst", { onSelect(null) })
+        if (!wide) BackRow("Ask Claude", { onSelect(null) })
         Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             Text(report.title, style = Type.Heading, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("report-title"))
             Text("Kept ${Fmt.dateTime(report.receivedAt)}", style = Type.Small)
@@ -222,7 +222,7 @@ private fun AnalystIndex(
     LazyColumn(Modifier.fillMaxSize().testTag("analyst-index")) {
         item(key = "title") {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ScreenTitle("Analyst", Modifier.weight(1f))
+                ScreenTitle("Ask Claude", Modifier.weight(1f))
                 IconAction(Glyphs.Info, "How this works", { onOpenPage("analyst") }, Modifier.padding(end = 4.dp).testTag("analyst-learn"), tint = Palette.Muted)
             }
         }
@@ -345,7 +345,7 @@ private fun AnalystIndex(
         if (reports.isEmpty()) {
             item(key = "no-reports") {
                 Text(
-                    "None yet. In Claude, tap Share under an answer and choose Signal Lab, or tap Copy and then Paste an answer.",
+                    "None yet. In Claude, press and hold the answer and tap Copy, then come back and tap Paste an answer.",
                     style = Type.Small, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("no-reports"),
                 )
             }

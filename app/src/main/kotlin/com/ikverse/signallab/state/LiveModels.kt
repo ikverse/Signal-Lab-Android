@@ -232,9 +232,9 @@ class LiveMarketsModel(private val graph: AppGraph, scope: CoroutineScope) : Mar
         val candles = List(c.size) { CandleUi(c.t[it], c.open[it], c.high[it], c.low[it], c.close[it], c.volume[it]) }
         val levels = graph.tradeLog.trades(TradeStatus.OPEN, symbol = symbol, limit = 50).filter { it.trade.tf == tf }.flatMap { t ->
             buildList {
-                add(LevelUi(LevelKind.ENTRY, "Entry", t.trade.entryPrice, t.id))
-                t.trade.stop?.let { add(LevelUi(LevelKind.STOP, "Stop", it, t.id)) }
-                t.trade.target?.let { add(LevelUi(LevelKind.TARGET, "Target", it, t.id)) }
+                add(LevelUi(LevelKind.ENTRY, "Entry price", t.trade.entryPrice, t.id))
+                t.trade.stop?.let { add(LevelUi(LevelKind.STOP, "Loss limit", it, t.id)) }
+                t.trade.target?.let { add(LevelUi(LevelKind.TARGET, "Profit goal", it, t.id)) }
             }
         }
         return ChartUi(symbol, timeframe, candles, levels)
@@ -428,7 +428,7 @@ class LiveSettingsModel(
 }
 
 /** Panel sizes kept in the settings, one entry per screen, so they are still there the next time the app opens. */
-class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = listOf("markets", "lists", "learn", "analyst", "chart")) : PanelPrefs {
+class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = listOf("markets", "lists", "learn", "analyst", "chart", "today", "works", "lab", "lab-idea", "intro")) : PanelPrefs {
     private val state = MutableStateFlow<Map<String, String>?>(null)
     override val saved: StateFlow<Map<String, String>?> = state
 

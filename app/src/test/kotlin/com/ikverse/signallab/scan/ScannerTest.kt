@@ -75,7 +75,7 @@ class ScannerTest {
         assertTrue(e.openTrades().all { it.trade.barTime == eth.t[bar] }, "every trade belongs to the candle that just closed")
         assertEquals(e.openTrades().size, r.opened)
         val alert = e.sink.delivered.single { it.symbol == "ETHUSDT" && it.kind == AlertText.KIND_SIGNAL && it.body.contains(phrase) }
-        assertEquals("Paper trade opened: ETH 1d", alert.title)
+        assertEquals("Practice trade started: ETH 1d", alert.title)
         assertEquals(AlertText.KIND_SIGNAL, alert.kind)
         assertEquals("signallab://coin/ETHUSDT?tf=1d", alert.link)
     }
@@ -120,7 +120,7 @@ class ScannerTest {
         val baseline = assertNotNull(x.randomMean, "the baseline is drawn when the trade closes")
         assertTrue(near(x.net - baseline, x.excess!!))
         val alert = e.sink.delivered.single { it.kind == AlertText.KIND_EXIT && it.symbol == "ETHUSDT" && it.body.contains(phrase) }
-        assertTrue(alert.title.startsWith("Paper trade closed: ETH 1d, "), alert.title)
+        assertTrue(alert.title.startsWith("Practice trade finished: ETH 1d, "), alert.title)
     }
 
     @Test

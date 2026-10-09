@@ -1,6 +1,7 @@
 package com.ikverse.signallab.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.assertContentDescriptionEquals
@@ -65,7 +66,10 @@ class AppUiTest {
     val rule = createAndroidComposeRule<ComponentActivity>()
 
     private fun show(app: FakeApp, debug: Boolean = false, nav: NavState? = null) {
-        rule.setContent { if (nav == null) SignalLabApp(app, debug, webViews = false) else SignalLabApp(app, debug, webViews = false, nav = nav) }
+        // The app opens on Today; most of these tests are about the Coins screen, so they start there unless a test says otherwise.
+        rule.setContent {
+            SignalLabApp(app, debug, webViews = false, nav = nav ?: rememberSaveable(saver = NavState.Saver) { NavState(Dest.Markets) })
+        }
         rule.waitForIdle()
     }
 
@@ -76,6 +80,8 @@ class AppUiTest {
         if (t.startsWith("nav-") && !exists(t)) {
             tag("nav-More").performClick()
             rule.waitForIdle()
+            // More has six rows, which on a phone held sideways are taller than the screen.
+            tag(t).performScrollTo()
         }
         tag(t).performClick()
         rule.waitForIdle()
@@ -168,11 +174,11 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `the three Markets tabs share the whole row, with no empty space on the right`() {
+    fun `the bottom bar shares the whole row between its five places, with no empty space on the right`() {
         show(FakeApp.full())
-        val tabs = MarketsTab.entries.map { tag("markets-tab-${it.name}").getBoundsInRoot() }
-        assertEquals(400f, tabs.last().right.value, 0.5f)
-        for (t in tabs) assertEquals(400f / 3, t.width.value, 1f)
+        val places = BarPlaces.map { tag("nav-${it.name}").getBoundsInRoot() }
+        assertEquals(400f, places.last().right.value, 0.5f)
+        for (p in places) assertEquals(400f / BarPlaces.size, p.width.value, 1f)
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -250,11 +256,10 @@ class AppUiTest {
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
     fun `an open trade's Show on chart opens the chart on its size, with its levels`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(FakeApp.full(), nav = nav)
-        rule.onNodeWithContentDescription("Details").performClick()
-        rule.waitForIdle()
-        rule.onNode(hasText("BTC") and hasAnyAncestor(hasTestTag("coin-strip"))).assertExists()
+        click("coin-BTCUSDT")
+        assertTrue("the coin opens as one page: its chart over its trades", exists("coin-page") && exists("details"))
         rule.onAllNodes(hasText("Show on chart") and hasAnyAncestor(hasTestTag("open-1"))).onFirst().performClick()
         rule.waitForIdle()
         assertEquals(MarketsTab.Chart, nav.marketsTab)
@@ -310,7 +315,7 @@ class AppUiTest {
     @Config(qualifiers = TABLET)
     @Test
     fun `a card's own buttons do their own job and do not touch the switch`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(twoTradesOnTheChart(), nav = nav)
         rule.waitUntil(3_000) { exists("level-strip") }
         card(1).assertIsOff()
@@ -353,18 +358,18 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `the compact Markets screen switches between coins, chart and details with its three tabs`() {
+    fun `on a phone the coins are a list, and a coin opens as one page with its chart over its trades`() {
         show(FakeApp.full())
-        rule.onNodeWithContentDescription("Chart").performClick()
-        rule.waitForIdle()
+        assertTrue(exists("coin-list"))
+        assertTrue(!exists("coin-page"))
+        click("coin-BTCUSDT")
         assertTrue(exists("chart-placeholder"))
-        assertTrue(!exists("coin-list"))
-        rule.onNodeWithContentDescription("Details").performClick()
-        rule.waitForIdle()
         assertTrue(exists("details"))
-        rule.onNodeWithContentDescription("Coins").performClick()
+        assertTrue(!exists("coin-list"))
+        rule.onNodeWithContentDescription("Back to Coins").performClick()
         rule.waitForIdle()
         assertTrue(exists("coin-list"))
+        assertTrue(!exists("details"))
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -455,14 +460,19 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `back from a place goes to Markets, and Markets lets the app close`() {
+    fun `back from a place goes to More and then Today, and Today lets the app close`() {
         show(FakeApp.full())
         click("nav-Trades")
         back()
-        assertTrue(exists("markets-compact"))
+        assertTrue(exists("more"))
+        back()
+        assertTrue(exists("today"))
+        click("nav-Markets")
         click("coin-BTCUSDT")
         back()
         assertTrue(exists("coin-list"))
+        back()
+        assertTrue(exists("today"))
         // Nothing left to step out of: the back button is the system's.
         rule.runOnUiThread { assertTrue(!rule.activity.onBackPressedDispatcher.hasEnabledCallbacks()) }
     }
@@ -500,7 +510,7 @@ class AppUiTest {
     fun `where the user is survives the screen being rebuilt`() {
         val restore = StateRestorationTester(rule)
         val app = FakeApp.full()
-        restore.setContent { SignalLabApp(app, debug = false, webViews = false) }
+        restore.setContent { SignalLabApp(app, debug = false, webViews = false, nav = rememberSaveable(saver = NavState.Saver) { NavState(Dest.Markets) }) }
         rule.waitForIdle()
         click("coin-ETHUSDT")
         click("nav-Learn")
@@ -514,7 +524,7 @@ class AppUiTest {
         back()
         assertTrue("Learn was opened from More, so Back returns there", exists("more"))
         back()
-        assertTrue(exists("markets-compact"))
+        assertTrue(exists("today"))
     }
 
     // --- the other screens -----------------------------------------------------------------------
@@ -597,7 +607,7 @@ class AppUiTest {
     fun `with no trades the screen says so instead of showing an empty list`() {
         show(FakeApp.full().also { it.trades.state.value = emptyList() })
         click("nav-Trades")
-        rule.onNodeWithText("No paper trades yet").assertIsDisplayed()
+        rule.onNodeWithText("No practice trades yet").assertIsDisplayed()
         tag("trades-summary").assertContentDescriptionEquals("0 open · 0 closed")
     }
 
@@ -639,11 +649,11 @@ class AppUiTest {
         }
         show(app)
         click("nav-Alerts")
-        rule.onNode(hasText("Target hit · Breakout · 20 high") and hasAnyAncestor(hasTestTag("alert-5")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Profit goal reached · Breakout · 20 high") and hasAnyAncestor(hasTestTag("alert-5")), useUnmergedTree = true).assertExists()
         rule.onNode(hasText("+1.54%") and hasAnyAncestor(hasTestTag("alert-5")), useUnmergedTree = true).assertExists()
-        rule.onNode(hasText("Entry 2.126 → target 2.207 (+3.81%) · stop 2.036") and hasAnyAncestor(hasTestTag("alert-6")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Entry price 2.126 → profit goal 2.207 (+3.81%) · loss limit 2.036") and hasAnyAncestor(hasTestTag("alert-6")), useUnmergedTree = true).assertExists()
         rule.onNode(hasText("Title 7") and hasAnyAncestor(hasTestTag("alert-7")), useUnmergedTree = true).assertExists()
-        rule.onNode(hasText("Today", substring = true)).assertDoesNotExist()
+        rule.onNode(hasText("Today ·", substring = true)).assertDoesNotExist()
     }
 
     @Config(qualifiers = PHONE_SIDEWAYS)
@@ -724,12 +734,12 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `the scorecard shows each pattern's row, its verdict, and the warning about testing many patterns`() {
+    fun `the scorecard shows each pattern's answer in words, and the warning about testing many patterns`() {
         show(FakeApp.full())
         click("nav-Scorecard")
         rule.onNodeWithText("Breakout: close above the 20-candle high").assertExists()
         rule.onNode(hasText("1h") and hasAnyAncestor(hasTestTag("score-donchian20_1h")), useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("No verdict").assertExists()
+        rule.onNodeWithText("Too early to tell").assertExists()
         tag("multiple-tests-note").performScrollTo().assertTextContains("20 patterns have been tested", substring = true)
     }
 
@@ -738,8 +748,8 @@ class AppUiTest {
     fun `on a wide screen the scorecard has columns`() {
         show(FakeApp.full())
         click("nav-Scorecard")
-        rule.onNodeWithText("vs random").assertExists()
-        rule.onNodeWithText("Win").assertExists()
+        rule.onNodeWithText("vs guessing").assertExists()
+        rule.onNodeWithText("Won").assertExists()
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -1194,7 +1204,7 @@ class AppUiTest {
     fun `the layout survives the screen being rebuilt`() {
         val restore = StateRestorationTester(rule)
         val app = FakeApp.full(FakePanels(initial = null))
-        restore.setContent { SignalLabApp(app, debug = false, webViews = false) }
+        restore.setContent { SignalLabApp(app, debug = false, webViews = false, nav = rememberSaveable(saver = NavState.Saver) { NavState(Dest.Markets) }) }
         rule.waitForIdle()
         dragBy("divider-coins", 70f * density())
         rule.onNodeWithContentDescription("Hide details").performClick()
@@ -1245,13 +1255,14 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `held upright there are no dividers, and the three tabs are as they were`() {
+    fun `held upright there are no dividers`() {
         show(FakeApp.full())
         assertTrue(!exists("divider-coins"))
         assertTrue(!exists("divider-details"))
         assertTrue(!exists("pane-coins"))
-        rule.onNodeWithContentDescription("Chart").assertExists()
-        rule.onNodeWithContentDescription("Details").assertExists()
+        click("coin-BTCUSDT")
+        assertTrue(!exists("divider-coins"))
+        assertTrue(!exists("divider-details"))
     }
 
     @Config(qualifiers = TABLET)
@@ -1817,7 +1828,7 @@ class AppUiTest {
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
     fun `a coin in no switched-on list opens as itself with a note, never as the first coin`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(FakeApp.full(), nav = nav)
         rule.runOnUiThread { nav.openCoin("ADAUSDT", "1h") }
         rule.waitForIdle()
@@ -1831,7 +1842,7 @@ class AppUiTest {
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
     fun `the note is on Details too, and a watched coin has none`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(FakeApp.full(), nav = nav)
         rule.runOnUiThread { nav.openLink(Link("ADAUSDT", null, LinkPlace.DETAILS), fromApp = false) }
         rule.waitForIdle()
@@ -1846,7 +1857,7 @@ class AppUiTest {
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
     fun `a chart size the coin is not watched on says so and shows the one it is`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(FakeApp.full(), nav = nav)
         rule.runOnUiThread { nav.openCoin("BTCUSDT", "1d") }
         rule.waitForIdle()
@@ -1858,7 +1869,7 @@ class AppUiTest {
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
     fun `with no list switched on a coin that was asked for still opens, and with none asked for the page says nothing is watched`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(FakeApp(lists = FakeLists(listOf(FakeApp.list)), markets = FakeMarkets(emptyList())), nav = nav)
         assertTrue(exists("markets-empty"))
         rule.runOnUiThread { nav.openCoin("ADAUSDT", "1h") }
@@ -1870,7 +1881,7 @@ class AppUiTest {
     @Config(qualifiers = TABLET)
     @Test
     fun `on a wide screen the coin asked for is charted and the list beside it is still the watched coins`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(FakeApp.full(), nav = nav)
         rule.runOnUiThread { nav.openCoin("ADAUSDT", "1h") }
         rule.waitForIdle()
@@ -1933,12 +1944,12 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
-    fun `a warning notification opens the coin on its Details tab`() {
+    fun `a warning notification opens the coin's page, with its trades and warnings under the chart`() {
         val app = FakeApp.full()
         show(app)
         openLink(app, Link("BTCUSDT", "1h", LinkPlace.DETAILS))
         assertTrue(exists("details"))
-        assertTrue(!exists("chart-placeholder"))
+        assertTrue(exists("chart-placeholder"))
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -1986,10 +1997,12 @@ class AppUiTest {
 
     @Config(qualifiers = TABLET)
     @Test
-    fun `on a wide screen one Back leaves after a notification opened a coin`() {
+    fun `on a wide screen Back goes to Today after a notification opened a coin, and a second Back leaves`() {
         val app = FakeApp.full()
         show(app)
         openLink(app, Link("ETHUSDT", "1h"))
+        back()
+        assertTrue("one Back goes to Today", exists("today"))
         back()
         assertTrue(rule.activity.isFinishing)
     }
@@ -1997,7 +2010,7 @@ class AppUiTest {
     @Config(qualifiers = TABLET)
     @Test
     fun `on a wide screen Back from a Learn page leaves Learn instead of jumping to another page`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(FakeApp.full(), nav = nav)
         click("nav-Learn")
         click("learn-scorecard")
@@ -2008,7 +2021,7 @@ class AppUiTest {
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
     fun `Back from a jump returns to the tab that was left, with its filter, and a tab chosen from the bar forgets the trail`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         show(FakeApp.full(), nav = nav)
         click("nav-Trades")
         rule.onNodeWithContentDescription("Open").performClick()
@@ -2088,7 +2101,7 @@ class AppUiTest {
     fun `a link's filters survive the screen being rebuilt`() {
         val restore = StateRestorationTester(rule)
         val app = FakeApp.full()
-        restore.setContent { SignalLabApp(app, debug = false, webViews = false) }
+        restore.setContent { SignalLabApp(app, debug = false, webViews = false, nav = rememberSaveable(saver = NavState.Saver) { NavState(Dest.Markets) }) }
         rule.waitForIdle()
         openLink(app, Link(null, null, LinkPlace.TRADES, status = "closed"))
         chosen("Closed").assertExists()
@@ -2103,7 +2116,7 @@ class AppUiTest {
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
     fun `deleting one of two lists on a narrow phone returns to the lists and never to a blank screen`() {
-        val nav = NavState()
+        val nav = NavState(Dest.Markets)
         val app = FakeApp(lists = twoLists(), markets = FakeMarkets(listOf(FakeApp.btc)))
         show(app, nav = nav)
         click("nav-Lists")
@@ -2215,7 +2228,7 @@ class AppUiTest {
         show(app)
         click("nav-Analyst")
         click("report-7")
-        rule.onNodeWithContentDescription("Back to Analyst").performClick()
+        rule.onNodeWithContentDescription("Back to Ask Claude").performClick()
         rule.waitForIdle()
         assertTrue(exists("analyst-index"))
         click("nav-Lists")
@@ -2234,7 +2247,7 @@ class AppUiTest {
         val restore = StateRestorationTester(rule)
         val app = FakeApp.full()
         app.analyst.state.value = listOf(ReportUi(7, 1_700_000_000_000L, "weekly-review", "Weekly review", "## Summary\nThree patterns helped."))
-        restore.setContent { SignalLabApp(app, debug = false, webViews = false) }
+        restore.setContent { SignalLabApp(app, debug = false, webViews = false, nav = rememberSaveable(saver = NavState.Saver) { NavState(Dest.Markets) }) }
         rule.waitForIdle()
         click("nav-Analyst")
         click("report-7")

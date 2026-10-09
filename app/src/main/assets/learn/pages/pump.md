@@ -1,5 +1,7 @@
 # Warning: a pump in progress
 
+> **In short:** The price shot up very fast on unusual trading. The app warns you and does not start practice trades from it.
+
 **This is a warning, never a paper trade.**
 
 ## What it looks for

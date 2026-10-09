@@ -229,18 +229,18 @@ class ScreenLogicTest {
     @Test
     fun `an alert about a trade is read from its numbers, and an old one from its words`() {
         val facts = AlertFacts("donchian20_1h", "Breakout · 20 high", tradeId = 2, entry = 2.126, target = 2.207, stop = 2.036)
-        val opened = AlertUi(1, 0L, "signal", "Paper trade opened: ZRO 15m", "b", "ZROUSDT", "15m", facts = facts)
-        assertEquals("Opened", alertOutcome(opened))
-        assertEquals("Entry 2.126 → target 2.207 (+3.81%) · stop 2.036", alertFigures(opened))
+        val opened = AlertUi(1, 0L, "signal", "Practice trade started: ZRO 15m", "b", "ZROUSDT", "15m", facts = facts)
+        assertEquals("Started", alertOutcome(opened))
+        assertEquals("Entry price 2.126 → profit goal 2.207 (+3.81%) · loss limit 2.036", alertFigures(opened))
         val trailing = opened.copy(facts = facts.copy(target = null, trails = true))
-        assertEquals("Entry 2.126 · safety stop 2.036, then trails up", alertFigures(trailing))
-        val closed = AlertUi(2, 0L, "exit", "Paper trade closed: GTC 15m, target hit", "b", "GTCUSDT", "15m",
+        assertEquals("Entry price 2.126 · loss limit 2.036, then it follows the price up", alertFigures(trailing))
+        val closed = AlertUi(2, 0L, "exit", "Practice trade finished: GTC 15m, profit goal reached", "b", "GTCUSDT", "15m",
             facts = AlertFacts("x", "x", reason = "stop", net = -0.02, random = 0.0117))
-        assertEquals("the numbers win over the words", "Stopped out", alertOutcome(closed))
+        assertEquals("the numbers win over the words", "Loss limit reached", alertOutcome(closed))
         assertEquals("Random entries averaged +1.17%", alertFigures(closed))
-        val old = AlertUi(3, 0L, "exit", "Paper trade closed: GTC 15m, target hit", "b", "GTCUSDT", "15m")
+        val old = AlertUi(3, 0L, "exit", "Practice trade finished: GTC 15m, profit goal reached", "b", "GTCUSDT", "15m")
         assertEquals("target", alertReason(old))
-        assertEquals("Target hit", alertOutcome(old))
+        assertEquals("Profit goal reached", alertOutcome(old))
         assertNull(alertFigures(old))
         assertEquals(null, alertTrade(old, listOf(won)))
         assertEquals(won, alertTrade(closed.copy(facts = closed.facts!!.copy(tradeId = 2)), listOf(won)))
@@ -271,22 +271,22 @@ class ScreenLogicTest {
     }
 
     @Test
-    fun `the bar has five places and the other four sit behind More`() {
-        assertEquals(listOf(Dest.Markets, Dest.Trades, Dest.Scorecard, Dest.Analyst, Dest.More), BarPlaces)
+    fun `the bar has five places and the other six sit behind More`() {
+        assertEquals(listOf(Dest.Today, Dest.Scorecard, Dest.Lab, Dest.Markets, Dest.More), BarPlaces)
         assertEquals(Dest.entries.toSet(), (BarPlaces + MorePlaces).toSet())
         for (d in MorePlaces) assertEquals(Dest.More, barPlaceOf(d))
         for (d in BarPlaces) assertEquals(d, barPlaceOf(d))
     }
 
     @Test
-    fun `a place behind More returns to More on Back, and More to Markets`() {
+    fun `a place behind More returns to More on Back, and More to Today`() {
         val nav = NavState()
         nav.go(Dest.More)
         nav.go(Dest.Alerts)
         assertTrue(nav.back())
         assertEquals(Dest.More, nav.dest)
         assertTrue(nav.back())
-        assertEquals(Dest.Markets, nav.dest)
+        assertEquals(Dest.Today, nav.dest)
         assertFalse(nav.back())
     }
 
@@ -377,7 +377,7 @@ class ScreenLogicTest {
     }
 
     @Test
-    fun `back steps towards Markets one place at a time and then lets the app close`() {
+    fun `back steps towards Today one place at a time and then lets the app close`() {
         val nav = NavState()
         assertFalse(nav.canBack)
         assertFalse(nav.back())
@@ -387,16 +387,16 @@ class ScreenLogicTest {
         assertTrue(nav.canBack)
         assertTrue(nav.back())
         assertEquals(MarketsTab.Coins, nav.marketsTab)
-        assertFalse(nav.canBack)
+        assertTrue("Coins is one step from Today", nav.canBack)
 
-        // A page opened by a jump from Markets (What is this pattern?): Back returns to Markets, and Learn's page is closed behind it.
+        // A page opened by a jump from Coins (What is this pattern?): Back returns to Coins, and Learn's page is closed behind it.
         nav.openLearn("trend")
         assertTrue(nav.back())
         assertEquals(Dest.Markets, nav.dest)
         assertNull(nav.learnPage)
-        assertFalse(nav.canBack)
+        assertTrue(nav.canBack)
 
-        // A page chosen inside Learn on a narrow screen: Back closes the page first, then leaves Learn for More, then Markets.
+        // A page chosen inside Learn on a narrow screen: Back closes the page first, then leaves Learn for More, then Today.
         nav.go(Dest.Learn)
         nav.learnPage = "trend"
         assertTrue(nav.back())
@@ -405,7 +405,7 @@ class ScreenLogicTest {
         assertTrue(nav.back())
         assertEquals(Dest.More, nav.dest)
         assertTrue(nav.back())
-        assertEquals(Dest.Markets, nav.dest)
+        assertEquals(Dest.Today, nav.dest)
 
         nav.go(Dest.Settings)
         nav.showDebug = true
@@ -415,7 +415,7 @@ class ScreenLogicTest {
         assertTrue(nav.back())
         assertEquals(Dest.More, nav.dest)
         assertTrue(nav.back())
-        assertEquals(Dest.Markets, nav.dest)
+        assertEquals(Dest.Today, nav.dest)
     }
 
     @Test
@@ -458,21 +458,21 @@ class ScreenLogicTest {
 
     @Test
     fun `an open trade says how it will end in words that match its exit`() {
-        assertTrue(exitText(FakeApp.trade(1, mode = "trail")).startsWith("Safety stop 95.000, then a stop that follows"))
+        assertTrue(exitText(FakeApp.trade(1, mode = "trail")).startsWith("Loss limit 95.000, then a limit that follows"))
         assertEquals("Held for a fixed time.", exitText(FakeApp.trade(1, mode = "held")))
         assertEquals("Held for a fixed time.", exitText(FakeApp.trade(1, mode = "learned")))
         assertEquals("Held for a fixed time.", exitText(FakeApp.trade(1, mode = null)))
         val learned = FakeApp.trade(1, mode = "learned").copy(target = 104.0)
-        assertEquals("Target 104.00, stop 95.000.", exitText(learned))
+        assertEquals("Profit goal 104.00, loss limit 95.000.", exitText(learned))
         val classic = FakeApp.trade(1, mode = null).copy(target = 110.0)
-        assertEquals("Target 110.00, stop 95.000.", exitText(classic))
+        assertEquals("Profit goal 110.00, loss limit 95.000.", exitText(classic))
     }
 
     @Test
     fun `the words for how a trade closed are plain`() {
-        assertEquals("target hit", exitWords("target"))
-        assertEquals("stopped out", exitWords("stop"))
-        assertEquals("time limit", exitWords("time"))
+        assertEquals("profit goal reached", exitWords("target"))
+        assertEquals("loss limit reached", exitWords("stop"))
+        assertEquals("time limit reached", exitWords("time"))
     }
 
     @Test

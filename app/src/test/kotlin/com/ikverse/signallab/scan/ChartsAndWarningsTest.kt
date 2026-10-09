@@ -68,7 +68,7 @@ class ChartsAndWarningsTest {
         val warning = e.log.alerts(100).single { it.kind == AlertText.KIND_WARNING }
         assertEquals("Pump warning: PMP", warning.title)
         assertTrue(warning.body.contains("rose 6.0% in 5 minutes on 15 times its usual volume"), warning.body)
-        assertTrue(warning.body.contains("late buyers lose") && warning.body.contains("No paper trade is opened"))
+        assertTrue(warning.body.contains("late arrivals lose") && warning.body.contains("No practice trade is opened"))
         assertEquals("PMPUSDT", warning.symbol)
         assertTrue(e.sink.delivered.any { it.id == warning.id }, "a warning is sent as a notification too")
         assertTrue(e.log.trades(TradeStatus.ALL, limit = Int.MAX_VALUE).none { it.trade.variant.contains("pump") || it.trade.family == "warning" })

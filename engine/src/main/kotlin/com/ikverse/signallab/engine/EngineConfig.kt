@@ -90,11 +90,14 @@ object EngineConfig {
 
     /**
      * Lab patterns forward-tested at the same time, and new ones started within [LAB_NEW_WINDOW_DAYS]. Every pattern tested raises the bar
-     * for every verdict, so ideas are rationed instead of tried by the dozen.
+     * for every verdict (the verdicts correct for how many patterns were tried), so ideas are rationed instead of tried by the dozen. A
+     * test stopped before it had [LAB_COUNTS_AFTER_TRADES] trades gives its place in the month's allowance back; it still counts among the
+     * patterns tested, so the bar it raised stays raised.
      */
-    const val LAB_MAX_RUNNING = 5
-    const val LAB_MAX_NEW = 5
+    const val LAB_MAX_RUNNING = 10
+    const val LAB_MAX_NEW = 15
     const val LAB_NEW_WINDOW_DAYS = 30
+    const val LAB_COUNTS_AFTER_TRADES = 5
 
     // --- Exits for the live scan (the classic target and stop above stay what the research used) ---
 

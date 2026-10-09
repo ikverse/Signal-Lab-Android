@@ -1,5 +1,7 @@
 # Warning: a volume spike
 
+> **In short:** A day with far more trading than usual can mean news or a sharp move. It is a warning only.
+
 **This is a warning, never a paper trade.**
 
 ## What it looks for

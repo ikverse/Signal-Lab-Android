@@ -10,7 +10,7 @@ import com.ikverse.signallab.engine.Warnings
 import java.util.Locale
 
 /**
- * The words of every alert. They always say "paper trade" and never tell anyone to buy or sell:
+ * The words of every alert, in plain language. They always say "practice trade" and never tell anyone what to do with money:
  * this app records what a rule would have done, it does not advise.
  */
 object AlertText {
@@ -79,34 +79,34 @@ object AlertText {
     fun opened(p: LiveScan.Plan, newCoin: Boolean = false, tradeId: Long? = null): Text {
         val levels = when {
             p.mode == ExitMode.TRAIL ->
-                "Entry ${price(p.entryPrice)}, safety stop ${price(p.stop!!)}, then a stop that follows the price up." +
+                "Entry price ${price(p.entryPrice)}, loss limit ${price(p.stop!!)}, then a limit that follows the price up." +
                     if (p.limit < com.ikverse.signallab.engine.EngineConfig.trailCapBars(p.tf)) " Closed by the end of the UTC day at the latest." else ""
             p.mode == ExitMode.LEARNED && p.target != null ->
-                "Entry ${price(p.entryPrice)}, target ${price(p.target!!)} (${percent(p.target!! / p.entryPrice - 1)}, from this pattern's earlier signals), " +
-                    "stop ${price(p.stop!!)}, within ${p.limit} ${if (p.limit == 1) "candle" else "candles"}."
+                "Entry price ${price(p.entryPrice)}, profit goal ${price(p.target!!)} (${percent(p.target!! / p.entryPrice - 1)}, learned from this pattern's earlier setups), " +
+                    "loss limit ${price(p.stop!!)}, within ${p.limit} ${if (p.limit == 1) "candle" else "candles"}."
             p.mode == ExitMode.LEARNED ->
-                "Entry ${price(p.entryPrice)}, held ${p.limit} candles: too few earlier signals to learn a target from."
+                "Entry price ${price(p.entryPrice)}, held ${p.limit} candles: too few earlier setups to learn a profit goal from."
             p.target != null && p.stop != null ->
-                "Entry ${price(p.entryPrice)}, target ${price(p.target!!)}, stop ${price(p.stop!!)}."
-            else -> "Entry ${price(p.entryPrice)}, held ${p.limit} ${if (p.limit == 1) "candle" else "candles"}."
+                "Entry price ${price(p.entryPrice)}, profit goal ${price(p.target!!)}, loss limit ${price(p.stop!!)}."
+            else -> "Entry price ${price(p.entryPrice)}, held ${p.limit} ${if (p.limit == 1) "candle" else "candles"}."
         }
         val note = if (newCoin) " ${newCoinLine(p.symbol)}" else ""
         return Text(
-            "Paper trade opened: ${coin(p.symbol)} ${p.tf.label}", "${PatternLabels.describe(p.variant)}. $levels$note", link(p.symbol, p.tf),
+            "Practice trade started: ${coin(p.symbol)} ${p.tf.label}", "${PatternLabels.describe(p.variant)}. $levels$note", link(p.symbol, p.tf),
             facts(p.variant, tradeId, p.entryPrice, p.target, p.stop, trails = p.mode == ExitMode.TRAIL),
         )
     }
 
     fun closed(variant: String, symbol: String, tf: Timeframe, reason: ExitReason, net: Double, randomMean: Double, tradeId: Long? = null): Text {
         val how = when (reason) {
-            ExitReason.TARGET -> "target hit"
-            ExitReason.STOP -> "stopped out"
-            ExitReason.TIME -> "time limit"
+            ExitReason.TARGET -> "profit goal reached"
+            ExitReason.STOP -> "loss limit reached"
+            ExitReason.TIME -> "time limit reached"
         }
         val baseline = if (randomMean.isNaN()) "" else "; random entries averaged ${percent(randomMean)}"
         return Text(
-            "Paper trade closed: ${coin(symbol)} ${tf.label}, $how",
-            "${PatternLabels.describe(variant)}. Net ${percent(net)} after costs$baseline.",
+            "Practice trade finished: ${coin(symbol)} ${tf.label}, $how",
+            "${PatternLabels.describe(variant)}. Result ${percent(net)} after fees$baseline.",
             tradesLink(symbol, tradeId),
             facts(variant, tradeId, reason = reason, net = net, random = randomMean),
         )
@@ -114,14 +114,14 @@ object AlertText {
 
     fun missed(variant: String, symbol: String, tf: Timeframe): Text = Text(
         "Signal missed: ${coin(symbol)} ${tf.label}",
-        "${PatternLabels.describe(variant)} fired, but the phone only noticed after its entry candle had ended, so no paper trade was opened.",
+        "${PatternLabels.describe(variant)} fired, but the phone only noticed after its entry candle had ended, so no practice trade was opened.",
         link(symbol, tf),
     )
 
     fun pump(symbol: String, tf: Timeframe, pump: Warnings.Pump, newCoin: Boolean): Text = Text(
         "Pump warning: ${coin(symbol)}",
         "${coin(symbol)} rose ${"%.1f".format(Locale.ROOT, pump.rise * 100)}% in ${pump.minutes} minutes on ${"%.0f".format(Locale.ROOT, pump.volumeMultiple)} times its usual volume. " +
-            "Pumps like this usually peak within about a minute, and late buyers lose. No paper trade is opened." +
+            "Pumps like this usually peak within about a minute, and late arrivals lose. No practice trade is opened." +
             if (newCoin) " ${newCoinLine(symbol)}" else "",
         detailsLink(symbol, tf),
     )
@@ -129,7 +129,7 @@ object AlertText {
     fun volumeSpike(symbol: String, multiple: Double, newCoin: Boolean): Text = Text(
         "Volume spike: ${coin(symbol)}",
         "${coin(symbol)} traded ${"%.1f".format(Locale.ROOT, multiple)} times its usual daily volume. " +
-            "On Binance a day like this has usually been followed by lower prices the next day. No paper trade is opened." +
+            "On Binance a day like this has usually been followed by lower prices the next day. No practice trade is opened." +
             if (newCoin) " ${newCoinLine(symbol)}" else "",
         detailsLink(symbol, Timeframe.D1),
     )

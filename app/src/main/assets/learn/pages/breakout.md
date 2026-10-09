@@ -1,4 +1,6 @@
-# Breakout: close above the recent high
+# Breakout: price passes its recent high
+
+> **In short:** The price closed above the highest point of its recent past. The idea is that a coin leaving its range may keep going.
 
 **Evidence: some proof for the daily and 4-hour version, weak for short charts.**
 

@@ -28,6 +28,8 @@ object Glyphs {
             }
         }.build()
 
+    val Lab = outline("lab", "M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3", "M7.5 15h9")
+    val Today = outline("today", circle(12f, 12f, 8f), circle(12f, 12f, 3f))
     val Markets = outline("markets", "M7 3v3M7 17v4M17 3v5M17 15v6", rect(5f, 6f, 4f, 11f, 1f), rect(15f, 8f, 4f, 7f, 1f))
     val Trades = outline("trades", "M5 6h14M5 12h14M5 18h9")
     val Scorecard = outline("scorecard", "M5 20V11M12 20V5M19 20v-6")

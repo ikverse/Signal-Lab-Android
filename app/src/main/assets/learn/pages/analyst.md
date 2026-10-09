@@ -1,5 +1,7 @@
 # Asking Claude about your results
 
+> **In short:** The app prepares a question with your data, opens the Claude app on this phone, and keeps the answer you copy back. It has no AI of its own and costs nothing extra.
+
 The [Analyst](go:analyst) hands your record to the Claude app on this phone with a question, and Claude answers on your own Claude plan. Signal Lab has no AI of its own and pays for none: it only prepares the question and keeps the answer.
 
 ## How a question travels

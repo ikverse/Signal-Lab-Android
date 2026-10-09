@@ -67,6 +67,7 @@ object PromptCards {
         append("- The bar for an edge rises with every pattern tested ($patternsTested so far). Do not call anything an edge that the app's verdict does not.\n")
         append("- Forward-only patterns can only be judged on live trades.\n")
         append("- Give no instructions for trading real money. Describe the evidence; the decisions are mine.\n")
+        append("- Write for someone new to trading: short plain sentences, and say what any technical term means the first time you use it.\n")
         append("- Answer in Markdown, in under 600 words, with tables where they help.\n")
         append("- End with a section \"What to watch next\": up to three things the coming weeks of data could confirm or refute.\n")
     }
@@ -79,6 +80,17 @@ object PromptCards {
 class SharedReport(val card: String?, val title: String, val body: String)
 
 object ReportText {
+    /**
+     * True for text that is only a link (what the Claude app's Share sends: the address of the chat, not its words), possibly with a short
+     * title line. A real answer is far longer than the little that is left once the addresses are taken out.
+     */
+    fun isLink(text: String): Boolean {
+        val link = Regex("""https?://\S+""")
+        return link.containsMatchIn(text) && link.replace(text, "").trim().length < LINK_ONLY_CHARS
+    }
+
+    private const val LINK_ONLY_CHARS = 120
+
     /** The longest text kept as a report. Far beyond any answer; it only stops a stray paste of a whole book. */
     const val MAX_CHARS = 300_000
     private const val MAX_TITLE = 80

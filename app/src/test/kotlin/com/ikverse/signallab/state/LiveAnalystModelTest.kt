@@ -6,6 +6,7 @@ import com.ikverse.signallab.analyst.Handoff
 import com.ikverse.signallab.analyst.LabFormat
 import com.ikverse.signallab.analyst.PromptCards
 import com.ikverse.signallab.data.CoinRow
+import com.ikverse.signallab.data.LabRecord
 import com.ikverse.signallab.data.NewTrade
 import com.ikverse.signallab.data.TradeExit
 import com.ikverse.signallab.data.WatchlistResult
@@ -143,18 +144,41 @@ class LiveAnalystModelTest {
     }
 
     @Test
-    fun `the lab runs a few patterns at a time and starts only a few in a month`() = runBlocking<Unit> {
+    fun `the lab runs a limited number of patterns at a time, and a stopped one that never traded gives its place back`() = runBlocking<Unit> {
         watch("Hourly", "1h")
         for (n in 1..EngineConfig.LAB_MAX_RUNNING) assertEquals(Outcome.Done, model.startLab(definition(10 + n), "P$n", null, null))
         val full = model.startLab(definition(30), "One too many", null, null)
         assertTrue((full as Outcome.Refused).message.contains("already running"))
         model.stopLab(graph.labStore.all().first().id)
-        // A slot is free, but five were started within the window.
-        val tooSoon = model.startLab(definition(31), "Too soon", null, null)
-        assertTrue((tooSoon as Outcome.Refused).message.contains("in the last ${EngineConfig.LAB_NEW_WINDOW_DAYS} days"), tooSoon.message)
+        // It never traded, so stopping it frees a running place and gives the month's new idea back.
         val budget = withTimeout(5_000) { model.budget.first { it.running == EngineConfig.LAB_MAX_RUNNING - 1 } }
-        assertEquals(0, budget.newLeft)
+        assertEquals(EngineConfig.LAB_MAX_NEW - (EngineConfig.LAB_MAX_RUNNING - 1), budget.newLeft)
+        assertEquals(Outcome.Done, model.startLab(definition(31), "A replacement", null, null))
         assertIs<Outcome.Refused>(model.startLab("not a pattern", "Broken", null, null))
+    }
+
+    @Test
+    fun `new ideas are limited per month, and a pattern stopped before it traded does not use one up`() {
+        fun lab(id: Long, running: Boolean, ago: Long = 0) = LabRecord(id, NOW - ago, null, "L$id", null, "{}", if (running) null else NOW)
+        val day = 86_400_000L
+        val stoppedBusy = (1L..5L).map { lab(it, running = false) }
+        val running = (6L..15L).map { lab(it, running = true) }
+        val all = stoppedBusy + running
+        val traded = stoppedBusy.associate { it.id to EngineConfig.LAB_COUNTS_AFTER_TRADES }
+        assertEquals(0, budgetOf(all, NOW, traded).newLeft, "fifteen started, and the stopped ones traded")
+        assertEquals(EngineConfig.LAB_MAX_RUNNING, budgetOf(all, NOW, traded).running)
+        assertEquals(0, budgetOf(all, NOW, emptyMap()).newLeft, "a pattern with no count is counted as having traded: nothing is given back by guessing")
+        assertEquals(5, budgetOf(all, NOW, traded + stoppedBusy.associate { it.id to 0 }).newLeft, "five stopped without a trade give five places back")
+        assertEquals(EngineConfig.LAB_MAX_NEW, budgetOf(all, NOW + EngineConfig.LAB_NEW_WINDOW_DAYS * day + 1, traded).newLeft, "a month later every place is back")
+    }
+
+    @Test
+    fun `a link to the chat is not kept as an answer and says what to do instead`() = runBlocking<Unit> {
+        assertNull(model.keep("https://claude.ai/share/0a1b2c3d-1111-2222-3333-444455556666"))
+        val notice = withTimeout(5_000) { model.notice.first { it != null } }
+        assertTrue(notice!!.startsWith("That is a link to the chat, not the answer."), notice)
+        assertTrue(notice.contains("Copy"))
+        assertTrue(graph.reports.all().isEmpty(), "nothing was saved")
     }
 
     @Test
@@ -206,5 +230,6 @@ class LiveAnalystModelTest {
         const val HOUR = 3_600_000L
         const val DAY = 24 * HOUR
         const val T0 = 1_700_006_400_000L
+        const val NOW = 1_700_100_000_000L
     }
 }

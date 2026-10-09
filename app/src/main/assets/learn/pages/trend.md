@@ -1,4 +1,6 @@
-# Trend: price crosses above its average
+# Trend: a coin starts rising above its average
+
+> **In short:** The price has just moved above its recent average after being below it, which sometimes marks the start of a rise.
 
 **Evidence: moderate for the idea, untested for this exact trigger.**
 

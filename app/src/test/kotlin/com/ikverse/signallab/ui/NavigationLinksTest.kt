@@ -189,12 +189,12 @@ class NavigationLinksTest {
         assertEquals(3L, nav.analystReport)
         assertEquals(emptyList(), nav.trail)
         assertTrue(nav.back()); assertEquals(Dest.Analyst, nav.dest); assertNull(nav.analystReport)
-        assertTrue(nav.back()); assertEquals(Dest.Markets, nav.dest)
+        assertTrue(nav.back()); assertEquals(Dest.More, nav.dest, "the Analyst sits behind More")
 
         // A wide screen shows the report beside the list, so there is no report to step out of first.
         val wide = NavState().also { it.narrow = false }
         wide.openAnalyst(4)
-        assertTrue(wide.back()); assertEquals(Dest.Markets, wide.dest)
+        assertTrue(wide.back()); assertEquals(Dest.More, wide.dest)
 
         // The page on how it works, opened from the Analyst, returns to the report that was open.
         val jump = NavState()
@@ -215,7 +215,8 @@ class NavigationLinksTest {
         assertTrue(nav.canBack)
         assertTrue(nav.back()); assertEquals(Dest.Markets, nav.dest); assertNull(nav.learnPage, "the page is closed behind it")
         assertTrue(nav.back()); assertEquals(Dest.Trades, nav.dest)
-        assertTrue(nav.back()); assertEquals(Dest.Markets, nav.dest, "then one step towards Markets, as before")
+        assertTrue(nav.back()); assertEquals(Dest.More, nav.dest, "All trades sits behind More")
+        assertTrue(nav.back()); assertEquals(Dest.Today, nav.dest, "then one step towards Today")
         assertFalse(nav.canBack)
         assertFalse(nav.back())
     }
@@ -232,7 +233,7 @@ class NavigationLinksTest {
         nav.go(Dest.Alerts)
         assertEquals(emptyList(), nav.trail)
         assertTrue(nav.back()); assertEquals(Dest.More, nav.dest, "Alerts sits behind More")
-        assertTrue(nav.back()); assertEquals(Dest.Markets, nav.dest)
+        assertTrue(nav.back()); assertEquals(Dest.Today, nav.dest)
     }
 
     @Test
@@ -254,7 +255,10 @@ class NavigationLinksTest {
         val nav = NavState()
         nav.narrow = false
         nav.openCoin("BTCUSDT", "1h", fromApp = false)       // a notification: marketsTab becomes Chart, which a wide screen never shows
-        assertFalse(nav.canBack, "so there is nothing to step out of")
+        assertTrue(nav.canBack, "Coins is one step from Today")
+        assertTrue(nav.back()); assertEquals(Dest.Today, nav.dest)
+        assertEquals(MarketsTab.Chart, nav.marketsTab, "the tab it left on was never a step of its own")
+        assertFalse(nav.canBack)
         assertFalse(nav.back())
         nav.go(Dest.Learn)
         nav.learnPage = "trend"                              // a page open beside its list is the normal state
@@ -269,7 +273,7 @@ class NavigationLinksTest {
         nav.openCoin("BTCUSDT", "1h", fromApp = false)
         assertTrue(nav.canBack)
         assertTrue(nav.back()); assertEquals(MarketsTab.Coins, nav.marketsTab)
-        assertFalse(nav.canBack)
+        assertTrue(nav.canBack, "Coins is one step from Today")
         nav.go(Dest.Learn); nav.learnPage = "trend"
         assertTrue(nav.back()); assertNull(nav.learnPage); assertEquals(Dest.Learn, nav.dest)
     }
@@ -320,7 +324,7 @@ class NavigationLinksTest {
                 }
             }
         }
-        assertEquals(19, links, "the links the pages carry")
+        assertEquals(23, links, "the links the pages carry")
     }
 
     @Test
@@ -330,18 +334,22 @@ class NavigationLinksTest {
             "analyst" to "the same numbers you see on the [Scorecard](go:scorecard)",
             "analyst" to "See [how the scorecard judges](learn:scorecard).",
             "analyst" to "New patterns for the [pattern lab](learn:pattern-lab)",
-            "pattern-lab" to "In the [Analyst](go:analyst), ask",
-            "pattern-lab" to "See [how the scorecard judges](learn:scorecard).",
-            "chart-sizes" to "(see [What a paper trade is](learn:paper-trade))",
+            "pattern-lab" to "See [how we tell if it is working](learn:scorecard)",
+            "pattern-lab" to "[why past results do not decide](learn:past-data)",
+            "pattern-lab" to "[How a lab trade ends](learn:trailing)",
+            "plan" to "[What a practice trade is](learn:paper-trade)",
+            "trailing" to "[Profit goal and loss limit](learn:plan)",
+            "past-data" to "[How we tell if it is working](learn:scorecard)",
+            "chart-sizes" to "(see [What a practice trade is](learn:paper-trade))",
             "chart-sizes" to "off in [Settings](go:settings) to save battery",
             "costs" to "lower it in [Settings](go:settings)",
             "costs" to "turn it on in [Settings](go:settings)",
-            "drop-fade" to "(see [What a paper trade is](learn:paper-trade))",
+            "drop-fade" to "(see [What a practice trade is](learn:paper-trade))",
             "drop-fade" to "the [scorecard](go:scorecard) will say whether it holds",
-            "harami" to "(see [What a paper trade is](learn:paper-trade))",
-            "hikkake" to "(see [What a paper trade is](learn:paper-trade))",
+            "harami" to "(see [What a practice trade is](learn:paper-trade))",
+            "hikkake" to "(see [What a practice trade is](learn:paper-trade))",
             "paper-trade" to "(see [What costs are charged](learn:costs))",
-            "paper-trade" to "(see [How the scorecard judges](learn:scorecard))",
+            "paper-trade" to "(see [How we tell if it is working](learn:scorecard))",
             "paper-trade" to "in [Alerts](go:alerts) and",
             "scorecard" to "the bottom of the [Scorecard](go:scorecard)",
             "trend" to "The [scorecard](go:scorecard) will tell",

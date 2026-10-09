@@ -74,13 +74,21 @@ internal fun Report.toUi(labs: List<LabRecord> = emptyList(), watched: Set<Timef
 internal fun LabRecord.toUi(watched: Set<Timeframe> = Timeframe.entries.toSet()): LabPatternUi {
     val p = LabFormat.pattern(id, definition)
     val (missing, never) = unwatched(p, watched)
-    return LabPatternUi(id, title, p?.summary ?: definition, startedAt, stoppedAt, missing, never)
+    return LabPatternUi(id, title, p?.summary ?: definition, startedAt, stoppedAt, missing, never, definition, reason, reportId)
 }
 
-/** How much of the lab's allowance [labs] leave at [now]. */
-internal fun budgetOf(labs: List<LabRecord>, now: Long) = LabBudgetUi(
+/**
+ * How much of the lab's allowance [labs] leave at [now]. [traded] is how many trades each lab pattern has had; a pattern stopped before
+ * it had [EngineConfig.LAB_COUNTS_AFTER_TRADES] gives its place in the month's new ideas back. A pattern missing from [traded] counts.
+ */
+internal fun budgetOf(labs: List<LabRecord>, now: Long, traded: Map<Long, Int> = emptyMap()) = LabBudgetUi(
     running = labs.count { it.running }, maxRunning = EngineConfig.LAB_MAX_RUNNING,
-    newLeft = (EngineConfig.LAB_MAX_NEW - labs.count { now - it.startedAt < EngineConfig.LAB_NEW_WINDOW_DAYS * DAY_MS }).coerceAtLeast(0),
+    newLeft = (
+        EngineConfig.LAB_MAX_NEW - labs.count {
+            now - it.startedAt < EngineConfig.LAB_NEW_WINDOW_DAYS * DAY_MS &&
+                (it.running || (traded[it.id] ?: Int.MAX_VALUE) >= EngineConfig.LAB_COUNTS_AFTER_TRADES)
+        }
+        ).coerceAtLeast(0),
     maxNew = EngineConfig.LAB_MAX_NEW, windowDays = EngineConfig.LAB_NEW_WINDOW_DAYS,
 )
 
@@ -119,9 +127,15 @@ class LiveAnalystModel(
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override val budget: StateFlow<LabBudgetUi> = labRecords
-        .mapLatest { budgetOf(it, clock()) }
+    override val budget: StateFlow<LabBudgetUi> = combine(labRecords, graph.tradeLog.version) { labs, _ -> labs }
+        .mapLatest { budgetOf(it, clock(), tradedByLab(it)) }
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), LabBudgetUi())
+
+    /** How many trades each of [labs] has had, open or finished, by its number; a pattern that never traded is in it with 0. */
+    private suspend fun tradedByLab(labs: List<LabRecord>): Map<Long, Int> {
+        val counts = graph.tradeLog.trades(limit = Int.MAX_VALUE).mapNotNull { LabPatterns.idOf(it.trade.variant) }.groupingBy { it }.eachCount()
+        return labs.associate { it.id to (counts[it.id] ?: 0) }
+    }
 
     override val claudeInstalled: Boolean get() = ClaudeHandoff.installed(context)
 
@@ -158,6 +172,10 @@ class LiveAnalystModel(
     override suspend fun keep(text: String): Long? {
         if (text.length > ReportText.MAX_CHARS) {
             noticeState.value = "That text is too long to keep as a report (over ${ReportText.MAX_CHARS} characters)."
+            return null
+        }
+        if (ReportText.isLink(text)) {
+            noticeState.value = "That is a link to the chat, not the answer. In Claude, press and hold the answer, tap Copy, then come back and tap Paste an answer."
             return null
         }
         val report = ReportText.read(text)
@@ -221,7 +239,7 @@ class LiveAnalystModel(
         // It would take a slot and raise the bar for every verdict without ever trading.
         val (missing, never) = unwatched(pattern, watchedCharts(graph.watchlists.lists.value))
         if (never) return Outcome.Refused(unwatchedText(missing, true)!!)
-        val budget = budgetOf(labs, clock())
+        val budget = budgetOf(labs, clock(), tradedByLab(labs))
         if (budget.running >= budget.maxRunning) return Outcome.Refused("${budget.maxRunning} lab patterns are already running. Stop one first.")
         if (budget.newLeft <= 0) {
             val next = labs.filter { clock() - it.startedAt < budget.windowDays * DAY_MS }.minOf { it.startedAt } + budget.windowDays * DAY_MS
