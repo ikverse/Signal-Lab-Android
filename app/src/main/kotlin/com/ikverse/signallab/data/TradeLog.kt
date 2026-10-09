@@ -86,6 +86,9 @@ class TradeLog(
         changes.value = changes.value + 1
     }
 
+    /** Tells whoever watches [version] that sync added trades, exits or variants straight to the database. */
+    fun changedElsewhere() = changed()
+
     /** The log's own clock, which stamps every alert; cooldowns are measured against it. */
     fun now(): Long = clock()
 

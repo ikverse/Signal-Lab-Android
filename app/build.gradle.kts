@@ -4,7 +4,7 @@ plugins {
 }
 
 // One place decides the version; the code is derived from it so the two can never disagree.
-val appVersionName = "1.1.0"
+val appVersionName = "1.2.0"
 val appVersionCode = appVersionName.split(".").let { (major, minor, patch) ->
     major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
 }
@@ -124,6 +124,8 @@ dependencies {
     implementation(libs.androidx.window)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
+    // Google's authorization for the app's hidden Drive folder, used by sync between devices.
+    implementation(libs.play.services.auth)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)

@@ -270,7 +270,7 @@ class RecordDatabaseTest {
         assertEquals("Paper trade opened: BTC 1h", old.title)
         assertEquals("words", old.body)
         assertNull(old.facts)
-        assertEquals(5, RecordDatabase(context, name).writableDatabase.version)
+        assertEquals(RecordDatabase.SCHEMA_VERSION, RecordDatabase(context, name).writableDatabase.version)
     }
 
     @Test

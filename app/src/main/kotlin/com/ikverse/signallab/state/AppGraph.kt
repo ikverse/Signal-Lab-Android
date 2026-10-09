@@ -32,6 +32,12 @@ import com.ikverse.signallab.update.AppVersion
 import com.ikverse.signallab.update.UpdateChecker
 import com.ikverse.signallab.update.UpdateController
 import com.ikverse.signallab.update.UpdateMemory
+import com.ikverse.signallab.sync.DeviceSync
+import com.ikverse.signallab.sync.DriveFolder
+import com.ikverse.signallab.sync.GoogleAuthorizer
+import com.ikverse.signallab.sync.MergeResult
+import com.ikverse.signallab.sync.RecordSync
+import com.ikverse.signallab.sync.SettingsSyncMemory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -105,6 +111,26 @@ class AppGraph(context: Context, scope: CoroutineScope) {
         },
     )
 
+    /** Keeps the record in step with the user's other devices through a hidden folder in their Google Drive, once they turn it on. */
+    val deviceSync = DeviceSync(
+        settings, GoogleAuthorizer(context),
+        folder = { token -> DriveFolder(BinanceClient.defaultHttp(), token) },
+        record = RecordSync(recordDb), memory = SettingsSyncMemory(settings),
+        afterMerge = ::afterMerge,
+    )
+
+    /** A merge wrote straight to the database: tell each store whose rows changed, so its screens read again. */
+    private suspend fun afterMerge(r: MergeResult) {
+        if (r.trades + r.exits + r.variants > 0) tradeLog.changedElsewhere()
+        if (r.labPatterns + r.labStops > 0) labStore.changedElsewhere()
+        if (r.reports > 0) reports.changedElsewhere()
+        if (r.listsChanged > 0) watchlists.load()
+        if (r.settingsChanged.isNotEmpty()) {
+            settings.get(SettingsStore.DATA_HOST)?.let { host = it }
+            settings.changedElsewhere()
+        }
+    }
+
     private val problem = MutableStateFlow<String?>(null)
 
     /**
@@ -160,6 +186,7 @@ class AppGraph(context: Context, scope: CoroutineScope) {
                 problem.value = e.message ?: e.javaClass.simpleName
             }
         }
+        deviceSync.start(scope, listOf(tradeLog.version, labStore.version, reports.version, settings.version, watchlists.lists))
         // Whenever the coins in active lists, or the charts they are watched on, change, bring their history up to date.
         // A change cancels the run in progress and starts again; what was already downloaded is kept.
         scope.launch {

@@ -31,12 +31,17 @@ class ReportLog(
     suspend fun add(card: String?, title: String, body: String): Long {
         val id = access { d ->
             val cv = android.content.ContentValues().apply {
-                put("received_at", clock()); put("card", card); put("title", title); put("body", body)
+                put("received_at", clock()); put("card", card); put("title", title); put("body", body); put("sync_id", RecordDatabase.newSyncId())
             }
             d.insert("analyst_reports", null, cv)
         }
         changes.value = changes.value + 1
         return id
+    }
+
+    /** Tells whoever watches [version] that sync added reports straight to the database. */
+    fun changedElsewhere() {
+        changes.value = changes.value + 1
     }
 
     /** Newest first. */
