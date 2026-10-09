@@ -3,6 +3,10 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 1.4.0 - 2026-10-10
+
+- New: a switch in Settings, What Android allows, to turn off alert notifications. Alerts are still saved and show in the Alerts inbox, and scanning carries on. The quiet "watching" notification and the "tap to resume" prompt stay.
+
 ## 1.3.0 - 2026-10-10
 
 - Nothing is cut off any more: names, titles and descriptions take another line instead of ending in "…", and a price in a box shrinks a little before it wraps.
