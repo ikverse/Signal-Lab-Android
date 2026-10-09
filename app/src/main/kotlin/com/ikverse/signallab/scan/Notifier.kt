@@ -19,7 +19,11 @@ import com.ikverse.signallab.data.Alert
  * Several alerts for one coin on one timeframe (a breakout often trips a handful of variants at once)
  * become one notification, and several notifications of a kind are grouped under a summary.
  */
-class Notifier(private val context: Context) : AlertSink {
+class Notifier(
+    private val context: Context,
+    /** The user's own switch for alert notifications; the test alert, the resume prompt and the scanning status ignore it. */
+    private val alertsOn: suspend () -> Boolean = { true },
+) : AlertSink {
     /** One notification's worth of alerts. */
     class Composed(val channel: String, val key: String, val title: String, val body: String, val link: String?, val ids: List<Long>)
 
@@ -49,7 +53,7 @@ class Notifier(private val context: Context) : AlertSink {
     fun enabled(): Boolean = manager.areNotificationsEnabled()
 
     override suspend fun deliver(alerts: List<Alert>) {
-        if (alerts.isEmpty() || !enabled()) return
+        if (alerts.isEmpty() || !enabled() || !alertsOn()) return
         val posted = HashMap<String, Int>()
         for (c in compose(alerts)) {
             val id = notificationId(c.ids.first())

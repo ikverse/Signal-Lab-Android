@@ -68,6 +68,9 @@ class SettingsStore(
         /** How dim: the name of one of the three levels. */
         const val DIM_LEVEL = "dim_level"
 
+        /** Show a notification for each alert. On unless the user turns it off; the alerts are saved to the inbox either way. */
+        const val ALERT_NOTIFICATIONS = "alert_notifications"
+
         /** Put the side bar (shown when the phone is held sideways, or the screen is wide) on the right edge. Off unless the user turns it on. */
         const val RAIL_ON_RIGHT = "rail_on_right"
 

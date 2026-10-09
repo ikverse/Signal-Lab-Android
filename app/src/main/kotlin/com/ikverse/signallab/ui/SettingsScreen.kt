@@ -162,6 +162,12 @@ fun SettingsScreen(
                 )
             }
             SettingsSection.Android -> Group("What Android allows", named) {
+                SwitchRow(
+                    "Alert notifications", "A notification when a paper trade opens or closes, or something needs your attention.", s.alertNotifications,
+                    { scope.launch { model.setAlertNotifications(it) } }, Modifier.testTag("alert-notifications"),
+                    more = "Off: no alert makes a notification, but every one is still saved and shows in the Alerts inbox. Scanning carries on as before, and the quiet \"watching\" notification Android requires stays. If scanning stops and Android will not restart it, you are still asked to tap and resume.",
+                )
+                RowDivider()
                 PermissionRow("Alerts", "Notifications when a paper trade opens or closes.", s.permissions.alerts) { model.openSystemScreen(PermissionPrompt.NOTIFICATIONS) }
                 RowDivider()
                 PermissionRow("Exact alarms", "Wakes the phone right at each hourly close. Without it a scan can run minutes late.", s.permissions.exactAlarms) { model.openSystemScreen(PermissionPrompt.EXACT_ALARMS) }

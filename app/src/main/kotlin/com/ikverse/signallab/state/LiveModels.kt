@@ -322,7 +322,7 @@ class LiveSettingsModel(
     /** Where a request to open one of Android's own screens goes; the activity listens and opens it. */
     private val systemScreens: MutableSharedFlow<PermissionPrompt>,
 ) : SettingsModel {
-    private val state = MutableStateFlow(read(CostModel(), scanning = true, followFast = true, us = false, dim = false, level = DimLevel.DIM, railRight = false))
+    private val state = MutableStateFlow(read(CostModel(), scanning = true, followFast = true, us = false, dim = false, level = DimLevel.DIM, railRight = false, alerts = true))
     override val settings: StateFlow<SettingsUi> = state
 
     init {
@@ -330,7 +330,7 @@ class LiveSettingsModel(
         scope.launch { graph.settings.version.collect { refresh() } }
     }
 
-    private fun read(costs: CostModel, scanning: Boolean, followFast: Boolean, us: Boolean, dim: Boolean, level: DimLevel, railRight: Boolean): SettingsUi {
+    private fun read(costs: CostModel, scanning: Boolean, followFast: Boolean, us: Boolean, dim: Boolean, level: DimLevel, railRight: Boolean, alerts: Boolean): SettingsUi {
         val g = graph.permissions.grants()
         return SettingsUi(
             feePerSide = costs.feePerSide, extraMajors = costs.extraMajors, extraOthers = costs.extraOthers,
@@ -339,7 +339,7 @@ class LiveSettingsModel(
             version = BuildConfig.VERSION_NAME,
             dataNote = "Everything Signal Lab records stays on this phone, unless you turn on sync (it then also goes to a hidden folder in your " +
                 "own Google Drive) or share it to Claude from the Analyst. It downloads prices from Binance and sends nothing about you anywhere else.",
-            dimScreen = dim, dimLevel = level, railOnRight = railRight,
+            dimScreen = dim, dimLevel = level, railOnRight = railRight, alertNotifications = alerts,
         )
     }
 
@@ -352,7 +352,13 @@ class LiveSettingsModel(
             s.getBoolean(SettingsStore.DIM_SCREEN, false),
             s.get(SettingsStore.DIM_LEVEL)?.let { name -> DimLevel.entries.firstOrNull { it.name == name } } ?: DimLevel.DIM,
             s.getBoolean(SettingsStore.RAIL_ON_RIGHT, false),
+            s.getBoolean(SettingsStore.ALERT_NOTIFICATIONS, true),
         )
+    }
+
+    override suspend fun setAlertNotifications(on: Boolean) {
+        graph.settings.setBoolean(SettingsStore.ALERT_NOTIFICATIONS, on)
+        refresh()
     }
 
     override suspend fun setRailOnRight(on: Boolean) {

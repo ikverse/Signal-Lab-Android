@@ -920,6 +920,17 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_UPRIGHT)
     @Test
+    fun `the alert notifications switch starts on and turns them off and on again`() {
+        val app = FakeApp.full()
+        openSettings(app)
+        rule.onNodeWithContentDescription("Alert notifications, on").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Alert notifications, off").performScrollTo().performClick()
+        rule.waitUntil(3_000) { app.settings.log.size == 2 }
+        assertEquals(listOf("alert notifications false", "alert notifications true"), app.settings.log)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
     fun `the permissions panel shows what Android allows and each button opens its own screen`() {
         val app = FakeApp.full()
         openSettings(app)

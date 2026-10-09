@@ -230,6 +230,20 @@ class NotifierTest {
     }
 
     @Test
+    fun withTheAlertSwitchOffAlertsPostNothingButTheTestAndResumePromptStillShow() = runTest {
+        var on = false
+        val n = Notifier(context, alertsOn = { on }).also { it.createChannels() }
+        n.deliver(listOf(alert(31, AlertText.KIND_SIGNAL, "SOLUSDT", "1h"), alert(32, AlertText.KIND_PROBLEM, null, null)))
+        assertEquals(0, shadowOf(manager).allNotifications.size)
+        assertTrue(n.postTest())
+        assertTrue(n.postResume())
+        assertEquals(2, shadowOf(manager).allNotifications.size)
+        on = true
+        n.deliver(listOf(alert(33, AlertText.KIND_SIGNAL, "SOLUSDT", "1h")))
+        assertEquals(3, shadowOf(manager).allNotifications.size, "switching it back on brings notifications back")
+    }
+
+    @Test
     fun theTestAlertAndTheResumePromptUseTheRealChannels() {
         val n = Notifier(context).also { it.createChannels() }
         assertTrue(n.postTest())

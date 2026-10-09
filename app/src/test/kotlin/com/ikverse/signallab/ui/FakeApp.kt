@@ -235,6 +235,11 @@ class FakeSettings(initial: SettingsUi = defaultSettings()) : SettingsModel {
         state.value = state.value.copy(railOnRight = on)
     }
 
+    override suspend fun setAlertNotifications(on: Boolean) {
+        log += "alert notifications $on"
+        state.value = state.value.copy(alertNotifications = on)
+    }
+
     val updateState = MutableStateFlow(UpdateUi())
     override val update: StateFlow<UpdateUi> = updateState
 
