@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Lab: privacy policy</title>
+<style>
+  :root { color-scheme: dark light; --bg: #0b0b0c; --text: #e8e8ea; --muted: #a0a0a8; --line: #26262b; --link: #7cb7ff; }
+  @media (prefers-color-scheme: light) { :root { --bg: #fafafa; --text: #1a1a1c; --muted: #5c5c66; --line: #dcdce2; --link: #1a5fb4; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 42rem; margin: 0 auto; padding: 2rem 16px 4rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.1rem; margin: 2rem 0 .4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+  p, li { margin: .4rem 0; }
+  .muted { color: var(--muted); }
+  a { color: var(--link); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Signal Lab</h1>
+  <p class="muted">Privacy policy. Last updated 9 October 2026.</p>
+
+  <p>Signal Lab is an Android app that watches the coins in your watchlists, turns every signal into a paper trade, and keeps a
+  scorecard of whether those signals beat random entries after costs. It is a research tool, not financial advice, and no real money
+  is ever traded. The app is open source: <a href="https://github.com/ikverse/Signal-Lab-Android">github.com/ikverse/Signal-Lab-Android</a>.</p>
+
+  <h2>What stays on your device</h2>
+  <p>Your watchlists, paper trades, alerts, lab patterns, reports and settings are stored on your device. The app has no server of its
+  own and no account system. It has no analytics, no advertising and no tracking, and nothing about you is sold or shared with anyone.</p>
+
+  <h2>What the app contacts</h2>
+  <ul>
+    <li><strong>Binance</strong>, for public market prices. Only the coin and chart you are watching are requested; nothing about you is sent.</li>
+    <li><strong>GitHub</strong>, to check for a newer version of the app and, when you ask, to download it.</li>
+    <li><strong>The Claude app</strong>, only when you tap Share in the Analyst. What you share goes to the app you choose, not to us.</li>
+  </ul>
+
+  <h2>Sync between your devices (optional, off until you turn it on)</h2>
+  <p>If you turn on sync in Settings, you sign in with your Google account and Signal Lab keeps your paper trades, watchlists, lab
+  patterns, reports and costs the same on every device signed in to that account.</p>
+  <ul>
+    <li>The records are stored in a hidden folder in <em>your own</em> Google Drive that only Signal Lab can see. The app asks for a single permission, <code>drive.appdata</code>, and cannot see, read or change any other file in your Drive.</li>
+    <li>The records are sent between your devices and your Drive only. They do not pass through any server run by us, and we never receive them.</li>
+    <li>The app uses your Google account only to reach that folder. It does not read your name, email, contacts or anything else in your account beyond the address Settings shows you.</li>
+  </ul>
+  <p>Signal Lab's use and transfer of information received from Google APIs adheres to the
+  <a href="https://developers.google.com/terms/api-services-user-data-policy#limited-use">Google API Services User Data Policy</a>,
+  including the Limited Use requirements.</p>
+
+  <h2>Deleting your data</h2>
+  <ul>
+    <li><strong>On a device:</strong> uninstall the app, or clear its data in Android's app settings.</li>
+    <li><strong>In Google Drive:</strong> turn sync off in Signal Lab's Settings, then open your Google Account, go to Data &amp; privacy, then Third-party apps &amp; services, choose Signal Lab, and remove its access. In Google Drive, open Settings, then Manage apps, and delete Signal Lab's hidden app data.</li>
+  </ul>
+
+  <h2>Changes and contact</h2>
+  <p>If this policy changes, this page is updated and the date above changes. Questions can be raised as an issue at
+  <a href="https://github.com/ikverse/Signal-Lab-Android/issues">github.com/ikverse/Signal-Lab-Android/issues</a>.</p>
+</main>
+</body>
+</html>
