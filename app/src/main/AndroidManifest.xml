@@ -26,7 +26,9 @@
     <application
         android:name=".SignalLabApplication"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="Signal Lab"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SignalLab">
         <activity
