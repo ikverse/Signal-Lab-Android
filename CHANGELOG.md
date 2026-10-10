@@ -3,6 +3,11 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 1.6.0 - 2026-10-10
+
+- The bottom tab that leads to Trades, Ask Claude, Alerts, Learn and My coin lists is now called More, and the page with fees, scanning, the screen, sync and updates is now called Settings. Their icons are swapped to match.
+- The version line is no longer at the bottom of More. The version, and the line that Signal Lab is research and not financial advice, are in Settings, About.
+
 ## 1.5.0 - 2026-10-10
 
 - New list is easier to fill in. On a phone the name and charts sit in a short header (the charts are one line until you tap Change) and the coin list gets the rest of the screen, with no scrolling inside a scroll.
