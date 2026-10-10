@@ -3,6 +3,13 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 1.5.0 - 2026-10-10
+
+- New list is easier to fill in. On a phone the name and charts sit in a short header (the charts are one line until you tap Change) and the coin list gets the rest of the screen, with no scrolling inside a scroll.
+- The coins you pick show as chips above the list; touch one to take it off.
+- On a big screen or an unfolded foldable, New list has two panes: the list being made on the left (name, charts, coins) and the coin picker on the right. The divider drags and the left pane can be hidden.
+- On 1-minute charts a list holds up to 10 coins, and the count says so while you pick. The start button now reads "Start watching N coins" and says why it is grey when it is.
+
 ## 1.4.0 - 2026-10-10
 
 - New: a switch in Settings, What Android allows, to turn off alert notifications. Alerts are still saved and show in the Alerts inbox, and scanning carries on. The quiet "watching" notification and the "tap to resume" prompt stay.
