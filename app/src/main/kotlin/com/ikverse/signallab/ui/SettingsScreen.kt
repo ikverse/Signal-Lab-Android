@@ -50,7 +50,7 @@ enum class SettingsSection(val label: String) {
 private val PAGE_TITLE = Dest.Settings.label
 
 /**
- * Fees and app: costs, background scanning, the screen, the data source, what Android has allowed, updates and about, each a raised group
+ * Settings: costs, background scanning, the screen, the data source, what Android has allowed, updates and about, each a raised group
  * with a thin line between its rows and its buttons on a row of their own. Explanations are one line, with the rest an info button away.
  * [onOpenPage] opens a Learn page ("Why these costs?"); [onBack] goes back to where the page was opened from, named [backLabel].
  */
