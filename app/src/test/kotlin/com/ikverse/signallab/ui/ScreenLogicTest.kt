@@ -3,6 +3,8 @@ package com.ikverse.signallab.ui
 import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.ui.unit.sp
 import com.ikverse.signallab.engine.Refusal
+import com.ikverse.signallab.engine.Timeframe
+import com.ikverse.signallab.engine.WatchlistRules
 import com.ikverse.signallab.state.refusalText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +21,30 @@ class ScreenLogicTest {
     private val won = FakeApp.trade(2, net = 0.03)
     private val lost = FakeApp.trade(3, "ETHUSDT", "4h", "trend_ma20_4h", net = -0.01)
     private val all = listOf(open, won, lost)
+
+    @Test
+    fun `the new-list limits are the engine's own, and the 1-minute chart lowers the limit`() {
+        assertEquals(WatchlistRules.MAX_COINS_PER_LIST, MAX_COINS_PER_LIST)
+        assertEquals(WatchlistRules.maxCoinsOn(Timeframe.M1), MAX_COINS_ON_1M)
+        assertEquals(MAX_COINS_PER_LIST, coinLimit(listOf("15m", "1h", "5m")))
+        assertEquals(MAX_COINS_ON_1M, coinLimit(listOf("1m", "1h")))
+    }
+
+    @Test
+    fun `the start button's reason names the first thing missing, or nothing when it can start`() {
+        assertEquals("Choose at least one coin.", startBlocker("My coins", 0, listOf("15m")))
+        assertEquals("Choose at least one chart.", startBlocker("My coins", 3, emptyList()))
+        assertEquals("1-minute charts allow 10 coins: remove 2, or turn 1m off.", startBlocker("My coins", 12, listOf("1m", "1h")))
+        assertEquals("Give the list a name.", startBlocker("  ", 3, listOf("15m")))
+        assertNull(startBlocker("My coins", 10, listOf("1m")))
+        assertNull(startBlocker("My coins", 30, listOf("15m")))
+    }
+
+    @Test
+    fun `the chosen line gives the limit, and says why it is lower on 1-minute charts`() {
+        assertEquals("3 of 30 chosen", chosenLine(3, listOf("15m")))
+        assertEquals("3 of 10 chosen (1-minute charts allow 10)", chosenLine(3, listOf("1m", "15m")))
+    }
 
     @Test
     fun `the status filter keeps exactly the open or the closed trades`() {
