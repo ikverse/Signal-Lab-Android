@@ -18,7 +18,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import com.ikverse.signallab.BuildConfig
 
 /** The icon that stands for a place, in the bars and on More. */
 val Dest.icon: ImageVector
@@ -32,8 +31,8 @@ val Dest.icon: ImageVector
         Dest.Alerts -> Glyphs.Bell
         Dest.Learn -> Glyphs.Learn
         Dest.Lists -> Glyphs.Lists
-        Dest.Settings -> Glyphs.More
-        Dest.More -> Glyphs.Settings
+        Dest.Settings -> Glyphs.Settings
+        Dest.More -> Glyphs.More
     }
 
 /** What a place behind More is for, in a line. */
@@ -54,7 +53,7 @@ private fun blurb(d: Dest): String = when (d) {
 @Composable
 fun MoreScreen(nav: NavState, modifier: Modifier = Modifier, onShowIntro: () -> Unit = {}) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("more")) {
-        ScreenTitle("Settings")
+        ScreenTitle("More")
         for (d in MorePlaces) {
             TouchRow({ nav.go(d) }, minHeight = 72.dp, modifier = Modifier.testTag("nav-${d.name}")) {
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Palette.Raised), contentAlignment = Alignment.Center) {
@@ -73,7 +72,6 @@ fun MoreScreen(nav: NavState, modifier: Modifier = Modifier, onShowIntro: () -> 
             Icon(Glyphs.ChevronRight, contentDescription = null, tint = Palette.Faint, modifier = Modifier.size(18.dp))
         }
         HRule()
-        Text("Signal Lab ${BuildConfig.VERSION_NAME} · research, not financial advice", style = Type.Small, modifier = Modifier.padding(16.dp))
         EndSpace()
     }
 }

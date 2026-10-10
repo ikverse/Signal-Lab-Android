@@ -11,7 +11,7 @@ import androidx.compose.runtime.setValue
 /** Where in the app the user is. Ten places, and More, the page that leads to the five used least. */
 enum class Dest(val label: String) {
     Today("Today"), Markets("Coins"), Trades("All trades"), Scorecard("Does it work?"), Lab("Lab"), Analyst("Ask Claude"), Alerts("Alerts"), Learn("Learn"),
-    Lists("My coin lists"), Settings("Fees and app"), More("Settings"),
+    Lists("My coin lists"), Settings("Settings"), More("More"),
 }
 
 /** The places in the bar along the bottom (and the side bar): the four used most, then More. */
