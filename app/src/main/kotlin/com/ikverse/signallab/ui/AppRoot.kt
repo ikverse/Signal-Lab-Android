@@ -104,7 +104,7 @@ private fun Frame(model: AppModel, debug: Boolean, layout: LayoutClass, nav: Nav
 
     when {
         !loaded -> Column(Modifier.fillMaxSize().testTag("loading")) {}
-        lists.isEmpty() -> SetupScreen(model.lists)
+        lists.isEmpty() -> SetupScreen(model.lists, model.panels, wide = layout != LayoutClass.Compact)
         nav.showDebug && debug && model.debug != null -> DebugScreen(model.debug!!, onBack = { nav.showDebug = false })
         showIntro -> IntroOverlay(
             onDone = { model.panels.save(INTRO_KEY, "seen") },

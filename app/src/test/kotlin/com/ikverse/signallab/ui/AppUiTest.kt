@@ -33,6 +33,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -94,8 +95,6 @@ class AppUiTest {
 
     private fun pick(base: String) {
         rule.waitUntil(3_000) { rule.onAllNodesWithContentDescription("$base, not ticked").fetchSemanticsNodes().isNotEmpty() }
-        // On the first-run page the coin list is part of a page that scrolls: the page is brought to the list first, then the list to the coin.
-        if (exists("setup")) tag("offers").performScrollTo()
         rule.onNodeWithContentDescription("$base, not ticked").performScrollTo().performClick()
         rule.waitForIdle()
     }
@@ -1414,12 +1413,12 @@ class AppUiTest {
     // --- the coin picker's rankings ------------------------------------------------------------------------
 
     private fun chooseSource(s: PickSource) {
-        tag("source-${s.name}").performScrollTo().performClick()
+        tag("source-${s.name}").performClick()
         rule.waitForIdle()
     }
 
     private fun chooseWindow(w: PickWindow) {
-        tag("window-${w.name}").performScrollTo().performClick()
+        tag("window-${w.name}").performClick()
         rule.waitForIdle()
     }
 
@@ -1496,7 +1495,7 @@ class AppUiTest {
         rule.waitUntil(3_000) { exists("listing-failed") }
         assertTrue(!exists("listing-progress"))
         rule.onNodeWithText("Could not check every listing date: Could not reach Binance").assertExists()
-        rule.onNodeWithText("Try again").performScrollTo().performClick()
+        rule.onNodeWithText("Try again").performClick()
         assertEquals(2, app.lists.listingChecks)
         chooseSource(PickSource.VOLUME)
         assertTrue(!exists("listing-failed"))
@@ -1528,13 +1527,122 @@ class AppUiTest {
 
     @Config(qualifiers = PHONE_SIDEWAYS)
     @Test
-    fun `on a small phone held sideways the first-run page scrolls and the coin list still gets a usable height`() {
+    fun `on a small phone held sideways the coin pane scrolls to a usable coin list and the start button stays in view`() {
         val app = FakeApp()
         show(app)
         rule.waitUntil(3_000) { exists("offers") }
         tag("offers").performScrollTo()
         assertTrue(heightOf("offers").value > 100f)
         tag("start").assertIsDisplayed()
+    }
+
+    // --- the new-list screen: one column on a phone, two panes on a wide screen ---------------------------------
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `on a phone the charts are one line until Change opens them, and the coin list has the rest of the screen`() {
+        show(FakeApp())
+        rule.waitUntil(3_000) { exists("offers") }
+        tag("chart-summary").assertTextEquals("Charts: 15m · 1h · 4h")
+        assertTrue(!exists("pane-list"))
+        assertTrue("the charts are folded", rule.onAllNodesWithContentDescription("1d, not ticked").fetchSemanticsNodes().isEmpty())
+        assertTrue(heightOf("offers").value > 100f)
+        click("charts-toggle")
+        rule.onNodeWithContentDescription("1d, not ticked").assertExists()
+        rule.onNodeWithContentDescription("1d, not ticked").performClick()
+        click("charts-toggle")
+        tag("chart-summary").assertTextEquals("Charts: 15m · 1h · 4h · 1d")
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `a picked coin shows as a chip, and touching the chip takes it off the list`() {
+        val app = FakeApp()
+        show(app)
+        assertTrue(!exists("picked"))
+        pick("BTC")
+        assertTrue(exists("picked"))
+        tag("start").assertTextContains("1 coin", substring = true)
+        rule.onNodeWithContentDescription("Remove BTC").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("picked"))
+        tag("start").assertTextContains("0 coins", substring = true)
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `the start button says why it is grey`() {
+        show(FakeApp())
+        rule.waitUntil(3_000) { exists("offers") }
+        tag("start-blocker").assertTextEquals("Choose at least one coin.")
+        pick("BTC")
+        assertTrue(!exists("start-blocker"))
+        click("charts-toggle")
+        for (c in listOf("15m", "1h", "4h")) rule.onNodeWithContentDescription("$c, ticked").performClick()
+        tag("start-blocker").assertTextEquals("Choose at least one chart.")
+    }
+
+    @Config(qualifiers = PHONE_UPRIGHT)
+    @Test
+    fun `one-minute charts allow ten coins, the count says so, an eleventh is not ticked, and turning 1m on over ten holds the start button`() {
+        val coins = (1..12).map { OfferUi("C${it}USDT", "C$it", 1e9 - it) }
+        val app = FakeApp()
+        app.lists.offered = coins
+        show(app)
+        rule.waitUntil(3_000) { appears("C1, not ticked") }
+        for (i in 1..11) {
+            tag("offers").performScrollToIndex(i - 1)
+            pick("C$i")
+        }
+        tag("chosen-count").assertTextEquals("11 of 30 chosen")
+        click("charts-toggle")
+        rule.onNodeWithContentDescription("1m, not ticked").performClick()
+        tag("chosen-count").assertTextEquals("11 of 10 chosen (1-minute charts allow 10)")
+        tag("start-blocker").assertTextContains("remove 1", substring = true)
+        tag("picked").performScrollToIndex(10)
+        rule.onNodeWithContentDescription("Remove C11").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("start-blocker"))
+        tag("chosen-count").assertTextEquals("10 of 10 chosen (1-minute charts allow 10)")
+        tag("offers").performScrollToIndex(10)
+        rule.onNodeWithContentDescription("C11, not ticked").performClick()
+        rule.waitForIdle()
+        tag("chosen-count").assertTextEquals("10 of 10 chosen (1-minute charts allow 10)")
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `on a wide screen the new list is on the left and the coin picker on the right, and ticking and removing show on both sides`() {
+        val app = FakeApp()
+        show(app)
+        rule.waitUntil(3_000) { exists("offers") }
+        assertTrue(exists("split-setup"))
+        assertTrue(exists("pane-list"))
+        assertTrue("the charts are open, with what each is for", rule.onAllNodesWithContentDescription("1d, not ticked").fetchSemanticsNodes().isNotEmpty())
+        assertTrue(!exists("chart-summary"))
+        pick("SOL")
+        rule.onNodeWithContentDescription("Remove SOL").assertExists()
+        tag("start").assertTextContains("1 coin", substring = true)
+        rule.onNodeWithContentDescription("Remove SOL").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("SOL, not ticked").assertExists()
+        tag("start").assertTextContains("0 coins", substring = true)
+    }
+
+    @Config(qualifiers = TABLET)
+    @Test
+    fun `on a wide screen the start button stays when the left pane is hidden`() {
+        val app = FakeApp()
+        show(app)
+        rule.waitUntil(3_000) { exists("offers") }
+        pick("BTC")
+        rule.onNodeWithContentDescription("Hide your list").performClick()
+        rule.waitForIdle()
+        assertTrue(!exists("pane-list"))
+        tag("start").assertIsDisplayed()
+        click("start")
+        rule.waitUntil(3_000) { app.lists.log.any { it.startsWith("create") } }
+        assertEquals("create My coins BTCUSDT 15m,1h,4h true", app.lists.log.single { it.startsWith("create") })
     }
 
     // --- resizable panes on Lists and Learn ---------------------------------------------------------------------

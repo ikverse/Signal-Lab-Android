@@ -95,7 +95,7 @@ fun ListsScreen(
     }
     if (creating) {
         SetupScreen(
-            model, modifier, title = "New list", intro = false, onDone = { creating = false }, onCancel = { creating = false },
+            model, panels, wide, modifier, title = "New list", intro = false, onDone = { creating = false }, onCancel = { creating = false },
             defaultName = freeListName(lists.map { it.name }), backLabel = PAGE_TITLE,
         )
         return
