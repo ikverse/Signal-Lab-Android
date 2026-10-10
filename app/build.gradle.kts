@@ -4,7 +4,7 @@ plugins {
 }
 
 // One place decides the version; the code is derived from it so the two can never disagree.
-val appVersionName = "1.4.0"
+val appVersionName = "1.5.0"
 val appVersionCode = appVersionName.split(".").let { (major, minor, patch) ->
     major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
 }
