@@ -3,6 +3,20 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 1.7.0 - 2026-10-12
+
+- New: Settings, Backup. Save the whole record (paper trades, lists, lab patterns, reports and costs) to a file wherever you choose, and restore from one. No account is needed, and restoring only adds what this phone does not have.
+- New: Today shows when the coins were last checked and when the next check is, with a "Check now" button.
+- The picker's gainers and losers now refresh every five minutes, and use far less data than before.
+- Scanning now measures Binance's clock before every pass and waits until it has, so a half-finished candle can no longer be stored as complete.
+- A list switched on from another device keeps to the chart limits when it is edited there, not only when it first arrives.
+- A chart with nothing stored says "No candles yet" instead of "Loading…", and adding a coin under "Coins you might add" says why when it is refused.
+- Screens stay blank until their first read instead of flashing "nothing here".
+- TalkBack announces rows as buttons, and an alert that leads nowhere is no longer tappable on a phone.
+- "Forward-testing as lab N" opens that test in the Lab.
+- A trade left open through a long sleep now closes on its real exit.
+- Smaller fixes: the permission dialogs use the app's colours, three sentences now say what the app does, and a few crash, thread and security edge cases are closed.
+
 ## 1.6.0 - 2026-10-10
 
 - The bottom tab that leads to Trades, Ask Claude, Alerts, Learn and My coin lists is now called More, and the page with fees, scanning, the screen, sync and updates is now called Settings. Their icons are swapped to match.
