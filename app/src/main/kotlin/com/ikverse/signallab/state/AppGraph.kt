@@ -47,6 +47,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.ikverse.signallab.sync.SyncEngine
+import org.json.JSONObject
 
 /**
  * Everything the data layer is made of, built once by the application. It is the only place that
@@ -111,13 +115,28 @@ class AppGraph(context: Context, scope: CoroutineScope) {
         },
     )
 
+    /** The record as another device, or a backup file, reads and merges it. */
+    val recordSync = RecordSync(recordDb)
+
     /** Keeps the record in step with the user's other devices through a hidden folder in their Google Drive, once they turn it on. */
     val deviceSync = DeviceSync(
         settings, GoogleAuthorizer(context),
         folder = { token -> DriveFolder(BinanceClient.defaultHttp(), token) },
-        record = RecordSync(recordDb), memory = SettingsSyncMemory(settings),
+        record = recordSync, memory = SettingsSyncMemory(settings),
         afterMerge = ::afterMerge,
     )
+
+    /** The whole record as one gzipped file: the same form sync sends, so a backup can be restored here or merged by another device. */
+    suspend fun backupBytes(): ByteArray = withContext(Dispatchers.IO) {
+        SyncEngine.gzip(recordSync.export(BACKUP_DEVICE, System.currentTimeMillis()).toString())
+    }
+
+    /** Merges a backup file into the record by sync's rules (nothing here is overwritten), and tells the screens what came in. */
+    suspend fun restoreBackup(bytes: ByteArray): MergeResult {
+        val merged = withContext(Dispatchers.IO) { recordSync.merge(JSONObject(SyncEngine.gunzip(bytes))) }
+        if (merged.any) afterMerge(merged)
+        return merged
+    }
 
     /** A merge wrote straight to the database: tell each store whose rows changed, so its screens read again. */
     private suspend fun afterMerge(r: MergeResult) {
@@ -199,5 +218,8 @@ class AppGraph(context: Context, scope: CoroutineScope) {
     companion object {
         private const val LAST_TIDY = "last_tidy"
         private const val DAY_MS = 86_400_000L
+
+        /** The device name written into a backup file, so one merged by another phone's sync is not mistaken for that phone's own. */
+        const val BACKUP_DEVICE = "backup"
     }
 }

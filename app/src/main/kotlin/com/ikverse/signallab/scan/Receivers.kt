@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.ikverse.signallab.SignalLabApplication
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,6 +34,11 @@ private fun wake(context: Context, pending: BroadcastReceiver.PendingResult?) {
         try {
             // Reading the lists and the setting takes a moment, so a service is only started if it has work.
             if (app.graph.scanWanted()) ScanService.start(context.applicationContext)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A read that failed must not take the process down with it; the next alarm tries again.
+            app.graph.health.problem("wake-up failed: ${e.message ?: e.javaClass.simpleName}")
         } finally {
             pending?.finish()
         }

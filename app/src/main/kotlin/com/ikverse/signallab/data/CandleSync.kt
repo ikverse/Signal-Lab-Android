@@ -3,6 +3,9 @@ package com.ikverse.signallab.data
 import com.ikverse.signallab.data.binance.Kline
 import com.ikverse.signallab.data.binance.MarketData
 import com.ikverse.signallab.engine.Timeframe
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 class SyncResult(
     /** Candles newly stored. */
@@ -28,8 +31,13 @@ class SyncResult(
  * Only closed candles are stored, judged by Binance's clock.
  */
 class CandleSync(private val market: MarketData, private val store: CandleStore) {
+    /** One lock per coin and chart: the history download and a scan can both ask for the same series, and the second must wait, not repeat. */
+    private val locks = ConcurrentHashMap<Pair<String, Timeframe>, Mutex>()
 
-    suspend fun syncCoin(symbol: String, tf: Timeframe, since: Long): SyncResult {
+    suspend fun syncCoin(symbol: String, tf: Timeframe, since: Long): SyncResult =
+        locks.getOrPut(symbol to tf) { Mutex() }.withLock { syncLocked(symbol, tf, since) }
+
+    private suspend fun syncLocked(symbol: String, tf: Timeframe, since: Long): SyncResult {
         var inserted = 0
         var healed = 0
         val now = market.nowMs()

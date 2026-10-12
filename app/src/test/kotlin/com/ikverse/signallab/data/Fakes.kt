@@ -24,7 +24,16 @@ class FakeMarket(var now: Long) : MarketData {
 
     override fun nowMs() = now
 
-    override suspend fun serverTime() = now
+    /** How often the clock was asked for, and whether the fake says it has ever been measured. */
+    var serverTimeCalls = 0
+    var clockKnown = true
+
+    override suspend fun serverTime(): Long {
+        serverTimeCalls++
+        return now
+    }
+
+    override fun clockSynced(): Boolean = clockKnown
 
     override suspend fun spotSymbols(): List<SpotSymbol> {
         symbolCalls++

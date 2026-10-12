@@ -137,6 +137,11 @@ fun MarketsScreen(
     listsModel: ListsModel? = null,
 ) {
     val coins by markets.coins.collectAsStateWithLifecycle()
+    val loaded by markets.loaded.collectAsStateWithLifecycle()
+    if (!loaded) {
+        Column(modifier.fillMaxSize().testTag("markets-loading")) {}
+        return
+    }
     val prices by markets.prices.collectAsStateWithLifecycle()
     val changes by markets.changes.collectAsStateWithLifecycle()
     val allTrades by trades.trades.collectAsStateWithLifecycle()
@@ -476,15 +481,22 @@ private fun AddCoins(model: ListsModel?, lists: List<ListUi>, have: List<CoinUi>
     val scope = rememberCoroutineScope()
     val offers by produceState<List<OfferUi>>(emptyList(), have.size) { value = model.offers("", PickSource.VOLUME).coins }
     val fresh = offers.filter { o -> have.none { it.symbol == o.symbol } }.take(ADD_SHOWN)
+    // Why the last add was refused (the list is full, or a cap would be passed), until an add goes through.
+    var problem by remember { mutableStateOf<String?>(null) }
     if (fresh.isEmpty()) return
+    val add = { symbol: String ->
+        scope.launch { problem = (model.addCoin(target.id, symbol) as? Outcome.Refused)?.message }
+        Unit
+    }
     SectionLabel("Coins you might add")
+    problem?.let { ProblemState(it) }
     for (o in fresh) {
-        TouchRow({ scope.launch { model.addCoin(target.id, o.symbol) } }, modifier = Modifier.testTag("add-${o.symbol}")) {
+        TouchRow({ add(o.symbol) }, modifier = Modifier.testTag("add-${o.symbol}")) {
             Column(Modifier.weight(1f)) {
                 Text(o.base, style = Type.Heading)
                 Text("Among the most traded today: ${Fmt.compact(o.quoteVolume)} USDT in 24 hours", style = Type.Small)
             }
-            TonalButton("Add", { scope.launch { model.addCoin(target.id, o.symbol) } }, Modifier.testTag("add-button-${o.symbol}"))
+            TonalButton("Add", { add(o.symbol) }, Modifier.testTag("add-button-${o.symbol}"))
         }
         HRule()
     }

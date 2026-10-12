@@ -155,6 +155,23 @@ class PickerSourcesTest {
     }
 
     @Test
+    fun theDaysFiguresCanBeRefreshedWithoutDownloadingThePairListAgain() = runTest {
+        val m = market()
+        val u = repo(m).also { it.refreshIfStale() }
+        assertEquals(1, m.symbolCalls)
+        assertFalse(u.refreshTickersIfStale(), "a full refresh counts as a ticker refresh")
+        m.tickers = m.tickers.map { if (it.symbol == "AAAUSDT") it.copy(lastPrice = 150.0, quoteVolume = 9e6, trades = 4_321) else it }
+        m.now += DataConfig.PICKER_REFRESH_MS + 1
+        assertTrue(u.refreshTickersIfStale())
+        assertEquals(1, m.symbolCalls, "the pair list was not asked for")
+        val aaa = u.offers("", PickerSource.GAINERS).first { it.coin.base == "AAA" }
+        assertEquals(0.5, aaa.value!!, 1e-9)
+        assertEquals(9e6, aaa.coin.quoteVolume, 1e-9)
+        assertEquals(4_321L, aaa.coin.trades24)
+        assertFalse(u.refreshTickersIfStale(), "not again within the age")
+    }
+
+    @Test
     fun aTickerThatSaysNothingOfTheOpeningPriceIsNeitherAGainerNorALoser() = runTest {
         val m = FakeMarket(now).also {
             it.symbols = listOf(SpotSymbol("ZZZUSDT", "ZZZ", "USDT", "TRADING"))

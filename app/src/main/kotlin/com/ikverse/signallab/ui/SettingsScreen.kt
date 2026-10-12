@@ -42,7 +42,7 @@ fun percentInput(fraction: Double): String = "%.4f".format(java.util.Locale.ROOT
 
 /** The groups of Settings, in order. With room for two panels they are listed on the left and the chosen one is shown on the right. */
 enum class SettingsSection(val label: String) {
-    Costs("Costs"), Scanning("Scanning"), Screen("Screen"), DataSource("Data source"), Sync("Sync"), Android("What Android allows"),
+    Costs("Costs"), Scanning("Scanning"), Screen("Screen"), DataSource("Data source"), Sync("Sync"), Backup("Backup"), Android("What Android allows"),
     Updates("Updates"), About("About"),
 }
 
@@ -69,6 +69,7 @@ fun SettingsScreen(
     val s by model.settings.collectAsStateWithLifecycle()
     val u by model.update.collectAsStateWithLifecycle()
     val sync by model.sync.collectAsStateWithLifecycle()
+    val backup by model.backup.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var fee by remember(s.feePerSide) { mutableStateOf(percentInput(s.feePerSide)) }
     var extraMajors by remember(s.extraMajors) { mutableStateOf(percentInput(s.extraMajors)) }
@@ -160,6 +161,9 @@ fun SettingsScreen(
                     onSyncNow = { scope.launch { model.syncNow() } },
                     onTurnOff = { scope.launch { model.turnOffSync() } },
                 )
+            }
+            SettingsSection.Backup -> Group("Backup", named) {
+                BackupSection(backup, onSave = { model.saveBackup() }, onRestore = { model.restoreBackup() })
             }
             SettingsSection.Android -> Group("What Android allows", named) {
                 SwitchRow(
@@ -334,6 +338,29 @@ private fun SyncSection(s: SyncUi, onSignIn: () -> Unit, onSyncNow: () -> Unit, 
             "Keeps paper trades, lists, lab patterns, reports and costs the same on every device signed in to the same Google account. " +
                 "They go to a hidden folder in your Google Drive that only Signal Lab can see. Alerts, and what belongs to one device (scanning, " +
                 "the screen), stay where they are.",
+            style = Type.Small, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+        )
+    }
+}
+
+/** What the last backup or restore did, in one line. */
+fun backupHeadline(b: BackupUi): String = b.message ?: "Not backed up yet from this screen."
+
+/** Where backup stands, the two buttons on a row of their own, and what the file holds. */
+@Composable
+private fun BackupSection(b: BackupUi, onSave: () -> Unit, onRestore: () -> Unit) {
+    Column(Modifier.testTag("backup")) {
+        Text(
+            backupHeadline(b), style = if (b.problem) Type.Small.copy(color = Palette.Warn) else Type.BodyStrong,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).testTag("backup-status"),
+        )
+        ActionRow {
+            TonalButton("Save a backup", onSave, enabled = !b.busy, modifier = Modifier.testTag("backup-save"))
+            LineButton("Restore from a backup", onRestore, enabled = !b.busy, modifier = Modifier.testTag("backup-restore"))
+        }
+        Text(
+            "One file with every paper trade, list, lab pattern, report and cost setting, saved wherever you choose. Restoring adds what the " +
+                "file has that this phone does not; nothing here is overwritten. The file is the same record sync sends between devices.",
             style = Type.Small, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
         )
     }

@@ -76,8 +76,12 @@ class NavState(
     analystReport: Long? = null,
     chartChoice: Map<Long, Boolean> = emptyMap(),
     tradesTimeframe: String? = null,
+    labOpen: Long? = null,
 ) {
     var dest by mutableStateOf(dest)
+
+    /** A lab test the Lab tab was asked to open; the tab clears it once it has moved there. */
+    var labOpen by mutableStateOf(labOpen)
     var symbol by mutableStateOf(symbol)
     var timeframe by mutableStateOf(timeframe)
     var learnPage by mutableStateOf(learnPage)
@@ -152,6 +156,12 @@ class NavState(
     fun openAnalyst(report: Long?, fromApp: Boolean = false) {
         jump(Dest.Analyst, fromApp)
         analystReport = report
+    }
+
+    /** Opens the Lab on the test numbered [id]. */
+    fun openLab(id: Long, fromApp: Boolean = true) {
+        jump(Dest.Lab, fromApp)
+        labOpen = id
     }
 
     /** Goes to wherever [link] leads. */
@@ -242,6 +252,7 @@ class NavState(
                     "ag" to it.alertsGroup.name, "trail" to it.trail.joinToString(",") { d -> d.name }, "ar" to it.analystReport,
                     "cts" to it.chartChoice.entries.joinToString(",") { (id, on) -> "$id:${if (on) 1 else 0}" },
                     "tt" to it.tradesTimeframe,
+                    "lo" to it.labOpen,
                 )
             },
             restore = {
@@ -253,6 +264,7 @@ class NavState(
                     it["ar"] as Long?,
                     (it["cts"] as String).split(',').filter { s -> s.isNotEmpty() }.associate { s -> s.substringBefore(':').toLong() to (s.substringAfter(':') == "1") },
                     it["tt"] as String?,
+                    it["lo"] as Long?,
                 )
             },
         )

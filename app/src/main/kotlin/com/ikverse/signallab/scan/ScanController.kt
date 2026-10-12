@@ -43,6 +43,7 @@ class ScanController(
     /** Scans every chart in use (or just [only]) whose newest candle has not been handled yet, then sets the next alarm. */
     suspend fun scanDue(only: Collection<Timeframe>? = null) {
         try {
+            if (!syncClock()) return
             settle()
             val inUse = scanner.timeframesInUse().filter { only == null || it in only }
             val due = inUse.filter { !scanner.isUpToDate(it) }
@@ -58,6 +59,7 @@ class ScanController(
     /** Scans every chart in use now, whether or not it is due. Safe to repeat: a scan never opens the same trade twice. */
     suspend fun scanAll() {
         try {
+            if (!syncClock()) return
             settle()
             val inUse = scanner.timeframesInUse()
             coroutineScope { inUse.map { async { run(it) } }.awaitAll() }
@@ -98,6 +100,24 @@ class ScanController(
             alarms.cancel()
             health.armed(null)
         }
+    }
+
+    /**
+     * Measures Binance's clock again before a pass, so a phone whose clock moved, or that had no network when the app started, judges
+     * candles by the exchange's time and not its own. False, with the problem recorded, when the clock has never been measured: a scan
+     * on the phone's clock could store a candle that has not finished.
+     */
+    private suspend fun syncClock(): Boolean {
+        try {
+            market.serverTime()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Offline or refused: the offset measured last time stands, if there was one.
+        }
+        if (market.clockSynced()) return true
+        health.problem(CLOCK_UNKNOWN)
+        return false
     }
 
     /** Gives the exchange a few seconds after a close to publish the candle and the next one's first price. */
@@ -159,6 +179,10 @@ class ScanController(
     private suspend fun watchClock() {
         val skew = skewMs()
         if (kotlin.math.abs(skew) > DataConfig.CLOCK_SKEW_WARN_MS) raise(AlertText.clockSkew(skew))
+    }
+
+    companion object {
+        const val CLOCK_UNKNOWN = "Binance's clock has not been measured yet, so nothing was scanned."
     }
 
     /** Saves a problem and nudges once per cooldown, however many scans find it. */

@@ -268,6 +268,8 @@ class RecordSync(private val db: RecordDatabase) {
             val name = o.getString("name")
             var active = o.getBoolean("active")
             if (local != null) {
+                // The newer copy may have been switched on, or given more coins or faster charts, on a phone with more room than this one.
+                if (active && !canActivate(d, coins.map { it.getString(0) }, Timeframe.parseSet(o.getString("timeframes")), except = local.id)) active = false
                 val free = freeName(d, name, local.id)
                 d.execSQL("UPDATE watchlists SET name=?, name_key=?, active=?, position=?, timeframes=?, updated_at=? WHERE id=?",
                     arrayOf<Any?>(free, free.lowercase(), if (active) 1 else 0, o.getInt("position"), o.getString("timeframes"), updated, local.id))
@@ -295,13 +297,16 @@ class RecordSync(private val db: RecordDatabase) {
         return MergeResult(listsChanged = changed)
     }
 
-    /** Whether switching on a list with these coins and charts keeps the active lists within the caps. */
-    private fun canActivate(d: SQLiteDatabase, coins: List<String>, timeframes: Set<Timeframe>): Boolean {
+    /** Whether switching on a list with these coins and charts keeps the active lists within the caps. [except] is the list itself, when it is already here. */
+    private fun canActivate(d: SQLiteDatabase, coins: List<String>, timeframes: Set<Timeframe>, except: Long? = null): Boolean {
         val active = ArrayList<Watchlist>()
         val coinsBy = HashMap<Long, MutableList<String>>()
         d.rawQuery("SELECT list_id, symbol FROM watchlist_coins", null).use { c -> while (c.moveToNext()) coinsBy.getOrPut(c.getLong(0)) { ArrayList() }.add(c.getString(1)) }
         d.rawQuery("SELECT id, name, active, timeframes FROM watchlists WHERE active=1", null).use { c ->
-            while (c.moveToNext()) active.add(Watchlist(c.getLong(0), c.getString(1), coinsBy[c.getLong(0)] ?: emptyList(), true, Timeframe.parseSet(c.getString(3))))
+            while (c.moveToNext()) {
+                if (c.getLong(0) == except) continue
+                active.add(Watchlist(c.getLong(0), c.getString(1), coinsBy[c.getLong(0)] ?: emptyList(), true, Timeframe.parseSet(c.getString(3))))
+            }
         }
         val draft = Watchlist(0, "", coins, false, timeframes.ifEmpty { Timeframe.LEGACY_DEFAULT })
         return WatchlistRules.checkActivate(active + draft, draft) == null

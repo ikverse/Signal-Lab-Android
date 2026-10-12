@@ -135,6 +135,20 @@ class CandleStoreTest {
     }
 
     @Test
+    fun closesSinceReadsSeveralCoinsInOneGoOldestFirstAndLeavesOutTheUnknown() = runTest {
+        val s = store()
+        s.insertKlines("AUSDT", Timeframe.H1, candlesOf(Timeframe.H1, EPOCH_START, 10, base = 100.0))
+        s.insertKlines("BUSDT", Timeframe.H1, candlesOf(Timeframe.H1, EPOCH_START, 10, base = 200.0))
+        s.insertKlines("AUSDT", Timeframe.H4, candlesOf(Timeframe.H4, EPOCH_START, 3))
+        val got = s.closesSince(Timeframe.H1, listOf("AUSDT", "BUSDT", "NOPEUSDT"), EPOCH_START + 5 * Timeframe.H1.ms)
+        assertEquals(setOf("AUSDT", "BUSDT"), got.keys)
+        assertEquals(5, got.getValue("AUSDT").size)
+        assertEquals(EPOCH_START + 5 * Timeframe.H1.ms, got.getValue("AUSDT").first().time)
+        assertEquals(candlesOf(Timeframe.H1, EPOCH_START, 10, base = 200.0).last().close, got.getValue("BUSDT").last().close)
+        assertTrue(s.closesSince(Timeframe.H1, emptyList(), 0).isEmpty())
+    }
+
+    @Test
     fun theFileSurvivesBeingClosedAndReopened() = runTest {
         val name = "candles-reopen-test.db"
         context.deleteDatabase(name)

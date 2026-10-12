@@ -49,6 +49,9 @@ interface MarketData {
      * called. A candle is closed when its close time is before this, not before the phone's own clock.
      */
     fun nowMs(): Long
+
+    /** True once [serverTime] has succeeded at least once, so [nowMs] is Binance's clock and not the phone's. */
+    fun clockSynced(): Boolean = true
 }
 
 sealed class BinanceException(message: String, cause: Throwable? = null) : Exception(message, cause) {

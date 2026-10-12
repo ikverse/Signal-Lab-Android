@@ -94,8 +94,8 @@ class ScanService : Service() {
      * so a hang can never keep it on for ever) and scans each one as it closes. Starts at most once; ends by itself when no list
      * is watched on such a chart any more.
      */
-    private fun ensureFastLoop() {
-        if (fastJob?.isActive == true) return
+    private fun ensureFastLoop() = synchronized(this) {
+        if (fastJob?.isActive == true) return@synchronized
         fastJob = scope.launch {
             if (!graph.settings.getBoolean(com.ikverse.signallab.data.SettingsStore.FOLLOW_FAST_CHARTS, true)) return@launch
             if (graph.scanner.timeframesInUse().none { it.isFast }) return@launch
@@ -117,6 +117,7 @@ class ScanService : Service() {
                 if (lock.isHeld) lock.release()
             }
         }
+        Unit
     }
 
     override fun onDestroy() {

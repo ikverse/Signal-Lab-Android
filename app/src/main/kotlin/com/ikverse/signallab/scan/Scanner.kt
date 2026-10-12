@@ -129,6 +129,13 @@ class Scanner(
         var blocked = false
         val coins = (watched + open.map { it.trade.symbol }).distinct()
         val forming = HashMap<String, Kline>()
+        // A coin with a trade still open is read from before that trade's entry, with room for its random entries, however long ago that
+        // was: a phone asleep for longer than a chart keeps would otherwise never find the trade's exit, and it would stay open for good.
+        val reach = (EngineConfig.randomWindowDays(tf) + 1) * DAY_MS
+        val sinceFor = coins.associateWith { symbol ->
+            val oldest = open.filter { it.trade.symbol == symbol }.minOfOrNull { it.trade.entryTime }
+            if (oldest == null) since else minOf(since, oldest - reach)
+        }
 
         suspend fun download(symbol: String, timeframe: Timeframe, from: Long): Kline? {
             if (blocked) return null
@@ -149,12 +156,12 @@ class Scanner(
         download(DataConfig.REGIME_COIN, Timeframe.D1, regimeSince)
         for (symbol in coins) {
             if (only != null && symbol !in only) continue
-            download(symbol, tf, since)?.let { forming[symbol] = it }
+            download(symbol, tf, sinceFor.getValue(symbol))?.let { forming[symbol] = it }
         }
         if (blocked) for (symbol in coins) failures.putIfAbsent(symbol, "blocked")
 
         val windows = HashMap<String, Candles>()
-        for (symbol in coins) candles.window(symbol, tf, since)?.let { windows[symbol] = it }
+        for (symbol in coins) candles.window(symbol, tf, sinceFor.getValue(symbol))?.let { windows[symbol] = it }
         val btc = candles.window(DataConfig.REGIME_COIN, Timeframe.D1, regimeSince)
         val regimeOk = LiveScan.regimeIsCurrent(btc, now)
 

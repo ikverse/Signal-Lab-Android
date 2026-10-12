@@ -6,7 +6,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.StateFlow
 
@@ -43,7 +42,7 @@ interface PermissionPrompts {
 @Composable
 fun PermissionDialogs(prompts: PermissionPrompts) {
     val prompt = prompts.pending.collectAsStateWithLifecycle().value ?: return
-    MaterialTheme(colorScheme = darkColorScheme(surface = Color(0xFF131722), onSurface = Color(0xFFD1D4DC), primary = Palette.Accent)) {
+    MaterialTheme(colorScheme = darkColorScheme(surface = Palette.Raised, onSurface = Palette.Text, onSurfaceVariant = Palette.Text, primary = Palette.Accent)) {
         AlertDialog(
             onDismissRequest = { prompts.decline(prompt) },
             title = { Text(prompt.title) },

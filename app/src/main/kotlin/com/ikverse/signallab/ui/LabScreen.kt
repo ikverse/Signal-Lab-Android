@@ -104,6 +104,9 @@ fun LabScreen(
     onOpenLearn: (String) -> Unit,
     onShowTrade: (TradeUi) -> Unit,
     modifier: Modifier = Modifier,
+    /** A test another screen asked to open; [onOpened] is called once the Lab has moved there. */
+    openTest: Long? = null,
+    onOpened: () -> Unit = {},
 ) {
     val tests by analyst.lab.collectAsStateWithLifecycle()
     val budget by analyst.budget.collectAsStateWithLifecycle()
@@ -124,6 +127,13 @@ fun LabScreen(
     val split = wide && (view == LabView.Home || width >= scaledWithText(MIN_TESTS_DP.dp) + scaledWithText(MIN_IDEA_DP.dp) + PaneMath.DIVIDER.dp)
 
     BackHandler(enabled = !split && view != LabView.Home) { setView(LabView.Home) }
+    // Asked from outside (Ask Claude's "Forward-testing as lab N"): move there once, then forget the request.
+    LaunchedEffect(openTest) {
+        if (openTest != null) {
+            setView(LabView.Test(openTest))
+            onOpened()
+        }
+    }
     // A test that no longer exists (the record was cleared) is not shown.
     if (view is LabView.Test && tests.none { it.id == view.id }) {
         LaunchedEffect(view) { setView(LabView.Home) }

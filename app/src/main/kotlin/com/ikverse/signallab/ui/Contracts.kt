@@ -162,6 +162,9 @@ data class SettingsUi(
     val alertNotifications: Boolean = true,
 )
 
+/** Backup to a file and restore from one, for its group in Settings. [message] is the last outcome in words; null before anything was done. */
+data class BackupUi(val busy: Boolean = false, val message: String? = null, val problem: Boolean = false)
+
 /** Sync between devices, for its group in Settings. */
 data class SyncUi(
     val enabled: Boolean = false,
@@ -209,7 +212,7 @@ interface ListsModel {
 
     /**
      * The coins the picker offers for [query], ranked by [source] (plain volume lists the biggest first; [window] matters only to
-     * gainers and losers). The day's figures are refreshed first if they are over five minutes old.
+     * gainers and losers). The pair list is refreshed first if it is over a day old, and the day's figures if they are over five minutes old.
      */
     suspend fun offers(query: String, source: PickSource = PickSource.VOLUME, window: PickWindow = PickWindow.H24): OffersUi
 
@@ -234,28 +237,60 @@ interface ListsModel {
 interface MarketsModel {
     val coins: StateFlow<List<CoinUi>>
 
+    /** False until the first read of [coins] finishes, so an empty list is not mistaken for nothing being watched. */
+    val loaded: StateFlow<Boolean>
+
     /** The live price of every coin the stream is quoting. */
     val prices: StateFlow<Map<String, Double>>
 
     /** Goes up when stored candles or trades change, so the chart reloads. */
     val changes: StateFlow<Long>
 
+    /** The stored candles of one chart with the open trades' levels; empty when nothing is stored. Null is reserved for "not answered yet". */
     suspend fun chart(symbol: String, timeframe: String): ChartUi?
 
     /** Asks for live prices of [symbols] until the handle is closed (the stream only runs while a screen wants it). */
     fun watchPrices(symbols: Set<String>): AutoCloseable
 }
 
+/**
+ * What background scanning has been doing, for Today. [on] is false when nothing is armed or running (scanning switched off, or nothing
+ * watched). Times are on the exchange's clock, which the phone's differs from by seconds at most.
+ */
+data class ScanStatusUi(
+    val on: Boolean = false,
+    val lastCheckedAt: Long? = null,
+    val nextCheckAt: Long? = null,
+    val checking: Boolean = false,
+    val problem: String? = null,
+)
+
+interface ScanModel {
+    val status: StateFlow<ScanStatusUi>
+
+    /** Scans every chart in use now, as the alarm would. Does nothing while a check is already running. */
+    fun checkNow()
+}
+
 interface TradesModel {
     val trades: StateFlow<List<TradeUi>>
+
+    /** False until the first read of [trades] finishes. */
+    val loaded: StateFlow<Boolean>
 }
 
 interface ScorecardModel {
     val scorecard: StateFlow<ScorecardUi>
+
+    /** False until the first read behind [scorecard] finishes. */
+    val loaded: StateFlow<Boolean>
 }
 
 interface AlertsModel {
     val alerts: StateFlow<List<AlertUi>>
+
+    /** False until the first read of [alerts] finishes. */
+    val loaded: StateFlow<Boolean>
 }
 
 /** A question the Analyst offers. [needsTrade] means a closed trade is picked for it first. */
@@ -390,6 +425,14 @@ interface SettingsModel {
 
     /** Stops syncing from this device; nothing is deleted here or in Drive. */
     suspend fun turnOffSync()
+
+    val backup: StateFlow<BackupUi>
+
+    /** Asks where to save one file holding the whole record. */
+    fun saveBackup()
+
+    /** Asks for a backup file and merges it in; nothing already here is overwritten. */
+    fun restoreBackup()
 }
 
 /** Where a [Link] leads. */
@@ -464,6 +507,7 @@ interface PanelPrefs {
 interface AppModel {
     val lists: ListsModel
     val markets: MarketsModel
+    val scan: ScanModel
     val trades: TradesModel
     val scorecard: ScorecardModel
     val alerts: AlertsModel

@@ -42,7 +42,7 @@ private fun blurb(d: Dest): String = when (d) {
     Dest.Alerts -> "Every practice trade started or finished, and warnings"
     Dest.Learn -> "Plain explanations of how everything works"
     Dest.Lists -> "Which coins and chart sizes to watch"
-    Dest.Settings -> "Fees, scanning, the screen, updates and backup"
+    Dest.Settings -> "Fees, scanning, the screen, sync, backup and updates"
     else -> ""
 }
 

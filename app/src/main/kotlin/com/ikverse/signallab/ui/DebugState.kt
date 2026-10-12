@@ -3,8 +3,8 @@ package com.ikverse.signallab.ui
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * What the temporary debug screen may see and do. It exists to show the data layer working on a
- * real phone before the real screens arrive in M5, and only debug builds show it.
+ * What the debug screen may see and do: a readout of the data layer on a real phone, and a few shortcuts. Only debug builds show it,
+ * behind a long press on the version in Settings.
  */
 interface DebugState {
     val lines: StateFlow<List<String>>

@@ -2,6 +2,7 @@ package com.ikverse.signallab.update
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -82,7 +83,7 @@ class UpdateControllerTest {
         val launcher = Launcher(canInstall)
         val memory = Memory(last)
         val clock = longArrayOf(now)
-        return Rig(UpdateController(installedVersion, source, downloader, inspector, launcher, memory) { clock[0] }, source, downloader, inspector, launcher, memory, clock)
+        return Rig(UpdateController(installedVersion, source, downloader, inspector, launcher, memory, now = { clock[0] }), source, downloader, inspector, launcher, memory, clock)
     }
 
     // --- checking --------------------------------------------------------------------------------
@@ -312,5 +313,44 @@ class UpdateControllerTest {
         r.downloader.gate = null
         r.c.install()
         assertIs<UpdateState.Handed>(r.c.state.value)
+    }
+
+    @Test
+    fun theFileIsInspectedAndClearedOnTheControllersDispatcherNotTheCallers() = runTest {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "update-io") }
+        try {
+            val threads = ArrayList<String>()
+            val inspector = object : ApkInspector {
+                override fun installed(): ApkFacts {
+                    threads += "installed@" + Thread.currentThread().name
+                    return installedFacts
+                }
+
+                override fun inspect(file: File): ApkFacts? {
+                    threads += "inspect@" + Thread.currentThread().name
+                    return ApkFacts("com.ikverse.signallab", newer.version.code, setOf("aa11"))
+                }
+            }
+            val downloader = object : UpdateDownloader {
+                override suspend fun download(release: Release, onProgress: (Long) -> Unit): File =
+                    File.createTempFile("signal-lab", ".apk").also { it.writeBytes(ByteArray(release.apkBytes.toInt())) }
+
+                override fun clear() {
+                    threads += "clear@" + Thread.currentThread().name
+                }
+            }
+            val launcher = Launcher()
+            val io = executor.asCoroutineDispatcher()
+            val upToDate = UpdateController(installedVersion, Source(CheckResult.UpToDate), downloader, inspector, launcher, Memory(), now = { 10 * UpdateController.DAY_MS }, io = io)
+            upToDate.checkNow()
+            val ready = UpdateController(installedVersion, Source(CheckResult.Newer(newer)), downloader, inspector, launcher, Memory(), now = { 10 * UpdateController.DAY_MS }, io = io)
+            ready.checkNow()
+            ready.install()
+            assertTrue(threads.isNotEmpty())
+            assertTrue(threads.all { it.endsWith("@update-io") }, "ran on $threads")
+            assertTrue(launcher.log.single().startsWith("launch signal-lab"))
+        } finally {
+            executor.shutdown()
+        }
     }
 }

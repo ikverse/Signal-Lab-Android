@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
@@ -252,7 +251,6 @@ data class ChartCheckResult(val drawMs: Long, val frames: Int, val averageFrameM
 @Composable
 fun ChartCheckView(candles: Int, onResult: (ChartCheckResult) -> Unit, modifier: Modifier = Modifier) {
     if (!LocalWebViews.current) return
-    DisposableEffect(Unit) { onDispose { } }
     AndroidView(
         modifier = modifier,
         factory = { ctx ->

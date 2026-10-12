@@ -23,7 +23,7 @@ data class Grants(val notifications: Boolean, val exactAlarms: Boolean, val batt
 /**
  * Asks for what background scanning needs, one thing at a time and each at most once, and only after
  * the user has a list switched on: asking before there is anything to scan would be asking for no reason.
- * A refusal is respected; the settings screen (M5) is where it is changed later.
+ * A refusal is respected; Settings, under "What Android allows", is where it is changed later.
  */
 class PermissionFlow(
     private val context: Context,

@@ -36,6 +36,7 @@ import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -119,6 +120,30 @@ class RecordSyncTest {
         val before = b.sync.fingerprint(b.record())
         assertFalse(b.mergeFrom(a).any)
         assertEquals(before, b.sync.fingerprint(b.record()))
+    }
+
+    @Test
+    fun aListSwitchedOnElsewhereStaysOffHereWhenItWouldPassAChartCapOnTheSecondMergeToo() = runTest {
+        val a = Device()
+        val b = Device()
+        val fastA = a.newList("Fast A", *List(10) { "A${it}USDT" }.toTypedArray())
+        a.lists.setTimeframes(fastA, setOf(Timeframe.M1))
+        assertIs<WatchlistResult.Ok<Unit>>(a.lists.setActive(fastA, true))
+        val fastB = b.newList("Fast B", *List(10) { "B${it}USDT" }.toTypedArray())
+        b.lists.setTimeframes(fastB, setOf(Timeframe.M1))
+        assertIs<WatchlistResult.Ok<Unit>>(b.lists.setActive(fastB, true))
+
+        b.mergeFrom(a)
+        b.lists.load()
+        assertFalse(b.lists.lists.value.single { it.name == "Fast A" }.active, "new here: off, since 20 coins on 1m is past the cap")
+
+        a.now += 10
+        a.lists.rename(fastA, "Fast A edited")
+        b.mergeFrom(a)
+        b.lists.load()
+        val got = b.lists.lists.value.single { it.name == "Fast A edited" }
+        assertFalse(got.active, "a newer copy still cannot pass the cap")
+        assertEquals(10, got.symbols.size, "but its edits arrive")
     }
 
     @Test

@@ -194,16 +194,32 @@ class CandleStore(
         }
     }
 
+    /** One stored candle's open time and close. */
+    class TimedClose(val time: Long, val close: Double)
+
+    /**
+     * The closes of every stored candle of [tf] from [since] on, for each of [symbols], oldest first, in one read: what a list of coins
+     * needs for a price, a day's change and a small line, without a read per coin. A coin with nothing stored is absent.
+     */
+    suspend fun closesSince(tf: Timeframe, symbols: Collection<String>, since: Long): Map<String, List<TimedClose>> = access { db ->
+        val out = LinkedHashMap<String, MutableList<TimedClose>>()
+        // SQLite takes at most 999 bound values in one statement.
+        for (chunk in symbols.distinct().chunked(500)) {
+            val marks = chunk.joinToString(",") { "?" }
+            db.rawQuery(
+                "SELECT symbol, open_time, close FROM candles WHERE tf=? AND open_time>=? AND symbol IN ($marks) ORDER BY symbol, open_time",
+                arrayOf(tf.label, since.toString(), *chunk.toTypedArray()),
+            ).use { c -> while (c.moveToNext()) out.getOrPut(c.getString(0)) { ArrayList() }.add(TimedClose(c.getLong(1), c.getDouble(2))) }
+        }
+        out
+    }
+
     /** The last [n] daily closes, oldest first. */
     suspend fun dailyCloses(symbol: String, n: Int): DoubleArray = access { db ->
         db.rawQuery("SELECT close FROM (SELECT open_time, close FROM candles WHERE symbol=? AND tf=? " +
             "ORDER BY open_time DESC LIMIT ?) ORDER BY open_time", arrayOf(symbol, Timeframe.D1.label, n.toString())).use { c ->
             DoubleArray(c.count) { c.moveToNext(); c.getDouble(0) }
         }
-    }
-
-    suspend fun totalRows(): Long = access { db ->
-        db.rawQuery("SELECT COUNT(*) FROM candles", null).use { it.moveToFirst(); it.getLong(0) }
     }
 
     suspend fun rowsByTimeframe(): Map<Timeframe, Long> = access { db ->
@@ -248,6 +264,32 @@ class CandleStore(
                     buildList { while (c.moveToNext()) add(c.getString(0)) }
                 }
                 for (s in known) if (s !in seen) db.execSQL("UPDATE coins SET delisted=1 WHERE symbol=?", arrayOf(s))
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        }
+    }
+
+    /** The day's figures of a coin, as a ticker refresh brings them. */
+    class TickerUpdate(val symbol: String, val quoteVolume: Double, val high24: Double, val low24: Double, val change24: Double, val trades24: Long)
+
+    /** Replaces the day's figures of the coins in [ticks] that are already known. Coins not in the table are left for the next pair-list refresh. */
+    suspend fun updateTickers(ticks: List<TickerUpdate>) {
+        access { db ->
+            db.beginTransaction()
+            try {
+                val stmt = db.compileStatement("UPDATE coins SET quote_volume=?, high24=?, low24=?, change24=?, trades24=? WHERE symbol=?")
+                for (t in ticks) {
+                    stmt.clearBindings()
+                    stmt.bindDouble(1, t.quoteVolume)
+                    stmt.bindDouble(2, t.high24)
+                    stmt.bindDouble(3, t.low24)
+                    stmt.bindDouble(4, t.change24)
+                    stmt.bindLong(5, t.trades24)
+                    stmt.bindString(6, t.symbol)
+                    stmt.executeUpdateDelete()
+                }
                 db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()

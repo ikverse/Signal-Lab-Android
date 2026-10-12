@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
 /** The three cards a new user sees once: what the app does, that nothing is real, and that it checks itself. */
 val IntroCards: List<Pair<String, String>> = listOf(
     "Signal Lab watches coins for you." to
-        "When a coin matches a pattern, you get one plain message: which coin, the price the practice trade starts at, and the two prices that end it.",
+        "When a coin matches a pattern, you get one plain message: which coin, the price the practice trade starts at, and the levels that end it.",
     "Nothing here uses real money." to
         "Every setup becomes a practice trade, so you see what would have happened without risking anything. It is research, not advice.",
     "It checks itself, and lets you experiment." to

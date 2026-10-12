@@ -7,6 +7,7 @@ import com.ikverse.signallab.engine.Refusal
 import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.WatchlistRules
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -287,6 +288,24 @@ class CandleSyncTest {
         val m = market(Timeframe.D1, 10)
         val r = CandleSync(m, s).syncCoin("NOPE", Timeframe.D1, EPOCH_START)
         assertEquals(0, r.inserted); assertNull(s.lastOpen("NOPE", Timeframe.D1))
+    }
+
+    @Test
+    fun twoSyncsOfTheSameSeriesAtOnceDownloadItOnce() = runTest {
+        val m = market(Timeframe.H1, 1500)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var held = false
+        // The first request is held open until the second sync has started, so both are in flight together.
+        m.onKlines = { _, _ -> if (!held) { held = true; gate.await() } }
+        val sync = CandleSync(m, s)
+        val first = async { sync.syncCoin("A", Timeframe.H1, EPOCH_START) }
+        val second = async { sync.syncCoin("A", Timeframe.H1, EPOCH_START) }
+        kotlinx.coroutines.yield()
+        gate.complete(Unit)
+        assertEquals(1500, first.await().inserted)
+        assertEquals(0, second.await().inserted)
+        assertEquals(3, m.requestsFor("A", Timeframe.H1), "two pages for the first sync, one empty look past the end for the second")
+        assertEquals(1500, s.count("A", Timeframe.H1))
     }
 }
 

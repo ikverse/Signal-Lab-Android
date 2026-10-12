@@ -41,9 +41,6 @@ class ExitRule(
         return minOf(limit, tf.barsPerDay - slot)
     }
 
-    /** Candles the trade entering at candle [entryIdx] may last. */
-    fun limitFor(c: Candles, entryIdx: Int): Int = limitAt(c.t[entryIdx], c.tf)
-
     /** Whether a signal on the candle opening at [signalTime] may be traded: an end-of-day rule needs the entry candle on the same UTC day. */
     fun allowsSignalAt(signalTime: Long, tf: Timeframe): Boolean = !endOfDay || (signalTime + tf.ms) / DAY_MS == signalTime / DAY_MS
 

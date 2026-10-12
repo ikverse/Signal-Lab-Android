@@ -98,6 +98,10 @@ object ReportText {
     /** Markdown decoration around a line ("# ", "**", "_") that is not part of its words. */
     private val decoration = Regex("""^[#>*_\s]+|[*_\s]+$""")
 
+    /** A link whose address would run script or carry a document: written inline, `[x](javascript:...)`, or as a reference, `[x]: javascript:...`. */
+    private val scriptInline = Regex("""\]\(\s*(javascript|data|vbscript):""", RegexOption.IGNORE_CASE)
+    private val scriptReference = Regex("""(?m)^([ \t]{0,3}\[[^\]]+\]:[ \t]*)(javascript|data|vbscript):""", RegexOption.IGNORE_CASE)
+
     /**
      * Reads [text] as a report. An answer that starts (within its first few lines) with the marker line gets the card that line names and
      * loses the line; any other text is kept whole, titled by its first line. Null when there is nothing to keep.
@@ -140,7 +144,7 @@ object ReportText {
                 else -> out.append(escapeOutsideCode(line))
             }
         }
-        return out.toString().replace(Regex("""\]\(\s*javascript:""", RegexOption.IGNORE_CASE), "](#")
+        return out.toString().replace(scriptInline, "](#").replace(scriptReference, "$1#")
     }
 
     /** Escapes "<" in [line] except inside a backtick code span that is closed on the same line. */

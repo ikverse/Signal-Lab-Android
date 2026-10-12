@@ -37,7 +37,10 @@ class ScanControllerTest {
     /** A moment well inside the data, [afterMs] after a UTC midnight close. */
     private val midnight = eth.t[eth.size - 100]
 
-    private class Rig(val env: ScanEnv, val alarms: FakeAlarms, val pauses: ArrayList<Long>, val controller: ScanController, val work: BooleanArray, val skew: LongArray)
+    private class Rig(
+        val env: ScanEnv, val alarms: FakeAlarms, val pauses: ArrayList<Long>, val controller: ScanController, val work: BooleanArray, val skew: LongArray,
+        val health: ScanHealth,
+    )
 
     private fun rig(startAt: Long, coins: List<String> = listOf("ETHUSDT", "BTCUSDT")): Rig {
         val env = ScanEnv(coins, tf, source, setOf(Timeframe.H1, Timeframe.H4, Timeframe.D1))
@@ -46,12 +49,13 @@ class ScanControllerTest {
         val pauses = ArrayList<Long>()
         val work = booleanArrayOf(true)
         val skew = longArrayOf(0)
+        val health = ScanHealth()
         val controller = ScanController(
-            env.scanner, env.market, alarms, env.log, env.sink, ScanHealth(),
+            env.scanner, env.market, alarms, env.log, env.sink, health,
             hasWork = { work[0] }, skewMs = { skew[0] },
             pause = { ms -> pauses.add(ms); env.at(env.market.now + ms) },
         )
-        return Rig(env, alarms, pauses, controller, work, skew)
+        return Rig(env, alarms, pauses, controller, work, skew, health)
     }
 
     @Test
@@ -69,6 +73,28 @@ class ScanControllerTest {
         val calls = r.env.market.klineCalls.size
         r.controller.scanDue()
         assertEquals(calls, r.env.market.klineCalls.size, "nothing had closed, so nothing was downloaded")
+    }
+
+    @Test
+    fun everyPassMeasuresTheExchangeClockFirst() = runTest {
+        val r = rig(midnight + 6_000)
+        r.controller.scanDue()
+        assertEquals(1, r.env.market.serverTimeCalls)
+        r.controller.scanAll()
+        assertEquals(2, r.env.market.serverTimeCalls)
+    }
+
+    @Test
+    fun withTheClockNeverMeasuredNothingIsScannedAndTheAlarmIsStillSet() = runTest {
+        val r = rig(midnight + 6_000)
+        r.env.market.clockKnown = false
+        r.controller.scanDue()
+        assertEquals(0, r.env.market.klineCalls.size, "no candle was downloaded on the phone's own clock")
+        assertEquals(1, r.alarms.armed.size, "the next pass is still armed")
+        assertEquals(ScanController.CLOCK_UNKNOWN, r.health.snapshot.value.lastProblem)
+        r.env.market.clockKnown = true
+        r.controller.scanDue()
+        assertTrue(r.env.market.klineCalls.isNotEmpty(), "once measured, the pass scans")
     }
 
     @Test
@@ -205,12 +231,13 @@ class ScanControllerTest {
         val alarms = FakeAlarms()
         val pauses = ArrayList<Long>()
         val work = booleanArrayOf(true)
+        val health = ScanHealth()
         val controller = ScanController(
-            env.scanner, env.market, alarms, env.log, env.sink, ScanHealth(),
+            env.scanner, env.market, alarms, env.log, env.sink, health,
             hasWork = { work[0] }, skewMs = { 0 },
             pause = { ms -> pauses.add(ms); env.at(env.market.now + ms) },
         )
-        return Rig(env, alarms, pauses, controller, work, longArrayOf(0))
+        return Rig(env, alarms, pauses, controller, work, longArrayOf(0), health)
     }
 
     private val minuteStart = GoldenData.klines(Timeframe.M1).getValue("BTCUSDT").let { it[it.size - 1500].openTime } // a whole minute, a day before the end

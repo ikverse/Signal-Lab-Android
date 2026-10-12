@@ -42,7 +42,6 @@ object Glyphs {
     val Search = outline("search", circle(11f, 11f, 6f), "M20 20l-4.5-4.5")
     val Info = outline("info", circle(12f, 12f, 9f), "M12 11v5M12 8h0.01")
     val ChevronRight = outline("chevron-right", "M9 6l6 6-6 6")
-    val ChevronLeft = outline("chevron-left", "M15 6l-6 6 6 6")
     val ChevronDown = outline("chevron-down", "M6 9l6 6 6-6")
     val ChevronUp = outline("chevron-up", "M6 15l6-6 6 6")
     val Back = outline("back", "M19 12H5M11 6l-6 6 6 6")
