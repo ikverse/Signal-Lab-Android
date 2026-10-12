@@ -2,6 +2,8 @@ package com.ikverse.signallab.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -38,6 +40,44 @@ class TodayTest {
         rule.onNode(hasText(text, substring = true) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true).assertExists()
 
     private fun exists(t: String) = rule.onAllNodesWithTag(t).fetchSemanticsNodes().isNotEmpty()
+
+    @Test
+    fun `the scan line says when the coins were checked and when they will be next`() {
+        val zone = java.util.TimeZone.getTimeZone("UTC")
+        val at = 1_700_000_000_000L // 14 Nov 2023 22:13:20 UTC
+        java.util.TimeZone.setDefault(zone)
+        assertEquals("Last checked 22:13 · next check 23:00", PlainWords.scanLine(ScanStatusUi(on = true, lastCheckedAt = at, nextCheckAt = at + 2_800_000L)))
+        assertEquals("Not checked yet · next check 23:00", PlainWords.scanLine(ScanStatusUi(on = true, nextCheckAt = at + 2_800_000L)))
+        assertEquals("Last checked 22:13", PlainWords.scanLine(ScanStatusUi(on = true, lastCheckedAt = at)))
+        assertEquals("Checking…", PlainWords.scanLine(ScanStatusUi(on = true, checking = true)))
+        assertEquals("Scanning is off", PlainWords.scanLine(ScanStatusUi(on = false)))
+        assertEquals("Last checked 22:13 · 1h scan failed: x", PlainWords.scanLine(ScanStatusUi(on = true, lastCheckedAt = at, problem = "1h scan failed: x")))
+    }
+
+    @Test
+    fun `check now asks the model, and is off while a check runs`() {
+        val app = FakeApp(lists = FakeLists(listOf(FakeApp.list)))
+        show(app)
+        rule.onNodeWithTag("check-now").performClick()
+        assertEquals(1, app.scan.checks)
+        app.scan.state.value = ScanStatusUi(on = true, checking = true)
+        rule.waitForIdle()
+        rule.onNodeWithTag("scan-status").assertTextEquals("Checking…")
+        rule.onNodeWithTag("check-now").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `before the trades have been read Today is blank, not empty`() {
+        // A list exists, or the frame would show the setup screen instead of Today.
+        val app = FakeApp(lists = FakeLists(listOf(FakeApp.list)), trades = FakeTrades(loaded = false))
+        show(app)
+        assertTrue(exists("today-loading"))
+        assertFalse(exists("today-empty"))
+        app.trades.ready.value = true
+        rule.waitForIdle()
+        assertTrue(exists("today-empty"))
+        assertFalse(exists("today-loading"))
+    }
 
     // --- wording -------------------------------------------------------------------------------
 

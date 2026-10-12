@@ -45,6 +45,25 @@ class UniverseRepository(
 
     private val rolling = HashMap<MoveWindow, Pair<Long, Map<String, Double>>>()
 
+    /** When the day's figures were last brought in, by [clock]; 0 before any refresh since the process started. */
+    @Volatile
+    private var tickersAt = 0L
+
+    /**
+     * Brings in the day's figures (volume, high, low, change, trade count) for the coins already known, if they are more than [maxAgeMs]
+     * old. Far cheaper than [refreshIfStale], which also downloads the pair list. Returns whether it refreshed.
+     */
+    suspend fun refreshTickersIfStale(maxAgeMs: Long = DataConfig.PICKER_REFRESH_MS): Boolean {
+        if (clock() - tickersAt < maxAgeMs) return false
+        val ticks = market.tickers24h().map { t ->
+            CandleStore.TickerUpdate(t.symbol, t.quoteVolume, t.high, t.low, if (t.open > 0) t.lastPrice / t.open - 1 else 0.0, t.trades)
+        }
+        store.updateTickers(ticks)
+        tickersAt = clock()
+        synchronized(rolling) { rolling.clear() }
+        return true
+    }
+
     /** Refreshes the pair list if it is more than [maxAgeMs] old, or when [force]d. Returns whether it refreshed. */
     suspend fun refreshIfStale(force: Boolean = false, maxAgeMs: Long = DataConfig.UNIVERSE_REFRESH_MS): Boolean {
         val last = store.lastPairListRefresh()
@@ -63,6 +82,7 @@ class UniverseRepository(
             )
         }
         store.replaceCoins(rows)
+        tickersAt = now
         synchronized(rolling) { rolling.clear() }
         return true
     }

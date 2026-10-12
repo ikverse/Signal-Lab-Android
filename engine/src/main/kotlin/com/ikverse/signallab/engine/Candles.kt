@@ -68,7 +68,6 @@ class Candles(
 }
 
 internal const val DAY_MS = 86_400_000L
-internal const val HOUR_MS = 3_600_000L
 
 /** First index whose value is >= [v]; the array must be sorted. numpy's searchsorted(side="left"). */
 internal fun lowerBound(a: LongArray, v: Long): Int {

@@ -47,7 +47,7 @@ class LiveDebugState(private val graph: AppGraph, private val scope: CoroutineSc
         val progress = graph.history.progress.value
         val rows = graph.candles.rowsByTimeframe()
         return buildList {
-            add("Signal Lab ${BuildConfig.VERSION_NAME}  (debug readout, M4b)")
+            add("Signal Lab ${BuildConfig.VERSION_NAME}  (debug readout)")
             add("Binance clock: phone is ${"%+d".format(graph.market.clockSkewMs)} ms behind  ·  SQLite $sqliteVersion  ·  Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
             add("Pair list: $coins pairs, $offered offered" + (refreshed?.let { ", refreshed ${(now - it) / 60_000} min ago" } ?: ", not downloaded yet"))
             if (lists.isEmpty()) add("Lists: none yet") else for (l in lists) {

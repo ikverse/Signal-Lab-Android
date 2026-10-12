@@ -2,6 +2,7 @@ package com.ikverse.signallab.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -337,5 +338,24 @@ class LabScreenTest {
     fun `a wide screen with nothing chosen says what to do`() {
         show(FakeApp.full())
         assertTrue(exists("lab-hint"))
+    }
+
+    @Test
+    fun `forward-testing as lab N opens that test in the lab`() {
+        val app = FakeApp.full()
+        app.analyst.labState.value = listOf(LabPatternUi(3, "RSI bounce", "RSI(14) crosses above 30 on 1h; a trailing stop", 1_000L, null))
+        app.analyst.state.value = listOf(
+            ReportUi(7, 2_000L, "suggest-patterns", "Suggest 3 patterns", "body", listOf(
+                LabSuggestionUi("RSI bounce", null, "RSI(14) crosses above 30 on 1h", null, """{"charts":["1h"],"when":[{"left":"rsi(14)","is":"crosses_above","right":"30"}],"exit":"trail"}""", runningAs = 3),
+            )),
+        )
+        val nav = NavState(Dest.Analyst, analystReport = 7)
+        show(app, nav)
+        rule.onNodeWithTag("tab-patterns").performClick()
+        rule.onNodeWithTag("running-0").performClick()
+        rule.waitForIdle()
+        assertEquals(Dest.Lab, nav.dest)
+        rule.onNodeWithTag("lab-test-title").assertTextEquals("RSI bounce")
+        assertNull(nav.labOpen)
     }
 }

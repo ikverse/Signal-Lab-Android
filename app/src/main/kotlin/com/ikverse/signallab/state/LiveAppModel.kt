@@ -15,6 +15,7 @@ import com.ikverse.signallab.ui.MarketsModel
 import com.ikverse.signallab.ui.PanelPrefs
 import com.ikverse.signallab.ui.PermissionPrompt
 import com.ikverse.signallab.ui.PermissionPrompts
+import com.ikverse.signallab.ui.ScanModel
 import com.ikverse.signallab.ui.ScorecardModel
 import com.ikverse.signallab.ui.SettingsModel
 import com.ikverse.signallab.ui.TradesModel
@@ -37,6 +38,7 @@ class LiveAppModel(graph: AppGraph, context: Context, private val scope: Corouti
 
     override val lists: ListsModel = LiveListsModel(graph, scope)
     override val markets: MarketsModel = LiveMarketsModel(graph, scope)
+    override val scan: ScanModel = LiveScanModel(graph, scope)
     override val trades: TradesModel = LiveTradesModel(graph, scope)
     override val scorecard: ScorecardModel = LiveScorecardModel(graph, scope)
     override val alerts: AlertsModel = LiveAlertsModel(graph, scope)
@@ -48,7 +50,10 @@ class LiveAppModel(graph: AppGraph, context: Context, private val scope: Corouti
     private val liveAnalyst = LiveAnalystModel(graph, context, scope, handoffFlow)
     override val analyst: AnalystModel = liveAnalyst
     override val learn: LearnModel = LearnCatalog(context)
-    private val liveSettings = LiveSettingsModel(graph, context, scope, systemScreens)
+
+    /** Files to save or open through Android's picker; the activity listens and shows it. */
+    val files = FileExchange()
+    private val liveSettings = LiveSettingsModel(graph, context, scope, systemScreens, files)
     override val settings: SettingsModel = liveSettings
     override val prompts: PermissionPrompts = graph.permissions
     override val panels: PanelPrefs = LivePanelPrefs(graph, scope)

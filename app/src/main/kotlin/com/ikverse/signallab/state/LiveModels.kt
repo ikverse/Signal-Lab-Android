@@ -14,9 +14,12 @@ import com.ikverse.signallab.engine.Refusal
 import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.Watchlist
 import com.ikverse.signallab.engine.WatchlistRules
+import com.ikverse.signallab.analyst.Snapshot
+import com.ikverse.signallab.sync.MergeResult
 import com.ikverse.signallab.ui.AlertFacts
 import com.ikverse.signallab.ui.AlertUi
 import com.ikverse.signallab.ui.AlertsModel
+import com.ikverse.signallab.ui.BackupUi
 import com.ikverse.signallab.ui.CandleUi
 import com.ikverse.signallab.ui.ChartUi
 import com.ikverse.signallab.ui.ClosedUi
@@ -149,8 +152,10 @@ class LiveListsModel(private val graph: AppGraph, private val scope: CoroutineSc
         val universe = graph.universe
         var problem: String? = null
         try {
-            // The day's figures behind gainers, losers and trade counts go stale in minutes; the pair list itself changes slowly.
-            universe.refreshIfStale(maxAgeMs = DataConfig.PICKER_REFRESH_MS)
+            // The pair list changes slowly and is brought in once a day; the day's figures behind gainers, losers and trade counts go stale
+            // in minutes and are brought in on their own, which costs a fraction of the pair list.
+            universe.refreshIfStale()
+            universe.refreshTickersIfStale()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -193,10 +198,13 @@ class LiveListsModel(private val graph: AppGraph, private val scope: CoroutineSc
 }
 
 class LiveMarketsModel(private val graph: AppGraph, scope: CoroutineScope) : MarketsModel {
+    private val ready = MutableStateFlow(false)
+    override val loaded: StateFlow<Boolean> = ready
+
     @OptIn(ExperimentalCoroutinesApi::class)
     override val coins: StateFlow<List<CoinUi>> =
         combine(graph.watchlists.lists, graph.tradeLog.version, graph.candles.version.throttled(5_000)) { lists, _, _ -> lists }
-            .mapLatest { build(it) }
+            .mapLatest { build(it).also { ready.value = true } }
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     override val prices: StateFlow<Map<String, Double>> = graph.priceFeed.prices
@@ -209,27 +217,35 @@ class LiveMarketsModel(private val graph: AppGraph, scope: CoroutineScope) : Mar
         val charts = LinkedHashMap<String, java.util.TreeSet<Timeframe>>()
         for (l in lists) if (l.active) for (s in l.symbols) charts.getOrPut(s) { java.util.TreeSet() }.addAll(l.timeframes)
         val open = graph.tradeLog.trades(TradeStatus.OPEN, limit = Int.MAX_VALUE).groupingBy { it.trade.symbol }.eachCount()
+        // One read per chart size, not three per coin: the last two days of closes hold the price, the day's change and the line.
+        val now = graph.market.nowMs()
+        val wanted = LinkedHashMap<Timeframe, LinkedHashSet<String>>()
+        for ((symbol, tfs) in charts) {
+            wanted.getOrPut(tfs.first()) { LinkedHashSet() }.add(symbol)
+            wanted.getOrPut(sparkChart(tfs)) { LinkedHashSet() }.add(symbol)
+        }
+        val closes = wanted.mapValues { (tf, symbols) -> graph.candles.closesSince(tf, symbols, now - 2 * DAY_MS - tf.ms) }
         return charts.map { (symbol, tfs) ->
             val shortest = tfs.first()
-            val latest = graph.candles.latest(symbol, shortest, 1)
-            val price = latest?.close?.lastOrNull()
-            val change = if (latest == null || price == null) null else {
-                graph.candles.closeAt(symbol, shortest, latest.t.last() - DAY_MS)?.takeIf { it > 0 }?.let { price / it - 1 }
+            val own = closes.getValue(shortest)[symbol].orEmpty()
+            val last = own.lastOrNull()
+            val price = last?.close
+            val change = if (last == null) null else {
+                own.lastOrNull { it.time <= last.time - DAY_MS }?.close?.takeIf { it > 0 }?.let { last.close / it - 1 }
             }
-            CoinUi(symbol, symbol.removeSuffix(DataConfig.QUOTE), price, change, open[symbol] ?: 0, tfs.map { it.label }, spark(symbol, tfs))
+            val sparkTf = sparkChart(tfs)
+            val line = closes.getValue(sparkTf)[symbol].orEmpty().takeLast(sparkTf.barsPerDay + 1).map { it.close }
+            CoinUi(symbol, symbol.removeSuffix(DataConfig.QUOTE), price, change, open[symbol] ?: 0, tfs.map { it.label }, sparkPoints(line))
         }
     }
 
-    /** The last day of closes for the line beside a coin's price: from the hour chart when the coin has one, else its shortest. */
-    private suspend fun spark(symbol: String, tfs: java.util.TreeSet<Timeframe>): List<Double> {
-        val tf = if (Timeframe.H1 in tfs) Timeframe.H1 else tfs.first()
-        val closes = graph.candles.latest(symbol, tf, tf.barsPerDay + 1)?.close ?: return emptyList()
-        return sparkPoints(closes.toList())
-    }
+    /** The chart the line beside a coin's price is drawn from: the hour chart when the coin has one, else its shortest. */
+    private fun sparkChart(tfs: java.util.TreeSet<Timeframe>): Timeframe = if (Timeframe.H1 in tfs) Timeframe.H1 else tfs.first()
 
+    /** Never null: a chart with nothing stored comes back empty, so a screen can tell "nothing stored" from "not answered yet". */
     override suspend fun chart(symbol: String, timeframe: String): ChartUi? {
         val tf = Timeframe.of(timeframe)
-        val c = graph.candles.latest(symbol, tf, CHART_CANDLES) ?: return null
+        val c = graph.candles.latest(symbol, tf, CHART_CANDLES) ?: return ChartUi(symbol, timeframe, emptyList(), emptyList())
         val candles = List(c.size) { CandleUi(c.t[it], c.open[it], c.high[it], c.low[it], c.close[it], c.volume[it]) }
         val levels = graph.tradeLog.trades(TradeStatus.OPEN, symbol = symbol, limit = 50).filter { it.trade.tf == tf }.flatMap { t ->
             buildList {
@@ -266,9 +282,12 @@ internal fun LiveTrade.toUi() = TradeUi(
 )
 
 class LiveTradesModel(private val graph: AppGraph, scope: CoroutineScope) : TradesModel {
+    private val ready = MutableStateFlow(false)
+    override val loaded: StateFlow<Boolean> = ready
+
     @OptIn(ExperimentalCoroutinesApi::class)
     override val trades: StateFlow<List<TradeUi>> = graph.tradeLog.version
-        .mapLatest { graph.tradeLog.trades(TradeStatus.ALL, limit = 1_000).map { it.toUi() } }
+        .mapLatest { graph.tradeLog.trades(TradeStatus.ALL, limit = 1_000).map { it.toUi() }.also { ready.value = true } }
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
 
@@ -283,9 +302,12 @@ internal suspend fun currentScorecard(graph: AppGraph, lists: List<Watchlist>, t
 }
 
 class LiveScorecardModel(private val graph: AppGraph, scope: CoroutineScope) : ScorecardModel {
+    private val ready = MutableStateFlow(false)
+    override val loaded: StateFlow<Boolean> = ready
+
     @OptIn(ExperimentalCoroutinesApi::class)
     override val scorecard: StateFlow<ScorecardUi> = combine(graph.tradeLog.version, graph.watchlists.lists) { _, lists -> lists }
-        .mapLatest { lists -> currentScorecard(graph, lists, graph.tradeLog.trades(TradeStatus.ALL, limit = Int.MAX_VALUE)) }
+        .mapLatest { lists -> currentScorecard(graph, lists, graph.tradeLog.trades(TradeStatus.ALL, limit = Int.MAX_VALUE)).also { ready.value = true } }
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ScorecardUi())
 }
 
@@ -309,9 +331,12 @@ internal fun alertFacts(json: String?): AlertFacts? {
 }
 
 class LiveAlertsModel(private val graph: AppGraph, scope: CoroutineScope) : AlertsModel {
+    private val ready = MutableStateFlow(false)
+    override val loaded: StateFlow<Boolean> = ready
+
     @OptIn(ExperimentalCoroutinesApi::class)
     override val alerts: StateFlow<List<AlertUi>> = graph.tradeLog.version
-        .mapLatest { graph.tradeLog.alerts(300).map { it.toUi() } }
+        .mapLatest { graph.tradeLog.alerts(300).map { it.toUi() }.also { ready.value = true } }
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
 
@@ -321,6 +346,9 @@ class LiveSettingsModel(
     private val scope: CoroutineScope,
     /** Where a request to open one of Android's own screens goes; the activity listens and opens it. */
     private val systemScreens: MutableSharedFlow<PermissionPrompt>,
+    /** Where a request for a file to save into or open goes; the activity listens and shows the picker. */
+    private val files: FileExchange = FileExchange(),
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : SettingsModel {
     private val state = MutableStateFlow(read(CostModel(), scanning = true, followFast = true, us = false, dim = false, level = DimLevel.DIM, railRight = false, alerts = true))
     override val settings: StateFlow<SettingsUi> = state
@@ -439,14 +467,53 @@ class LiveSettingsModel(
 
     override suspend fun turnOffSync() = graph.deviceSync.turnOff()
 
+    private val backupState = MutableStateFlow(BackupUi())
+    override val backup: StateFlow<BackupUi> = backupState
+
+    override fun saveBackup() {
+        backupState.value = BackupUi(busy = true, message = "Saving…")
+        files.requestSave("signal-lab-backup-${Snapshot.utc(clock()).take(10)}.json.gz", { graph.backupBytes() }) { outcome ->
+            backupState.value = when (outcome) {
+                FileOutcome.Done -> BackupUi(message = "Saved.")
+                FileOutcome.Cancelled -> BackupUi(message = backupState.value.message.takeUnless { it == "Saving…" })
+                is FileOutcome.Failed -> BackupUi(message = "The backup could not be saved: ${outcome.message}", problem = true)
+            }
+        }
+    }
+
+    override fun restoreBackup() {
+        backupState.value = BackupUi(busy = true, message = "Restoring…")
+        var merged = MergeResult()
+        files.requestOpen({ bytes -> merged = graph.restoreBackup(bytes) }) { outcome ->
+            backupState.value = when (outcome) {
+                FileOutcome.Done -> BackupUi(message = restoredWords(merged))
+                FileOutcome.Cancelled -> BackupUi(message = backupState.value.message.takeUnless { it == "Restoring…" })
+                is FileOutcome.Failed -> BackupUi(message = "The backup could not be read: ${outcome.message}", problem = true)
+            }
+        }
+    }
+
     private companion object {
         const val MAX_FEE = 0.01
         const val MAX_EXTRA = 0.05
+
+        /** "Restored: 12 trades, 3 lists, 1 report." or that there was nothing new. */
+        fun restoredWords(r: MergeResult): String {
+            val parts = listOfNotNull(
+                r.trades.takeIf { it > 0 }?.let { "$it ${if (it == 1) "trade" else "trades"}" },
+                r.exits.takeIf { it > 0 }?.let { "$it ${if (it == 1) "exit" else "exits"}" },
+                r.listsChanged.takeIf { it > 0 }?.let { "$it ${if (it == 1) "list" else "lists"}" },
+                r.labPatterns.takeIf { it > 0 }?.let { "$it lab ${if (it == 1) "pattern" else "patterns"}" },
+                r.reports.takeIf { it > 0 }?.let { "$it ${if (it == 1) "report" else "reports"}" },
+                r.settingsChanged.size.takeIf { it > 0 }?.let { "$it ${if (it == 1) "setting" else "settings"}" },
+            )
+            return if (parts.isEmpty()) "Nothing new in that file." else "Restored: ${parts.joinToString(", ")}."
+        }
     }
 }
 
 /** Panel sizes kept in the settings, one entry per screen, so they are still there the next time the app opens. */
-class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = listOf("markets", "lists", "learn", "analyst", "chart", "today", "works", "lab", "lab-idea", "intro")) : PanelPrefs {
+class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineScope, private val keys: List<String> = KEYS) : PanelPrefs {
     private val state = MutableStateFlow<Map<String, String>?>(null)
     override val saved: StateFlow<Map<String, String>?> = state
 
@@ -464,7 +531,10 @@ class LivePanelPrefs(private val graph: AppGraph, private val scope: CoroutineSc
         scope.launch { graph.settings.set(PREFIX + key, text) }
     }
 
-    private companion object {
-        const val PREFIX = "panels_"
+    companion object {
+        private const val PREFIX = "panels_"
+
+        /** Every key a screen saves under: each `SplitPane(panels, "key", …)` and `rememberPaneLayout(panels, "key")`, plus the chart's indicators and the intro. A test holds this list to the sources. */
+        val KEYS: List<String> = listOf("markets", "lists", "learn", "analyst", "chart", "today", "works", "lab", "lab-idea", "setup", "intro")
     }
 }

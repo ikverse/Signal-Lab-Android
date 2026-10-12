@@ -2,7 +2,11 @@ package com.ikverse.signallab.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
@@ -100,6 +104,37 @@ class AppUiTest {
     }
 
     private fun exists(t: String) = rule.onAllNodesWithTag(t).fetchSemanticsNodes().isNotEmpty()
+
+    @Test
+    fun `before the coins have been read Coins is blank, not "nothing is being watched"`() {
+        val app = FakeApp(lists = FakeLists(listOf(FakeApp.list)), markets = FakeMarkets(loaded = false))
+        show(app)
+        assertTrue(exists("markets-loading"))
+        assertTrue(!exists("markets-empty"))
+        app.markets.ready.value = true
+        rule.waitForIdle()
+        assertTrue(exists("markets-empty"))
+    }
+
+    @Test
+    fun `a coin row is announced as a button`() {
+        show(FakeApp.full())
+        tag("coin-BTCUSDT").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+    }
+
+    @Test
+    fun `a refused add under coins you might add says why`() {
+        val app = FakeApp.full()
+        app.lists.offered = listOf(OfferUi("DOGEUSDT", "DOGE", 3e8))
+        app.lists.refuse = "A list holds at most 30 coins."
+        show(app)
+        tag("coin-list").performScrollToNode(hasTestTag("add-button-DOGEUSDT"))
+        click("add-button-DOGEUSDT")
+        rule.onNode(hasText("A list holds at most 30 coins.") and hasTestTag("problem")).assertExists()
+        app.lists.refuse = null
+        click("add-button-DOGEUSDT")
+        rule.onAllNodesWithTag("problem").assertCountEquals(0)
+    }
 
     // --- first run ----------------------------------------------------------------------
 
@@ -864,6 +899,21 @@ class AppUiTest {
     private fun openSettings(app: FakeApp, debug: Boolean = false) {
         show(app, debug)
         click("nav-Settings")
+    }
+
+    @Test
+    fun `settings has save and restore buttons that ask the model`() {
+        val app = FakeApp.full()
+        show(app)
+        click("nav-Settings")
+        tag("backup-save").performScrollTo()
+        click("backup-save")
+        tag("backup-restore").performScrollTo()
+        click("backup-restore")
+        assertEquals(listOf("backup save", "backup restore"), app.settings.log.filter { it.startsWith("backup") })
+        app.settings.backupState.value = BackupUi(busy = true, message = "Saving…")
+        rule.waitForIdle()
+        rule.onNodeWithTag("backup-status").assertTextEquals("Saving…")
     }
 
     @Config(qualifiers = PHONE_UPRIGHT)
@@ -2113,8 +2163,8 @@ class AppUiTest {
         click("alert-3")
         assertTrue(exists("settings"))
         back()
-        click("alert-4")
-        assertTrue("a problem with nowhere to go stays where it is", exists("alerts"))
+        tag("alert-4").assert(hasClickAction().not())
+        assertTrue("a problem with nowhere to go is not a button on a phone", exists("alerts"))
     }
 
     // Back

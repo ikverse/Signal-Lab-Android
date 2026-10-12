@@ -87,13 +87,6 @@ object LabVocab {
         else -> exit
     }
 
-    fun exitName(exit: String): String = when {
-        exit == "trail" -> "A trailing stop"
-        exit == "learned" -> "A learned goal and time limit"
-        exit.startsWith("hold(") -> "After ${exit.removePrefix("hold(").removeSuffix(")")} candles"
-        else -> exit
-    }
-
     fun holdOf(exit: String): Int? = if (exit.startsWith("hold(")) exit.removePrefix("hold(").removeSuffix(")").toIntOrNull() else null
 }
 

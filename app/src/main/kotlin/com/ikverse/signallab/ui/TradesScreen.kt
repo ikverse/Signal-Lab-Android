@@ -111,6 +111,11 @@ fun TradesScreen(
     backLabel: String = Dest.More.label,
 ) {
     val all by model.trades.collectAsStateWithLifecycle()
+    val loaded by model.loaded.collectAsStateWithLifecycle()
+    if (!loaded) {
+        Column(modifier.fillMaxSize().testTag("trades-loading")) {}
+        return
+    }
     val status = nav.tradesStatus
     val query = nav.tradesQuery
     val timeframe = nav.tradesTimeframe

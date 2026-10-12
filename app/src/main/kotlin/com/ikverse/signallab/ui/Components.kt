@@ -305,11 +305,13 @@ fun TouchRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     minHeight: Dp = RowHeight,
+    /** False for a row that has nowhere to lead right now: it is then plain text, with no ripple and no button role. */
+    enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
         modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = minHeight).background(if (selected) Palette.Raised else Color.Transparent)
-            .clickable(onClick = onClick),
+            .then(if (enabled) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -345,14 +347,6 @@ fun TickBox(checked: Boolean, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         if (checked) Icon(Glyphs.Check, contentDescription = null, tint = Palette.Background, modifier = Modifier.size(16.dp))
-    }
-}
-
-@Composable
-fun LabelValue(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color = Palette.Text) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = Type.Small)
-        Text(value, style = Type.Number.copy(color = valueColor))
     }
 }
 

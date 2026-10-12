@@ -1,9 +1,12 @@
 package com.ikverse.signallab.update
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import java.io.File
 
 sealed interface UpdateState {
@@ -54,6 +57,8 @@ class UpdateController(
     private val launcher: InstallLauncher,
     private val memory: UpdateMemory,
     private val now: () -> Long = System::currentTimeMillis,
+    /** Where files are read, checked and deleted: never the thread that called, which from Settings is the one drawing the screen. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val busy = Mutex()
     private val current = MutableStateFlow<UpdateState>(UpdateState.Idle(null))
@@ -80,7 +85,7 @@ class UpdateController(
                 }
                 CheckResult.UpToDate -> {
                     memory.saveLastCheck(now())
-                    downloader.clear()
+                    withContext(io) { downloader.clear() }
                     current.value = UpdateState.UpToDate(now())
                 }
                 is CheckResult.Failed -> current.value = if (quiet) restore(before) else UpdateState.Failed(result.message, null)
@@ -105,10 +110,12 @@ class UpdateController(
         }
         if (!busy.tryLock()) return
         try {
-            val file = (start as? UpdateState.NeedsPermission)?.file?.takeIf { it.exists() } ?: download(release) ?: return
-            val problem = ApkCheck.problem(inspector.inspect(file), inspector.installed(), release.version.code)
+            val kept = (start as? UpdateState.NeedsPermission)?.file?.takeIf { withContext(io) { it.exists() } }
+            val file = kept ?: download(release) ?: return
+            // Reading the keys out of a file this size is slow work: never on the thread that drew the button.
+            val problem = withContext(io) { ApkCheck.problem(inspector.inspect(file), inspector.installed(), release.version.code) }
             if (problem != null) {
-                downloader.clear()
+                withContext(io) { downloader.clear() }
                 current.value = UpdateState.Failed(problem, null)
                 return
             }

@@ -12,7 +12,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
-import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /** A file in the shared folder: its id, its name, and when it last changed (Drive's RFC 3339 time, compared as text). */
@@ -119,7 +118,7 @@ private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont 
         }
 
         override fun onResponse(call: Call, response: Response) {
-            cont.resume(response)
+            cont.resume(response) { _, value, _ -> value.close() }
         }
     })
     cont.invokeOnCancellation { cancel() }

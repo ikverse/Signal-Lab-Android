@@ -8,8 +8,4 @@ import com.ikverse.signallab.data.Alert
  */
 fun interface AlertSink {
     suspend fun deliver(alerts: List<Alert>)
-
-    companion object {
-        val NONE = AlertSink { }
-    }
 }

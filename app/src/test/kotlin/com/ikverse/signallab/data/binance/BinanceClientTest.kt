@@ -2,6 +2,7 @@ package com.ikverse.signallab.data.binance
 
 import com.ikverse.signallab.data.DataConfig
 import com.ikverse.signallab.engine.Timeframe
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -10,6 +11,7 @@ import org.junit.Before
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BinanceClientTest {
@@ -109,6 +111,18 @@ class BinanceClientTest {
     }
 
     @Test
+    fun theClockCountsAsMeasuredOnlyAfterASuccessfulAnswer() = runTest {
+        val c = client()
+        assertFalse(c.clockSynced())
+        repeat(DataConfig.MAX_ATTEMPTS) { server.enqueue(status(500)) }
+        assertFailsWith<BinanceException.Http> { c.serverTime() }
+        assertFalse(c.clockSynced(), "a failed measurement does not count")
+        server.enqueue(ok("""{"serverTime":${clock + 7_000}}"""))
+        c.serverTime()
+        assertTrue(c.clockSynced())
+    }
+
+    @Test
     fun aRateLimitIsWaitedOutForAsLongAsBinanceSays() = runTest {
         server.enqueue(status(429, "Retry-After" to "7"))
         server.enqueue(status(418, "Retry-After" to "3"))
@@ -181,5 +195,28 @@ class BinanceClientTest {
         sleeps.clear()
         c.klines("BTCUSDT", Timeframe.D1, 0)
         assertTrue(sleeps.any { it in 1..DataConfig.REQUEST_PAUSE_MS }, "expected a pacing wait, waits were $sleeps")
+    }
+
+    @Test
+    fun answersAreReadAndDecodedOnTheClientsOwnDispatcherNotTheCallers() = runTest {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "binance-io") }
+        val threads = ArrayList<String>()
+        try {
+            val c = BinanceClient(
+                host = { server.url("/").toString().trimEnd('/') },
+                // The clock is read right before and after the socket is read, so it tells which thread did the reading.
+                localClock = { threads += Thread.currentThread().name; clock },
+                sleep = { sleeps.add(it); clock += it },
+                io = executor.asCoroutineDispatcher(),
+            )
+            server.enqueue(ok("[$klineRow]"))
+            c.klines("BTCUSDT", Timeframe.H1, 1_704_067_200_000L, 500)
+            server.enqueue(ok("""{"serverTime":${clock + 1}}"""))
+            c.serverTime()
+            assertTrue(threads.isNotEmpty())
+            assertTrue(threads.all { it == "binance-io" }, "read on $threads")
+        } finally {
+            executor.shutdown()
+        }
     }
 }

@@ -86,11 +86,13 @@ class FakeLists(initial: List<ListUi> = emptyList(), loaded: Boolean = true) : L
     override val allTimeframes = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d").map { it to "note for $it" }
 }
 
-class FakeMarkets(initial: List<CoinUi> = emptyList(), private val levels: List<LevelUi> = emptyList()) : MarketsModel {
+class FakeMarkets(initial: List<CoinUi> = emptyList(), private val levels: List<LevelUi> = emptyList(), loaded: Boolean = true) : MarketsModel {
     val coinState = MutableStateFlow(initial)
     val priceState = MutableStateFlow<Map<String, Double>>(emptyMap())
     val changeState = MutableStateFlow(0L)
+    val ready = MutableStateFlow(loaded)
     override val coins: StateFlow<List<CoinUi>> = coinState
+    override val loaded: StateFlow<Boolean> = ready
     override val prices: StateFlow<Map<String, Double>> = priceState
     override val changes: StateFlow<Long> = changeState
 
@@ -111,19 +113,34 @@ class FakeMarkets(initial: List<CoinUi> = emptyList(), private val levels: List<
     }
 }
 
-class FakeTrades(initial: List<TradeUi> = emptyList()) : TradesModel {
+class FakeScan(initial: ScanStatusUi = ScanStatusUi(on = true)) : ScanModel {
     val state = MutableStateFlow(initial)
+    override val status: StateFlow<ScanStatusUi> = state
+    var checks = 0
+    override fun checkNow() {
+        checks++
+    }
+}
+
+class FakeTrades(initial: List<TradeUi> = emptyList(), loaded: Boolean = true) : TradesModel {
+    val state = MutableStateFlow(initial)
+    val ready = MutableStateFlow(loaded)
     override val trades: StateFlow<List<TradeUi>> = state
+    override val loaded: StateFlow<Boolean> = ready
 }
 
-class FakeScorecard(initial: ScorecardUi = ScorecardUi()) : ScorecardModel {
+class FakeScorecard(initial: ScorecardUi = ScorecardUi(), loaded: Boolean = true) : ScorecardModel {
     val state = MutableStateFlow(initial)
+    val ready = MutableStateFlow(loaded)
     override val scorecard: StateFlow<ScorecardUi> = state
+    override val loaded: StateFlow<Boolean> = ready
 }
 
-class FakeAlerts(initial: List<AlertUi> = emptyList()) : AlertsModel {
+class FakeAlerts(initial: List<AlertUi> = emptyList(), loaded: Boolean = true) : AlertsModel {
     val state = MutableStateFlow(initial)
+    val ready = MutableStateFlow(loaded)
     override val alerts: StateFlow<List<AlertUi>> = state
+    override val loaded: StateFlow<Boolean> = ready
 }
 
 class FakeAnalyst(initial: List<ReportUi> = emptyList(), override val claudeInstalled: Boolean = true) : AnalystModel {
@@ -273,6 +290,17 @@ class FakeSettings(initial: SettingsUi = defaultSettings()) : SettingsModel {
         syncState.value = SyncUi()
     }
 
+    val backupState = MutableStateFlow(BackupUi())
+    override val backup: StateFlow<BackupUi> = backupState
+
+    override fun saveBackup() {
+        log += "backup save"
+    }
+
+    override fun restoreBackup() {
+        log += "backup restore"
+    }
+
     companion object {
         fun defaultSettings() = SettingsUi(
             feePerSide = 0.001, extraMajors = 0.0, extraOthers = 0.0, backgroundScanning = true, followFastCharts = true, binanceUs = false,
@@ -313,6 +341,7 @@ class FakeDebug : DebugState {
 class FakeApp(
     override val lists: FakeLists = FakeLists(),
     override val markets: FakeMarkets = FakeMarkets(),
+    override val scan: FakeScan = FakeScan(),
     override val trades: FakeTrades = FakeTrades(),
     override val scorecard: FakeScorecard = FakeScorecard(),
     override val alerts: FakeAlerts = FakeAlerts(),

@@ -2,10 +2,13 @@ package com.ikverse.signallab.data.binance
 
 import com.ikverse.signallab.data.DataConfig
 import com.ikverse.signallab.engine.Timeframe
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -17,7 +20,6 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
-import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
@@ -31,29 +33,37 @@ class BinanceClient(
     private val http: OkHttpClient = defaultHttp(),
     private val localClock: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    /** Where answers are read and decoded, whoever asked: a screen must never read a socket or parse megabytes on its own thread. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : MarketData {
     @Volatile
     private var offsetMs = 0L
 
+    @Volatile
+    private var synced = false
+
     /** Binance's clock minus the phone's, in milliseconds. Positive means the phone is behind. */
     val clockSkewMs: Long get() = offsetMs
+
+    override fun clockSynced(): Boolean = synced
 
     private val paceLock = Mutex()
     private var lastCallAt = 0L
 
     override fun nowMs(): Long = localClock() + offsetMs
 
-    override suspend fun serverTime(): Long {
+    override suspend fun serverTime(): Long = withContext(io) {
         val before = localClock()
         val body = get("/api/v3/time")
         val after = localClock()
         val server = parse(body) { JSONObject(it).getLong("serverTime") }
         offsetMs = server - (before + after) / 2
-        return server
+        synced = true
+        server
     }
 
     override suspend fun spotSymbols(): List<SpotSymbol> =
-        parse(get("/api/v3/exchangeInfo", mapOf("permissions" to "SPOT"))) { text ->
+        fetch("/api/v3/exchangeInfo", mapOf("permissions" to "SPOT")) { text ->
             val arr = JSONObject(text).getJSONArray("symbols")
             List(arr.length()) {
                 val s = arr.getJSONObject(it)
@@ -62,7 +72,7 @@ class BinanceClient(
         }
 
     override suspend fun tickers24h(): List<Ticker24h> =
-        parse(get("/api/v3/ticker/24hr", mapOf("type" to "MINI"))) { text ->
+        fetch("/api/v3/ticker/24hr", mapOf("type" to "MINI")) { text ->
             val arr = JSONArray(text)
             List(arr.length()) {
                 val t = arr.getJSONObject(it)
@@ -77,7 +87,7 @@ class BinanceClient(
         // Binance answers for at most 100 symbols at a time.
         for (batch in symbols.chunked(ROLLING_BATCH)) {
             val names = batch.joinToString(",", "[", "]") { "\"$it\"" }
-            parse(get("/api/v3/ticker", mapOf("symbols" to names, "windowSize" to window, "type" to "MINI"))) { text ->
+            fetch("/api/v3/ticker", mapOf("symbols" to names, "windowSize" to window, "type" to "MINI")) { text ->
                 val arr = JSONArray(text)
                 for (i in 0 until arr.length()) {
                     val t = arr.getJSONObject(i)
@@ -91,8 +101,8 @@ class BinanceClient(
     }
 
     override suspend fun klines(symbol: String, tf: Timeframe, startTime: Long, limit: Int): List<Kline> =
-        parse(get("/api/v3/klines", mapOf("symbol" to symbol, "interval" to tf.label,
-            "startTime" to startTime.toString(), "limit" to limit.toString()))) { text ->
+        fetch("/api/v3/klines", mapOf("symbol" to symbol, "interval" to tf.label,
+            "startTime" to startTime.toString(), "limit" to limit.toString())) { text ->
             val arr = JSONArray(text)
             List(arr.length()) {
                 val k = arr.getJSONArray(it)
@@ -100,6 +110,10 @@ class BinanceClient(
                     k.getString(4).toDouble(), k.getString(5).toDouble(), k.getLong(6))
             }
         }
+
+    /** One request and its decoding, both on [io]. */
+    private suspend fun <T> fetch(path: String, params: Map<String, String>, block: (String) -> T): T =
+        withContext(io) { parse(get(path, params), block) }
 
     private inline fun <T> parse(text: String, block: (String) -> T): T =
         try {
@@ -182,7 +196,8 @@ private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont 
         }
 
         override fun onResponse(call: Call, response: Response) {
-            cont.resume(response)
+            // Nobody left to read it (cancelled as it arrived): close it, or its connection is held until it times out.
+            cont.resume(response) { _, value, _ -> value.close() }
         }
     })
     cont.invokeOnCancellation { cancel() }

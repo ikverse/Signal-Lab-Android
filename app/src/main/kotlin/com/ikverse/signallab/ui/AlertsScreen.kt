@@ -140,6 +140,11 @@ fun AlertsScreen(
     backLabel: String = Dest.More.label,
 ) {
     val all by model.alerts.collectAsStateWithLifecycle()
+    val loaded by model.loaded.collectAsStateWithLifecycle()
+    if (!loaded) {
+        Column(modifier.fillMaxSize().testTag("alerts-loading")) {}
+        return
+    }
     val group = nav.alertsGroup
     val shown = filterAlerts(all, group)
     var chosen by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -160,7 +165,8 @@ fun AlertsScreen(
                         item(key = "day-$day") { SectionLabel(day) }
                         items(alerts, key = { it.id }) { a ->
                             val link = alertLink(a)
-                            AlertRow(a, selected = wide && chosen == a.id) { if (wide) chosen = a.id else if (link != null) onOpen(link) }
+                            // Beside the pane a touch shows the alert; on a phone it goes where the alert leads, so one that leads nowhere is not a button.
+                            AlertRow(a, selected = wide && chosen == a.id, enabled = wide || link != null) { if (wide) chosen = a.id else if (link != null) onOpen(link) }
                             HRule()
                         }
                     }
@@ -189,10 +195,10 @@ fun AlertsScreen(
 
 /** An alert in the list: its mark, then its coin, what happened and the figures (or its words, for one that is not about a trade). */
 @Composable
-private fun AlertRow(a: AlertUi, selected: Boolean, onClick: () -> Unit) {
+private fun AlertRow(a: AlertUi, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val (mark, color) = kindMark(a)
     val f = a.facts
-    TouchRow(onClick, modifier = Modifier.testTag("alert-${a.id}"), selected = selected, minHeight = 64.dp) {
+    TouchRow(onClick, modifier = Modifier.testTag("alert-${a.id}"), selected = selected, minHeight = 64.dp, enabled = enabled) {
         Box(Modifier.align(Alignment.Top).padding(top = 2.dp).size(34.dp).clip(CircleShape).background(color.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
             Icon(mark, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
         }

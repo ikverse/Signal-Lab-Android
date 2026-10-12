@@ -31,14 +31,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import com.ikverse.signallab.analyst.ClaudeHandoff
 import com.ikverse.signallab.analyst.Handoff
 import com.ikverse.signallab.scan.Notifier
+import com.ikverse.signallab.state.FileExchange
 import com.ikverse.signallab.ui.DimLevel
 import com.ikverse.signallab.ui.PermissionPrompt
 import com.ikverse.signallab.ui.SignalLabApp
 import com.ikverse.signallab.ui.WebPool
 import com.ikverse.signallab.ui.hideStatusBar
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The one screen. It holds the app's frame and the system hand-offs the frame cannot do itself: permissions, opening a coin from a
@@ -60,6 +63,26 @@ class MainActivity : ComponentActivity() {
     /** Google's account picker and consent screen for sync, and what the user chose there. */
     private val syncConsent = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         lifecycleScope.launch { app.graph.deviceSync.onConsent(result.resultCode == RESULT_OK, result.data) }
+    }
+
+    /** Android's "save as" picker: the file the user chose gets the bytes the model makes. Null when they backed out. */
+    private val saveFile = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        lifecycleScope.launch {
+            app.model.files.completeSave(uri?.let { chosen ->
+                { bytes: ByteArray ->
+                    withContext(Dispatchers.IO) { contentResolver.openOutputStream(chosen)?.use { it.write(bytes) } ?: error("The file could not be opened for writing.") }
+                }
+            })
+        }
+    }
+
+    /** Android's "open" picker: the file the user chose is read for the model. Null when they backed out. */
+    private val openFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        lifecycleScope.launch {
+            app.model.files.completeOpen(uri?.let { chosen ->
+                { withContext(Dispatchers.IO) { contentResolver.openInputStream(chosen)?.use { it.readBytes() } ?: error("The file could not be opened.") } }
+            })
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,6 +124,14 @@ class MainActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             app.graph.deviceSync.consent.collect { syncConsent.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+        }
+        lifecycleScope.launch {
+            app.model.files.pending.collect { request ->
+                when (request) {
+                    is FileExchange.Request.Save -> saveFile.launch(request.name)
+                    FileExchange.Request.Open -> openFile.launch(arrayOf("*/*"))
+                }
+            }
         }
         lifecycleScope.launch {
             // While the app is on screen: keep the screen on and dim if the user asked for that.

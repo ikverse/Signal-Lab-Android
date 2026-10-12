@@ -102,7 +102,12 @@ fun ScorecardScreen(
     onAsk: () -> Unit = {},
 ) {
     val card by model.scorecard.collectAsStateWithLifecycle()
+    val loaded by model.loaded.collectAsStateWithLifecycle()
     val all by trades.trades.collectAsStateWithLifecycle()
+    if (!loaded) {
+        Column(modifier.fillMaxSize().testTag("scorecard-loading")) {}
+        return
+    }
     var chart by rememberSaveable { mutableStateOf<String?>(null) }
     var numbers by rememberSaveable { mutableStateOf(false) }
     val account = PlainWords.account(all)

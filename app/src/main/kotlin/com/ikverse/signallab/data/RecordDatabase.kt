@@ -6,8 +6,8 @@ import android.database.sqlite.SQLiteOpenHelper
 
 /**
  * The record: watchlists, settings, live paper trades and what happened to them, alerts, every
- * signal variant ever tried, and the analyst's reports. This is the file the Drive backup carries, so what is in it is what a
- * restore brings back.
+ * signal variant ever tried, and the analyst's reports. This is what sync between devices exchanges (see RecordSync), so what is in
+ * it is what another device can come to hold.
  *
  * **Schema changes are steps in [MIGRATIONS], and a step is never edited once it has shipped.** A
  * fresh install runs every step in order, exactly as an upgrade does, so there is no second copy of

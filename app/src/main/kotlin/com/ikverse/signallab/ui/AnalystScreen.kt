@@ -82,13 +82,15 @@ fun AnalystScreen(
     onGo: (String) -> Unit = {},
     onBack: (() -> Unit)? = null,
     backLabel: String = Dest.More.label,
+    /** Opens the Lab on one test, from a suggestion that is already being forward-tested. */
+    onOpenLab: (Long) -> Unit = {},
 ) {
     val reports by model.reports.collectAsStateWithLifecycle()
     val current = reports.firstOrNull { it.id == selected } ?: if (wide) reports.firstOrNull() else null
     val index = @Composable { AnalystIndex(model, trades, reports, current?.id, onSelect, onOpenPage, compact = wide, onBack = onBack, backLabel = backLabel) }
     val content = @Composable {
         when {
-            current != null -> ReportView(model, current, wide, onSelect, onOpenPage, onGo)
+            current != null -> ReportView(model, current, wide, onSelect, onOpenPage, onGo, onOpenLab)
             else -> EmptyState("No reports yet", "Ask a question, send it in the Claude app, then share or paste the answer here.")
         }
     }
@@ -103,7 +105,9 @@ fun AnalystScreen(
 
 /** A report: the answer itself, and when it suggests patterns, a second tab to backtest and start them. */
 @Composable
-private fun ReportView(model: AnalystModel, report: ReportUi, wide: Boolean, onSelect: (Long?) -> Unit, onOpenPage: (String) -> Unit, onGo: (String) -> Unit) {
+private fun ReportView(
+    model: AnalystModel, report: ReportUi, wide: Boolean, onSelect: (Long?) -> Unit, onOpenPage: (String) -> Unit, onGo: (String) -> Unit, onOpenLab: (Long) -> Unit,
+) {
     var patterns by rememberSaveable(report.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         if (!wide) BackRow("Ask Claude", { onSelect(null) })
@@ -122,7 +126,7 @@ private fun ReportView(model: AnalystModel, report: ReportUi, wide: Boolean, onS
         if (patterns && report.suggestions.isNotEmpty()) {
             LazyColumn(Modifier.weight(1f).testTag("suggestions")) {
                 itemsIndexed(report.suggestions, key = { i, s -> "$i-${s.definition}" }) { i, s ->
-                    SuggestionCard(model, report.id, i, s, onOpenPage)
+                    SuggestionCard(model, report.id, i, s, onOpenPage, onOpenLab)
                     HRule()
                 }
             }
@@ -133,7 +137,7 @@ private fun ReportView(model: AnalystModel, report: ReportUi, wide: Boolean, onS
 }
 
 @Composable
-private fun SuggestionCard(model: AnalystModel, reportId: Long, index: Int, s: LabSuggestionUi, onOpenPage: (String) -> Unit) {
+private fun SuggestionCard(model: AnalystModel, reportId: Long, index: Int, s: LabSuggestionUi, onOpenPage: (String) -> Unit, onOpenLab: (Long) -> Unit) {
     val scope = rememberCoroutineScope()
     var result by remember(s.definition) { mutableStateOf<LabBacktestUi?>(null) }
     var testing by remember(s.definition) { mutableStateOf(false) }
@@ -158,7 +162,8 @@ private fun SuggestionCard(model: AnalystModel, reportId: Long, index: Int, s: L
                 }
             }, enabled = !testing, modifier = Modifier.testTag("backtest-$index"))
             if (s.runningAs != null) {
-                TextAction("Forward-testing as lab ${s.runningAs}", { onOpenPage("pattern-lab") }, color = Palette.Muted, modifier = Modifier.testTag("running-$index"))
+                val running = s.runningAs
+                TextAction("Forward-testing as lab $running", { onOpenLab(running) }, color = Palette.Muted, modifier = Modifier.testTag("running-$index"))
             } else {
                 TextAction("Start forward-testing", {
                     scope.launch { message = (model.startLab(definition, s.title, s.reason, reportId) as? Outcome.Refused)?.message }

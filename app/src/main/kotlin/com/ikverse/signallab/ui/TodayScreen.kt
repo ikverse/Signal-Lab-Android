@@ -60,12 +60,23 @@ fun TodayScreen(
     onOpenLearn: (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenPage: (String) -> Unit = {},
+    scan: ScanModel? = null,
 ) {
+    val scanStatus = scan?.status?.collectAsStateWithLifecycle()?.value
+    val statusLine = @Composable {
+        if (scan != null && scanStatus != null) ScanStatusLine(scanStatus, onCheck = { scan.checkNow() })
+    }
     val all by trades.trades.collectAsStateWithLifecycle()
+    val loaded by trades.loaded.collectAsStateWithLifecycle()
     val card by scorecard.scorecard.collectAsStateWithLifecycle()
     val coins by markets.coins.collectAsStateWithLifecycle()
     val live by markets.prices.collectAsStateWithLifecycle()
     val setups = setupsOf(all)
+    if (!loaded) {
+        // Nothing has been read yet: a blank, not the "nothing to see" message, which would be wrong for a moment.
+        Column(modifier.fillMaxSize().testTag("today-loading")) {}
+        return
+    }
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             delay(30_000)
@@ -88,9 +99,10 @@ fun TodayScreen(
             ScreenTitle("Today")
             EmptyState(
                 "Nothing worth looking at right now",
-                "When a coin on your lists matches a pattern, it shows up here and you get a notification. Until then there is nothing to do.",
+                "When a coin on your lists matches a pattern, it shows up here, with a notification if alerts are on. Until then there is nothing to do.",
                 Modifier.testTag("today-empty"),
             )
+            statusLine()
         }
         return
     }
@@ -102,6 +114,7 @@ fun TodayScreen(
                     "Coins with a setup right now, and the plan for each.",
                     style = Type.Small, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
+                statusLine()
             }
             items(setups, key = { it.id }) { t ->
                 SetupCard(t, priceOf(t.symbol), rowOf(t, card.rows), now, onOpenLearn, onOpenPage, { openChart(t) }, Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
@@ -114,7 +127,10 @@ fun TodayScreen(
         panels, "today", "setups", 340f,
         list = {
             LazyColumn(Modifier.fillMaxSize().testTag("today")) {
-                item(key = "title") { ScreenTitle("Today") }
+                item(key = "title") {
+                    ScreenTitle("Today")
+                    statusLine()
+                }
                 items(setups, key = { it.id }) { t ->
                     SetupRow(t, t.id == chosen?.id, now) { picked = t.id }
                 }
@@ -126,6 +142,19 @@ fun TodayScreen(
         },
         modifier = modifier,
     )
+}
+
+/** When the coins were last checked and when they will be next, with a way to check now. */
+@Composable
+private fun ScanStatusLine(s: ScanStatusUi, onCheck: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            PlainWords.scanLine(s),
+            style = Type.Small.copy(color = if (s.checking) Palette.Accent else if (!s.on || s.problem != null) Palette.Warn else Palette.Muted),
+            modifier = Modifier.weight(1f).testTag("scan-status"),
+        )
+        LineButton("Check now", onCheck, Modifier.padding(start = 8.dp).testTag("check-now"), enabled = s.on && !s.checking)
+    }
 }
 
 /** One setup in the list beside the detail: the coin, when, and the sentence. */

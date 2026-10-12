@@ -117,6 +117,17 @@ object PlainWords {
     const val GOOD_RATE = 0.55
     const val BAD_RATE = 0.40
 
+    /** The scan status in a line: "Last checked 14:05 · next check 15:00", "Checking…", "Scanning is off". A problem is added after " · ". */
+    fun scanLine(s: ScanStatusUi): String {
+        val main = when {
+            s.checking -> "Checking…"
+            !s.on -> "Scanning is off"
+            else -> (s.lastCheckedAt?.let { "Last checked ${Fmt.time(it)}" } ?: "Not checked yet") +
+                (s.nextCheckAt?.let { " · next check ${Fmt.time(it)}" } ?: "")
+        }
+        return main + (s.problem?.let { " · $it" } ?: "")
+    }
+
     /** Working first, then the ones still being judged, then no better than guessing, then not working. */
     fun verdictRank(verdict: String): Int = when (verdict) {
         "Edge" -> 0

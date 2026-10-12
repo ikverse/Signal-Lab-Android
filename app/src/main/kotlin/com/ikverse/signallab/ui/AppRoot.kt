@@ -145,7 +145,7 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
     val backLabel = (nav.backTo ?: Dest.More).label
     holder.SaveableStateProvider(nav.dest.name) {
         when (nav.dest) {
-            Dest.Today -> TodayScreen(model.markets, model.trades, model.scorecard, model.panels, layout, nav, onOpenLearn = openVariant, onOpenPage = { nav.openLearn(it) })
+            Dest.Today -> TodayScreen(model.markets, model.trades, model.scorecard, model.panels, layout, nav, onOpenLearn = openVariant, onOpenPage = { nav.openLearn(it) }, scan = model.scan)
             Dest.Markets -> MarketsScreen(
                 model.markets, model.trades, model.alerts, model.panels, layout, nav, onOpenLearn = openVariant, onOpenLists = { nav.go(Dest.Lists) },
                 lists = lists, scanning = scanning, onOpenAlerts = { nav.openAlerts(AlertGroup.All, fromApp = true) }, listsModel = model.lists,
@@ -163,10 +163,12 @@ private fun Content(model: AppModel, debug: Boolean, layout: LayoutClass, nav: N
                 model.analyst, model.scorecard, model.trades, model.markets, model.panels, layout,
                 hasPage = { id -> model.learn.pages.any { it.id == id } }, onOpenLearn = { nav.openLearn(it) },
                 onShowTrade = { t -> nav.openCoin(t.symbol, t.timeframe, fromApp = true, trade = t.id) },
+                openTest = nav.labOpen, onOpened = { nav.labOpen = null },
             )
             Dest.Analyst -> AnalystScreen(
                 model.analyst, model.trades, model.panels, nav.analystReport, { nav.analystReport = it }, wide = layout != LayoutClass.Compact,
                 onOpenPage = { nav.openLearn(it) }, onGo = { nav.openPlace(it) }, onBack = onBack, backLabel = backLabel,
+                onOpenLab = { nav.openLab(it) },
             )
             Dest.Alerts -> AlertsScreen(
                 model.alerts, nav, onOpen = { nav.openLink(it, fromApp = true) }, wide = layout != LayoutClass.Compact,

@@ -386,4 +386,14 @@ class NavigationLinksTest {
         assertEquals(Dest.Markets, nav.barPlace)
         assertNull(nav.backTo, "a place in the bar has no way back of its own")
     }
+
+    @Test
+    fun `opening a lab test is a jump that back returns from`() {
+        val nav = NavState(Dest.Analyst)
+        nav.openLab(3)
+        assertEquals(Dest.Lab, nav.dest)
+        assertEquals(3L, nav.labOpen)
+        assertTrue(nav.back())
+        assertEquals(Dest.Analyst, nav.dest)
+    }
 }

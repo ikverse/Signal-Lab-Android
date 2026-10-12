@@ -242,6 +242,10 @@ class AnalystTextTest {
         assertEquals("```html\n<b>kept</b>\n```\n&lt;b>escaped&lt;/b>", ReportText.safe(fenced))
         assertEquals("~~~\n<i>\n~~~", ReportText.safe("~~~\n<i>\n~~~"))
         assertEquals("[x](#alert(1))", ReportText.safe("[x](javascript:alert(1))"))
+        assertEquals("[x]: #alert(1)\n\n[x]", ReportText.safe("[x]: javascript:alert(1)\n\n[x]"), "a reference-style link is neutralised too")
+        assertEquals("[x](#text/html,hi)", ReportText.safe("[x](data:text/html,hi)"))
+        assertEquals("  [y]: #foo", ReportText.safe("  [y]: VBScript:foo"))
+        assertEquals("[z]: https://example.com", ReportText.safe("[z]: https://example.com"), "a web address is left as it is")
         val table = "| Pattern | Vs random |\n|---|---|\n| trend | +0.20% |"
         assertEquals(table, ReportText.safe(table))
     }
