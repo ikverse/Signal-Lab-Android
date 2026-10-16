@@ -109,6 +109,7 @@ fun EvidenceScreen(e: EvidenceUi?, modifier: Modifier = Modifier) {
         }
         Panel(Modifier.testTag("verdict")) {
             Text(e.verdict, style = Type.Body.copy(color = Ink.Text))
+            e.tierReason?.let { Text("${e.tier.label}: $it", style = Type.Small, modifier = Modifier.testTag("tier-reason")) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Research", style = Type.Caption)

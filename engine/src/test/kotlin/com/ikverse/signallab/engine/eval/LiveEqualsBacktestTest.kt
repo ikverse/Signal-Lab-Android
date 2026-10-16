@@ -26,7 +26,8 @@ class LiveEqualsBacktestTest {
         // A shorter replay keeps the test quick: three coins, every day of their history.
         val coins = listOf("BTCUSDT", "ETHUSDT", "SOLUSDT").filter { it in panel }
         var compared = 0
-        for (s in Builtins.all) {
+        // Strategies that read one daily coin at a time; the ranking and the hourly strategy are replayed in the app runner test.
+        for (s in Builtins.all.filter { !it.crossSectional && it.timeframe == Timeframe.D1 }) {
             for (symbol in coins) {
                 val c = panel.getValue(symbol)
                 val open = HashMap<String, Open>()

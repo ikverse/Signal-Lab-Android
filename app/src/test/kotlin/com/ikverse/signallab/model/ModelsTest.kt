@@ -49,7 +49,7 @@ class ModelsTest {
         assertTrue(m.vsAverage != null && m.swings != null)
         assertTrue(m.sentence.startsWith("Bitcoin is"))
         assertTrue(m.sentence.endsWith("futures traders are neutral."))
-        assertEquals("All 2 strategies may fire.", m.allowedSentence)
+        assertEquals("All ${Builtins.all.size} strategies may fire.", m.allowedSentence)
         assertEquals("Bitcoin is below its 200-day average.", MarketLine(1.0, -0.1, null, null, 1, 2).sentence)
         assertEquals("1 of 2 strategies may fire; bull-market ones wait.", MarketLine(1.0, -0.1, null, null, 1, 2).allowedSentence)
     }
@@ -68,9 +68,14 @@ class ModelsTest {
 
     @Test
     fun aStrategyStandsAheadBehindOrTooEarly() {
-        assertEquals("Too few calls to say anything yet.", LedgerModel.standing(3, 0.02))
-        assertEquals("Ahead so far. About 60 more calls before a live verdict.", LedgerModel.standing(40, 0.01))
-        assertEquals("Behind random entries over 120 calls.", LedgerModel.standing(120, -0.01))
+        fun calls(n: Int, mean: Double) = List(n) { mean + if (it % 2 == 0) 0.04 else -0.04 }
+        assertEquals("Too few calls to say anything yet.", LedgerModel.standing(calls(3, 0.02)))
+        val ahead = LedgerModel.standing(calls(40, 0.01))
+        assertTrue(ahead.startsWith("Ahead so far. About ") && ahead.endsWith(" more calls before a live verdict."), ahead)
+        assertEquals("Ahead so far, but by too little to confirm soon.", LedgerModel.standing(calls(40, 0.0001)))
+        assertEquals("Behind so far, over 40 calls.", LedgerModel.standing(calls(40, -0.01)))
+        assertEquals("Behind random entries over 120 calls.", LedgerModel.standing(calls(120, -0.01)))
+        assertEquals("Ahead of random entries over 400 calls.", LedgerModel.standing(calls(400, 0.03)))
     }
 
     @Test

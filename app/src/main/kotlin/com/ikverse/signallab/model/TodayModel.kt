@@ -128,7 +128,7 @@ class TodayModel(
         for (row in shown) {
             val s = byId.getValue(row.strategyId)
             val c = window(row.symbol)
-            val ui = callUi(row, s, c, i.prefs.accountSize)
+            val ui = callUi(row, s, c, i.prefs.accountSize, i.prefs.tierOf(s))
             val exit = exitBy[row.id]
             if (exit != null) {
                 val item = ClosedUi(ui, exit.exitTime, exit.exitPrice, exit.reason, exit.net, exit.net * ui.sizeUsd)
@@ -139,7 +139,7 @@ class TodayModel(
                 } else if (i.t - exit.exitTime < 7 * DAY) closed.add(item)
                 continue
             }
-            if (row.entryTime == newest && newest != null && i.t - row.openedAt < DAY) {
+            if (row.entryTime == newest && i.t - row.openedAt < DAY) {
                 newCalls.add(ui)
                 continue
             }
@@ -167,11 +167,11 @@ class TodayModel(
         const val DAY = 86_400_000L
 
         /** A ledger row as a card, with the words its strategy gives it. */
-        fun callUi(row: CallRow, s: Strategy, c: Candles?, account: Double): CallUi {
+        fun callUi(row: CallRow, s: Strategy, c: Candles?, account: Double, tier: Tier = s.launchTier): CallUi {
             val i = c?.t?.indexOfFirst { it == row.signalTime } ?: -1
             val size = row.sizeFraction ?: 0.0
             return CallUi(
-                id = row.id, symbol = row.symbol, strategyId = s.id, strategyName = s.name, tier = s.launchTier,
+                id = row.id, symbol = row.symbol, strategyId = s.id, strategyName = s.name, tier = tier,
                 signalTime = row.signalTime, entryTime = row.entryTime, entry = row.entryPrice, stop = row.stop,
                 sizeFraction = size, sizeUsd = size * account,
                 why = if (c != null && i >= 0) StrategyTexts.why(s, c, i) else "${s.name} fired on ${Words.day(row.signalTime)}.",

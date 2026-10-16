@@ -8,6 +8,7 @@ import com.ikverse.signallab.engine.PaperTrading
 import com.ikverse.signallab.engine.Rng
 import com.ikverse.signallab.engine.Statistics
 import com.ikverse.signallab.engine.strategy.Strategy
+import com.ikverse.signallab.engine.strategy.Vetoes
 
 /** One paper trade a strategy would have made, with what the matched random entries did. */
 class BacktestTrade(
@@ -48,7 +49,8 @@ class BacktestSummary(
 
 /**
  * Runs a strategy over stored history the way the live runner will run it: one open trade per coin at a time, entry at
- * the next open, the strategy's own exit plan, the cost for each coin, and a matched random baseline for every trade.
+ * the next open, the strategy's own exit plan, the vetoes, the cost for each coin, and a matched random baseline for every
+ * trade. A ranking strategy ranks the coins it is given; the live universe ranks are not applied.
  */
 object Backtest {
     /** Calendar weeks start on Monday 00:00 UTC; 1 Jan 1970 was a Thursday, three days later in the week. */
@@ -69,9 +71,10 @@ object Backtest {
     ): List<BacktestTrade> {
         val plan = strategy.exit
         val out = ArrayList<BacktestTrade>()
+        val across = if (strategy.crossSectional) strategy.entriesAcross(panel) else null
         for ((symbol, c) in panel) {
             require(c.tf == strategy.timeframe) { "${strategy.id} reads ${strategy.timeframe.label} candles, $symbol has ${c.tf.label}" }
-            val entries = strategy.entries(c)
+            val entries = across?.get(symbol) ?: strategy.entries(c)
             val exits = strategy.exitSignals(c)
             val atr = Indicators.atr(c.high, c.low, c.close, EngineConfig.ATR_WINDOW)
             val regime = PaperTrading.regimeSeries(btcDaily, c.closeTime)
@@ -83,6 +86,7 @@ object Backtest {
             for (s in entries.indices) {
                 if (!entries[s] || s + 1 <= busyUntil || !Fills.judgeable(c, s, plan, atr)) continue
                 if (strategy.bullOnly && regime[s] != 1) continue
+                if (Vetoes.blocked(c, s, atr) != null) continue
                 val fill = Fills.resolve(c, s + 1, plan, atr[s], exits) ?: continue
                 kept.add(s)
                 fills.add(fill)

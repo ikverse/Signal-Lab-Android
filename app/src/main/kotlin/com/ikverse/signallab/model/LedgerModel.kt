@@ -1,5 +1,7 @@
 package com.ikverse.signallab.model
 
+import com.ikverse.signallab.engine.eval.Evidence
+import com.ikverse.signallab.engine.eval.Moments
 import com.ikverse.signallab.engine.strategy.Strategy
 import com.ikverse.signallab.ledger.CallRow
 import com.ikverse.signallab.ledger.ExitRow
@@ -119,7 +121,7 @@ class LedgerModel(
             val mean = if (excess.isEmpty()) null else excess.average()
             val net = fin.sumOf { (c, e) -> e.net * (c.sizeFraction ?: 0.0) * start }
             StrategyLine(s.id, s.name, fin.size, fin.count { it.second.net > 0 }, mine.count { exitBy[it.id] == null }, mean, net,
-                standing(fin.size, mean), testing = !prefs.isOn(s))
+                standing(excess), testing = !prefs.isOn(s))
         }.filter { it.closed > 0 || it.open > 0 }
         val coins = calls.mapNotNull { c -> exitBy[c.id]?.takeIf { it.exitTime >= from }?.let { c to it } }.groupBy { it.first.symbol }
             .map { (sym, list) -> CoinLine(sym, list.size, list.count { it.second.net > 0 }, list.sumOf { (c, e) -> e.net * (c.sizeFraction ?: 0.0) * start }) }
@@ -133,14 +135,21 @@ class LedgerModel(
         /** No live verdict below this many finished calls (docs/strategy-research.md §4). */
         const val MIN_CALLS = 100
 
-        /** Where a strategy stands live, in a sentence. */
-        fun standing(closed: Int, meanExcess: Double?): String {
-            val more = MIN_CALLS - closed
+        /**
+         * Where a strategy stands live, in a sentence, from its finished calls' results against random entries. While it is
+         * ahead, the calls still needed are the minimum track record length for its results so far (never fewer than
+         * [MIN_CALLS] in all).
+         */
+        fun standing(excess: List<Double>): String {
+            val closed = excess.size
+            if (closed < 10) return "Too few calls to say anything yet."
+            val m = Moments.of(excess.toDoubleArray())
+            val needed = maxOf(MIN_CALLS, Evidence.minTrackRecord(m) ?: Int.MAX_VALUE)
             return when {
-                closed < 10 || meanExcess == null -> "Too few calls to say anything yet."
-                more > 0 && meanExcess > 0 -> "Ahead so far. About $more more calls before a live verdict."
-                more > 0 -> "Behind so far. About $more more calls before a live verdict."
-                meanExcess > 0 -> "Ahead of random entries over $closed calls."
+                m.mean > 0 && closed < needed && needed < 10_000 -> "Ahead so far. About ${needed - closed} more calls before a live verdict."
+                m.mean > 0 && closed < needed -> "Ahead so far, but by too little to confirm soon."
+                m.mean > 0 -> "Ahead of random entries over $closed calls."
+                closed < MIN_CALLS -> "Behind so far, over $closed calls."
                 else -> "Behind random entries over $closed calls."
             }
         }

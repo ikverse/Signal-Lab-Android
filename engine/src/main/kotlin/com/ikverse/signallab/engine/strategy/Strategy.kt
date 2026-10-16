@@ -62,6 +62,21 @@ interface Strategy {
 
     /** True at candle k when an open trade leaves at the open of candle k+1; null when the plan alone decides. */
     fun exitSignals(c: Candles): BooleanArray? = null
+
+    /**
+     * The universe ranks (1 = the busiest coin by 30-day turnover) the strategy trades live; null for all of them. The
+     * backtest runs on whatever coins it is given.
+     */
+    val ranks: IntRange? get() = null
+
+    /** True when a signal depends on the other coins too (a ranking), so entries come from [entriesAcross]. */
+    val crossSectional: Boolean get() = false
+
+    /**
+     * Entries for every coin of [panel] at once. A strategy that looks at one coin at a time gives [entries] for each; a
+     * ranking compares them. Each coin's flags line up with its own candles.
+     */
+    fun entriesAcross(panel: Map<String, Candles>): Map<String, BooleanArray> = panel.mapValues { entries(it.value) }
 }
 
 /** True on the first candle of each run of true values, so a condition that holds for days enters once. */

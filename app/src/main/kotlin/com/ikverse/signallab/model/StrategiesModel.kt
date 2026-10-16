@@ -64,6 +64,8 @@ data class EvidenceUi(
     val computing: Boolean,
     val live: LiveFacts,
     val tried: Int,
+    /** Why the strategy has its tier, from the last daily pass; null before its first. */
+    val tierReason: String? = null,
 ) {
     /** The verdict in a sentence, from the three columns. */
     val verdict: String
@@ -89,7 +91,7 @@ class StrategiesModel(
     private val scope: CoroutineScope,
 ) {
     val state: StateFlow<StrategiesUi> = combine(prefs.preferences, dao.watchCustoms(), dao.watchStrategiesTried()) { p, customs, tried ->
-        StrategiesUi(true, strategies.map { StrategyRowUi(it.id, it.name, it.launchTier, p.isOn(it), StrategyTexts.summary(it)) }, customs, tried)
+        StrategiesUi(true, strategies.map { StrategyRowUi(it.id, it.name, p.tierOf(it), p.isOn(it), StrategyTexts.summary(it)) }, customs, tried)
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), StrategiesUi())
 
     fun switch(id: String, on: Boolean) {
@@ -111,8 +113,9 @@ class StrategiesModel(
         val p = prefs.preferences.first()
         val tried = dao.strategiesTried()
         val live = liveFacts(s)
-        val base = EvidenceUi(s.id, s.name, s.launchTier, p.isOn(s), StrategyTexts.summary(s), StrategyTexts.rationale(s),
-            StrategyTexts.research(s), StrategyTexts.sources(s), StrategyTexts.rule(s), flow.value?.backtest, computing = true, live, tried)
+        val base = EvidenceUi(s.id, s.name, p.tierOf(s), p.isOn(s), StrategyTexts.summary(s), StrategyTexts.rationale(s),
+            StrategyTexts.research(s), StrategyTexts.sources(s), StrategyTexts.rule(s), flow.value?.backtest, computing = true, live, tried,
+            tierReason = p.tierReasons[s.id])
         flow.value = base
         val btc = candles.window(DataConfig.REGIME_COIN, Timeframe.D1)
         val day = btc?.t?.lastOrNull() ?: 0L
@@ -126,7 +129,8 @@ class StrategiesModel(
         }
         val coins = (dao.setting(StrategyRunner.UNIVERSE)?.split(',')?.filter { it.isNotBlank() }.orEmpty().ifEmpty { listOf(DataConfig.REGIME_COIN) })
         val panel = LinkedHashMap<String, Candles>()
-        for (sym in coins) candles.window(sym, Timeframe.D1)?.let { panel[sym] = it }
+        val since = if (s.timeframe == Timeframe.D1) 0L else System.currentTimeMillis() - 100 * 86_400_000L
+        for (sym in coins) candles.window(sym, s.timeframe, since)?.let { panel[sym] = it }
         val facts = withContext(Dispatchers.Default) { backtest(s, panel, btc, p) }
         computed[s.id] = day
         flow.value = base.copy(backtest = facts, computing = false)
@@ -137,7 +141,7 @@ class StrategiesModel(
         val exits = calls.mapNotNull { dao.exitOf(it.id) }
         val excess = exits.mapNotNull { it.excess }
         val mean = if (excess.isEmpty()) null else excess.average()
-        return LiveFacts(exits.size, mean, LedgerModel.standing(exits.size, mean))
+        return LiveFacts(exits.size, mean, LedgerModel.standing(excess))
     }
 
     companion object {

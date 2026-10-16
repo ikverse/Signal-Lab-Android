@@ -5,6 +5,7 @@ import com.ikverse.signallab.engine.EngineConfig
 import com.ikverse.signallab.engine.Indicators
 import com.ikverse.signallab.engine.PaperTrading
 import com.ikverse.signallab.engine.strategy.Strategy
+import com.ikverse.signallab.engine.strategy.Vetoes
 
 /** A call the live runner opens: everything its exit will later need, so it can be judged from the ledger alone. */
 class NewCall(
@@ -63,8 +64,8 @@ object Live {
     /**
      * The call [strategy] makes on [c] (one coin's closed candles) when its newest candle has just closed, entering at
      * [formingOpen], the first price of the candle after it. Null when there is no signal there, the strategy is
-     * bull-only and Bitcoin is not above its average, its average true range is not known yet, or [busy] (the coin
-     * already holds a call of this strategy).
+     * bull-only and Bitcoin is not above its average, its average true range is not known yet, a veto applies, or [busy]
+     * (the coin already holds a call of this strategy).
      */
     fun signal(
         strategy: Strategy,
@@ -73,14 +74,17 @@ object Live {
         formingOpen: Double,
         busy: Boolean,
         cost: Double,
+        /** For a ranking strategy, whether it fired on this coin's newest candle (from [Strategy.entriesAcross]). */
+        fired: Boolean? = null,
     ): NewCall? {
         val s = c.size - 1
         if (s < 0 || busy || !(formingOpen > 0)) return null
-        if (!strategy.entries(c)[s]) return null
+        if (!(fired ?: strategy.entries(c)[s])) return null
         val regime = PaperTrading.regimeSeries(btcDaily, longArrayOf(c.closeTime[s]))[0]
         if (strategy.bullOnly && regime != 1) return null
-        val atr = Indicators.atr(c.high, c.low, c.close, EngineConfig.ATR_WINDOW)[s]
-        if (atr.isNaN()) return null
+        val atrs = Indicators.atr(c.high, c.low, c.close, EngineConfig.ATR_WINDOW)
+        val atr = atrs[s]
+        if (atr.isNaN() || Vetoes.blocked(c, s, atrs) != null) return null
         val stop = strategy.exit.safetyStopAtr?.let { formingOpen - it * atr }
         return NewCall(strategy.id, c.symbol, c.t[s], c.t[s] + c.tf.ms, formingOpen, atr, stop, strategy.exit.maxBars, regime,
             sizeFor(formingOpen, atr), cost)

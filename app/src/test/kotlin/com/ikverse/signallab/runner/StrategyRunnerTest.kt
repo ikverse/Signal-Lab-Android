@@ -18,7 +18,9 @@ import com.ikverse.signallab.engine.Golden
 import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.eval.Backtest
 import com.ikverse.signallab.engine.strategy.Builtins
+import com.ikverse.signallab.engine.strategy.Tier
 import com.ikverse.signallab.ledger.LedgerDatabase
+import com.ikverse.signallab.ledger.Preferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -42,6 +44,9 @@ class StrategyRunnerTest {
     private val coins = listOf("BTCUSDT", "ETHUSDT", "SOLUSDT")
     private val panel: Map<String, Candles> = Golden.panel(Timeframe.D1).filterKeys { it in coins }
     private lateinit var ledger: LedgerDatabase
+
+    /** The strategies a daily replay on three coins can compare with their backtest: daily, one coin at a time, ranks 1 to 3 allowed. */
+    private val replayed = Builtins.all.filter { s -> s.timeframe == Timeframe.D1 && !s.crossSectional && s.ranks.let { it == null || 1 in it } }
 
     private class Collected : CallAlerts {
         val posted = ArrayList<CallAlert>()
@@ -92,7 +97,7 @@ class StrategyRunnerTest {
         val r = runner(market, alerts, store)
         val btc = panel.getValue("BTCUSDT")
         // Start on a day no backtest trade is in the middle of: the runner starts with nothing open, as the backtest then has.
-        val spans = Builtins.all.flatMap { s -> panel.flatMap { (sym, c) -> Backtest.run(s, mapOf(sym to c), btc) } }.map { it.entryTime..it.exitTime }
+        val spans = replayed.flatMap { s -> panel.flatMap { (sym, c) -> Backtest.run(s, mapOf(sym to c), btc) } }.map { it.entryTime..it.exitTime }
         val from = (btc.size - 600 until btc.size - 60).first { d -> spans.none { btc.t[d] in it } }
         val until = btc.size - 2
         for (d in from..until) {
@@ -108,7 +113,7 @@ class StrategyRunnerTest {
         val windowStart = btc.t[from]
         val windowEnd = btc.t[until]
         var matched = 0
-        for (s in Builtins.all) {
+        for (s in replayed) {
             for ((symbol, c) in panel) {
                 val bt = Backtest.run(s, mapOf(symbol to c), btc).filter { it.signalTime in windowStart..windowEnd }
                 val live = calls.filter { it.strategyId == s.id && it.symbol == symbol }.associateBy { it.signalTime }
@@ -124,8 +129,12 @@ class StrategyRunnerTest {
             }
         }
         assertTrue(matched > 3, "only $matched trades matched")
-        // Both built-ins are trusted enough to make calls, so each call and each exit was notified once.
-        assertEquals(calls.size + exits.size, alerts.posted.size)
+        // The rest made no calls here: a ranking needs 8 coins, Quiet dip trades ranks 10 to 80, and the hourly pass has no
+        // hourly candles in this test.
+        val skipped = Builtins.all.map { it.id } - replayed.map { it.id }.toSet()
+        assertEquals(emptyList(), calls.filter { it.strategyId in skipped }.map { "${it.strategyId} ${it.symbol}" })
+        // Only strategies whose tier makes calls notify, and nothing is notified twice.
+        assertTrue(alerts.posted.size <= calls.size + exits.size, "${alerts.posted.size} alerts for ${calls.size} calls and ${exits.size} exits")
     }
 
     @Test
@@ -146,6 +155,12 @@ class StrategyRunnerTest {
         assertEquals(exits, ledger.dao().allExits().size)
         assertEquals(posted, alerts.posted.size)
         assertEquals(Builtins.all.size, ledger.dao().strategiesTried(), "each strategy is registered once")
+        // The daily pass judged every daily strategy from its evidence and said why; the hourly one waits for hourly candles.
+        for (s in Builtins.all.filter { it.timeframe == Timeframe.D1 }) {
+            val tier = ledger.dao().setting(Preferences.TIER_PREFIX + s.id)
+            assertTrue(Tier.entries.any { it.name == tier }, "${s.id} has no tier: $tier")
+            assertTrue(!ledger.dao().setting(Preferences.TIER_REASON_PREFIX + s.id).isNullOrBlank(), "${s.id} has no reason")
+        }
     }
 
     @Test
@@ -160,11 +175,12 @@ class StrategyRunnerTest {
     }
 
     @Test
-    fun theDailyPassRunsJustAfterEachUtcMidnight() {
+    fun theRunnerWakesJustAfterEachHourlyClose() {
         val midnight = 1_760_054_400_000L // 10 Oct 2025 00:00 UTC
+        val hour = 3_600_000L
         assertEquals(midnight + DailyCloseScheduler.SETTLE_MS, DailyCloseScheduler.nextRunAt(midnight - 1))
-        assertEquals(midnight + day + DailyCloseScheduler.SETTLE_MS, DailyCloseScheduler.nextRunAt(midnight))
-        assertEquals(midnight + day + DailyCloseScheduler.SETTLE_MS, DailyCloseScheduler.nextRunAt(midnight + 5 * 3_600_000L))
+        assertEquals(midnight + hour + DailyCloseScheduler.SETTLE_MS, DailyCloseScheduler.nextRunAt(midnight))
+        assertEquals(midnight + 6 * hour + DailyCloseScheduler.SETTLE_MS, DailyCloseScheduler.nextRunAt(midnight + 5 * hour + 600_000L))
     }
 
     @Test
