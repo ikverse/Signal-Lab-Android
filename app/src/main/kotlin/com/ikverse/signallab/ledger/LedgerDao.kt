@@ -132,6 +132,23 @@ interface LedgerDao {
     @Query("SELECT * FROM strategies WHERE id = :id")
     suspend fun strategy(id: String): StrategyRow?
 
+    // --- for sync between devices ---------------------------------------------------------------------------------------
+
+    @Query("SELECT * FROM strategies ORDER BY id")
+    suspend fun allStrategies(): List<StrategyRow>
+
+    @Query("SELECT * FROM custom_strategies ORDER BY created_at, id")
+    suspend fun allCustoms(): List<CustomStrategyRow>
+
+    @Query("SELECT * FROM custom_stops")
+    suspend fun allCustomStops(): List<CustomStopRow>
+
+    @Query("SELECT * FROM reports ORDER BY received_at, id")
+    suspend fun allReports(): List<ReportRow>
+
+    @Query("SELECT * FROM settings ORDER BY `key`")
+    suspend fun allSettings(): List<SettingRow>
+
     @Query("DELETE FROM pins WHERE symbol = :symbol")
     suspend fun removePin(symbol: String)
 

@@ -67,7 +67,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A CHANGELOG heading that ends in "(pre-release)" publishes a pre-release: installed copies' updaters ask
+          # GitHub for the latest release, which never returns one, so nobody is offered it until it is marked final.
+          pre=()
+          if grep -qE "^## v?${GITHUB_REF_NAME#v}( |$).*\(pre-release\)" CHANGELOG.md; then pre=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/signal-lab-${GITHUB_REF_NAME#v}.apk" \
             --title "Signal Lab ${GITHUB_REF_NAME#v}" \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
-            --verify-tag
+            --verify-tag "${pre[@]}"

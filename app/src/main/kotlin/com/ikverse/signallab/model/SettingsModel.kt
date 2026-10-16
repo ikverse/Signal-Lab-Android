@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import com.ikverse.signallab.ledger.LegacyImporter
 import com.ikverse.signallab.ledger.PreferenceStore
 import com.ikverse.signallab.ledger.Preferences
+import com.ikverse.signallab.sync.SyncStatus
 import com.ikverse.signallab.update.UpdateController
 import com.ikverse.signallab.update.UpdateState
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -36,6 +38,7 @@ data class SettingsUi(
     /** What was brought over from Signal Lab 1. */
     val imported: String? = null,
     val grants: Grants = Grants(),
+    val sync: SyncStatus = SyncStatus(),
 )
 
 class SettingsModel(
@@ -45,11 +48,12 @@ class SettingsModel(
     lastImport: StateFlow<LegacyImporter.Result?>,
     private val version: String,
     private val scope: CoroutineScope,
+    sync: StateFlow<SyncStatus>? = null,
 ) {
     private val grants = MutableStateFlow(readGrants())
 
-    val state: StateFlow<SettingsUi> = combine(prefs.preferences, updates.state, lastImport, grants) { p, u, imp, g ->
-        SettingsUi(true, p, version, updateWords(u), updateAction(u), importWords(imp), g)
+    val state: StateFlow<SettingsUi> = combine(prefs.preferences, updates.state, lastImport, grants, sync ?: flowOf(SyncStatus())) { p, u, imp, g, s ->
+        SettingsUi(true, p, version, updateWords(u), updateAction(u), importWords(imp), g, s)
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), SettingsUi())
 
     /** After coming back from one of Android's settings screens. */

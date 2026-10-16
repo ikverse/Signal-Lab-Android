@@ -197,3 +197,26 @@ asking is logged here.
   after a round trip. Numbers are now read with a strict pattern.
 - Release: R8 keeps the SDK's message models and Jackson's binding whole; the APK grows from 4.2 MB to 13.4 MB.
 - Not verified yet: a real run against the Claude API (it needs the owner's key) and the shrunk SDK on the phone.
+
+### M9: sync, release preparation
+
+- Sync between devices returns on the new ledger, through the same hidden Drive folder, Google authorization and OAuth
+  client as Signal Lab 1 (`sync/`: `DriveFolder` and `DeviceSync` ported, `LedgerSync` and `SyncEngine` new). Each device
+  writes only its own file; Signal Lab 2 writes `device-<id>.v2.json.gz` in format 2 and reads every device's file, Signal
+  Lab 1's format 1 included. Signal Lab 1 sees format 2 as a record it cannot read and leaves it alone (it says a device
+  needs the newest version). The device id carries over from Signal Lab 1; a device that had sync on keeps it on.
+- Format 2 carries the strategies registry, every call with its exit, custom strategies with their stops, reports, pins and
+  the settings that follow the owner. Calls match by strategy, coin, signal candle and scope, so two devices that make the
+  same call keep one. A Signal Lab 1 lab pattern's call travels under its sync id and comes back under this phone's id.
+- Format 1 is read the way the importer reads Signal Lab 1's own file, so a trade already imported here is not added twice.
+- Decided without asking:
+  - Synced settings: account size, costs, data source, futures data, strategy switches, custom strategies running, the
+    analyst's model and budget, its suggestions and context lines. Not synced: notifications, the brief and review
+    switches (so only one device pays for them), tiers (each device computes them), the spending meter, sync's own state.
+  - Pins are merged as a union: removing a pin is not synced. Signal Lab 1's settings in a format 1 record are ignored.
+  - Rounds run on start, on returning to the app, after each pass and shortly after anything worth sending changes, at
+    least five minutes apart; the setting changes that trigger a round are only the synced ones.
+- The updater needs no change: it already ignores drafts and pre-releases. The release workflow now publishes a
+  pre-release when the version's `CHANGELOG.md` heading ends in "(pre-release)", and 2.0.0 is marked so: Signal Lab 1.7's
+  updater offers only the latest full release, so no phone is offered 2.0.0 before it is verified on the Fold7.
+- `CHANGELOG.md` has the 2.0.0 section. The `v2.0.0` tag is not made: it waits for the owner (stop point 3).

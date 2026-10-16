@@ -45,6 +45,9 @@ class SettingsActions(
     val setBool: (String, Boolean) -> Unit,
     val update: () -> Unit,
     val openPermission: (Permission) -> Unit,
+    val syncSignIn: () -> Unit = {},
+    val syncNow: () -> Unit = {},
+    val syncOff: () -> Unit = {},
 )
 
 @Composable
@@ -84,6 +87,7 @@ fun SettingsScreen(state: SettingsUi, actions: SettingsActions, modifier: Modifi
                 @Composable { GrantRow("No battery limits, so Samsung does not put it to sleep", state.grants.batteryExempt) { actions.openPermission(Permission.BATTERY) } },
             ))
         }
+        Group("Sync between devices") { SyncPanel(state.sync, actions) }
         Group("Analyst") {
             Panel {
                 Text(
@@ -106,6 +110,29 @@ fun SettingsScreen(state: SettingsUi, actions: SettingsActions, modifier: Modifi
                 style = Type.Small,
             )
         }
+    }
+}
+
+@Composable
+private fun SyncPanel(s: com.ikverse.signallab.sync.SyncStatus, actions: SettingsActions) {
+    Panel(Modifier.testTag("sync")) {
+        when {
+            !s.enabled -> {
+                Text("Keep this phone's ledger in step with your other devices, through a hidden folder in your Google Drive that only Signal Lab can see.", style = Type.Small)
+                QuietButton(if (s.busy) "Signing in…" else "Sign in with Google", actions.syncSignIn, Modifier.testTag("sync-sign-in"), enabled = !s.busy)
+            }
+            else -> {
+                val last = s.lastSyncedAt?.let { "last synced ${com.ikverse.signallab.view.common.Words.utc(it)}" } ?: "not synced yet"
+                Text(listOfNotNull("On", s.account, last, if (s.devices > 0) com.ikverse.signallab.view.common.Words.count(s.devices, "other device") else null).joinToString(" · "),
+                    style = Type.Body.copy(color = Ink.Text), modifier = Modifier.testTag("sync-line"))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (s.needsSignIn) QuietButton("Sign in again", actions.syncSignIn, Modifier.testTag("sync-sign-in"), enabled = !s.busy)
+                    else QuietButton(if (s.busy) "Syncing…" else "Sync now", actions.syncNow, Modifier.testTag("sync-now"), enabled = !s.busy)
+                    QuietButton("Turn off", actions.syncOff, Modifier.testTag("sync-off"), enabled = !s.busy)
+                }
+            }
+        }
+        s.problem?.let { Text(it, style = Type.Small.copy(color = Ink.Loss), modifier = Modifier.testTag("sync-problem")) }
     }
 }
 

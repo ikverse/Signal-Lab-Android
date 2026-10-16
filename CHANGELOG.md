@@ -3,6 +3,21 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 2.0.0 - 2026-10-17 (pre-release)
+
+Signal Lab 2, rebuilt from the ground up around one question: does a strategy beat random entries after fees? This is a pre-release; Signal Lab 1.7 does not offer it as an update until it is marked final.
+
+- Seven strategies chosen from published research replace Signal Lab 1's signals: Breakout, Trend timer, Momentum, Leaders, Near high, Quiet dip and Hourly trend. Candle patterns and charts faster than an hour are gone, because the research found no edge in them after fees.
+- Today shows the calls made at the last close and what to do with each: the entry at the next open, the safety stop, the size on a paper account, and the day it ends. Open calls say whether to hold or leave now.
+- Each strategy has an evidence page: what the research found, a test on your coins at your fees and at double them, its live record against random entries, and its tier (Proven, Promising, Watch, Testing or Failing) with the reason. Tiers are worked out again after every daily close, and only Proven and Promising strategies put calls on Today unless you switch one on.
+- Ledger: the paper account over time beside the same calls at random entries, by strategy and by coin, with a CSV export.
+- Markets: the watched coins are chosen for you, the 40 busiest by turnover, and you can pin or exclude any coin.
+- Analyst: Claude inside the app, on an API key from your own Claude account. It reads your ledger, your strategies and the market, searches the news, tests rule ideas, proposes strategies you can start, suggests calls you can record on Today, and puts dated events on Today. It shows what each run sent and what it cost, and stops at a monthly budget you set. Without a key you can send a question with your data to the Claude app instead.
+- Your own strategies: rules written in a small language the analyst can draft, tested like the built-in ones, running only once you start them.
+- Sync between devices is back, through the hidden folder in your Google Drive, and reads the records of devices still on Signal Lab 1.
+- Your Signal Lab 1 record is brought over on first start and kept as history; its file on the phone is never changed.
+- Checks run a minute and a half after each hourly close, with no service running in between.
+
 ## 1.7.0 - 2026-10-12
 
 - New: Settings, Backup. Save the whole record (paper trades, lists, lab patterns, reports and costs) to a file wherever you choose, and restore from one. No account is needed, and restoring only adds what this phone does not have.
