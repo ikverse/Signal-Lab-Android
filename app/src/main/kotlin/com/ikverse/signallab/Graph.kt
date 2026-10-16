@@ -40,6 +40,12 @@ import com.ikverse.signallab.model.TodayModel
 import com.ikverse.signallab.runner.AndroidCallAlerts
 import com.ikverse.signallab.runner.DailyCloseScheduler
 import com.ikverse.signallab.runner.StrategyRunner
+import com.ikverse.signallab.sync.DeviceSync
+import com.ikverse.signallab.sync.DriveFolder
+import com.ikverse.signallab.sync.GoogleAuthorizer
+import com.ikverse.signallab.sync.LedgerSync
+import com.ikverse.signallab.sync.SettingsSyncMemory
+import com.ikverse.signallab.sync.SyncSettings
 import com.ikverse.signallab.update.AndroidApkInspector
 import com.ikverse.signallab.update.AndroidInstallLauncher
 import com.ikverse.signallab.update.ApkDownloader
@@ -52,6 +58,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -122,11 +130,17 @@ class Graph(context: Context, private val scope: CoroutineScope) {
     val markets = MarketsModel(ledger.dao(), candles, pairs, derivativesStore, allStrategies, scope)
     val calls = CallModel(ledger.dao(), candles, allStrategies) { prefsStore.current() }
     val analystModel = AnalystModel(analyst, analystStore, apiKeys, spend, prefsStore, ledger.dao(), scope, analystTools.all)
-    val settings = SettingsModel(app, prefsStore, updates, lastImport, BuildConfig.VERSION_NAME, scope)
+    // Sync between the owner's devices, through the app's hidden folder in their Google Drive.
+    val deviceSync = DeviceSync(
+        SyncSettings(ledger.dao()), GoogleAuthorizer(app), { token -> DriveFolder(BinanceClient.defaultHttp(), token) }, LedgerSync(ledger),
+        SettingsSyncMemory(ledger.dao()), afterMerge = {},
+    )
+    val settings = SettingsModel(app, prefsStore, updates, lastImport, BuildConfig.VERSION_NAME, scope, deviceSync.status)
 
     /** After each pass: the analyst's brief and review, when the owner has asked for them and they are due. */
     suspend fun afterPass() {
         runCatching { AnalystWorker.queueDue(app, ledger.dao(), prefsStore.current(), System.currentTimeMillis()) }
+        deviceSync.requestSync()
     }
 
     /** The ledger as a spreadsheet, for "Save as CSV". */
@@ -150,6 +164,9 @@ class Graph(context: Context, private val scope: CoroutineScope) {
                 // Left for the next start: the import is all-or-nothing, so a failure leaves nothing half done.
             }
             runCatching { forgetSignalLab1() }
+            val dao = ledger.dao()
+            val synced = dao.watchSettings().map { rows -> rows.filter { LedgerSync.isSynced(it.key) }.map { it.key to it.value } }.distinctUntilChanged()
+            deviceSync.start(scope, listOf(dao.watchLiveCalls(), dao.watchLiveExits(), dao.watchCustomRules(), dao.watchPins(), synced))
             runCatching {
                 scheduler.arm()
                 scheduler.ensureBackstop()

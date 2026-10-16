@@ -24,6 +24,8 @@ screens and patterns; Signal Lab 1's record is imported once into the new ledger
 - **Push and release are separate.** Push = commit and push `main`; CI runs the tests and nothing
   ships. Release = bump the version, add the `CHANGELOG.md` section, commit, tag `vX.Y.Z`, push the
   tag **explicitly** (`git push origin vX.Y.Z`; lightweight tags don't travel with `--follow-tags`).
+  A `CHANGELOG.md` heading ending in `(pre-release)` publishes a GitHub pre-release, which no installed
+  copy is offered; mark it final with `gh release edit vX.Y.Z --prerelease=false` once it is verified.
 - Filter Gradle output; raw build logs are the largest source of context growth.
 
 ## Commands

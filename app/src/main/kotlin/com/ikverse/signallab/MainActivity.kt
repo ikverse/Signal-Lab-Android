@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,11 @@ class MainActivity : ComponentActivity() {
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { graph.settings.refreshGrants() }
 
+    /** Google's account picker and consent screen for sync, and what the owner chose there. */
+    private val syncConsent = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        lifecycleScope.launch { graph.deviceSync.onConsent(result.resultCode == RESULT_OK, result.data) }
+    }
+
     private val saveCsv = registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri == null) return@registerForActivityResult
         lifecycleScope.launch {
@@ -55,7 +61,12 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) openCall.value = callIn(intent)
         val models = AppModels(
             graph.today, graph.ledgerModel, graph.strategiesModel, graph.markets, graph.calls, graph.settings, graph.preferences,
-            SettingsActions(graph.settings::set, graph.settings::setBool, graph.settings::update, ::openPermission),
+            SettingsActions(
+                graph.settings::set, graph.settings::setBool, graph.settings::update, ::openPermission,
+                syncSignIn = { lifecycleScope.launch { graph.deviceSync.signIn() } },
+                syncNow = { lifecycleScope.launch { graph.deviceSync.syncNow() } },
+                syncOff = { lifecycleScope.launch { graph.deviceSync.turnOff() } },
+            ),
             exportCsv = { saveCsv.launch("signal-lab-ledger.csv") },
             analyst = graph.analystModel,
             analystActions = object : AnalystActions {
@@ -92,6 +103,9 @@ class MainActivity : ComponentActivity() {
             }
         }
         askForNotificationsOnce()
+        lifecycleScope.launch {
+            graph.deviceSync.consent.collect { syncConsent.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -102,6 +116,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Opening the app brings in what the other devices did, no more often than sync's own spacing allows.
+        graph.deviceSync.requestSync()
         graph.settings.refreshGrants()
         lifecycleScope.launch { graph.updates.checkIfDue() }
     }
