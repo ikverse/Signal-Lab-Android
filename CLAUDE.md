@@ -11,6 +11,13 @@ frozen; its one remaining job was exporting test data once (see `tools/`). Minim
 
 - **Never implement without approval.** State the change as a list and wait for the literal word
   "approve". "ok", "do it" and a refinement are not approval.
+- **Standing approval, granted 2026-10-16: Signal Lab 2, milestones M2 to M9 of `docs/v2-plan.md`.**
+  Build them back to back on branch `v2` without a new "approve" per change. Commit each milestone on
+  `v2` once its tests pass; never push. Solve implementation problems without asking and log each
+  decision in `docs/CHANGELOG-ai.md`. Still stop and ask for: (1) installing on the phone (first at M5;
+  the user backs up 1.7.0 and connects the Fold7); (2) a change of product or scope the plan does not
+  already decide; (3) any push or release tag; (4) the Claude API key at M8; (5) anything that deletes
+  user data.
 - **Build plus unit tests is the loop.** No emulator and no screenshots unless asked. Install on the
   connected phone and hand over.
 - **Push and release are separate.** Push = commit and push `main`; CI runs the tests and nothing

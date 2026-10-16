@@ -21,9 +21,8 @@ class RandomFingerprintTest {
         val tf = Timeframe.D1
         val panel = Golden.panel(tf)
         val regimes = Golden.regimes(tf)
-        val research = Golden.expected.getJSONObject("signals").getJSONObject(tf.label)
-        for ((key, flags) in Signals.compute(panel)) {
-            if (!research.has(key.name)) continue // only what the research had: the fingerprint was taken before new patterns existed
+        // The research's saved signals: the fingerprint was taken on exactly those, before any new pattern existed.
+        for ((key, flags) in Golden.researchSignals(tf)) {
             val run = Scorecard.runVariant(key, flags, panel, tf, regimes)
             for (t in run.trades) {
                 trades++
@@ -40,12 +39,14 @@ class RandomFingerprintTest {
                 pooledSum += h.sum()
             }
         }
-        // Taken from the scorecard as it stood before the baseline was made reusable (M3's engine).
+        // Taken from the scorecard as it stood before the baseline was made reusable (M3's engine). The counts must match
+        // exactly. The sums are compared to one part in a trillion: adding the same numbers in another order (the saved
+        // signals come in name order) moves the last digit, while a single changed draw would move a sum by 0.001 or more.
         assertEquals(11633, trades)
         assertEquals(11633, withBaseline)
-        assertEquals(18.34023686426625, sumMean, "sum of baseline means")
-        assertEquals(-25.48984363573965, sumExcess, "sum of excess")
+        assertClose(18.34023686426625, sumMean, "sum of baseline means", tol = 1e-12)
+        assertClose(-25.48984363573965, sumExcess, "sum of excess", tol = 1e-12)
         assertEquals(1159073, pooled)
-        assertEquals(42448.966080903294, pooledSum, "sum of pooled draws")
+        assertClose(42448.966080903294, pooledSum, "sum of pooled draws", tol = 1e-12)
     }
 }

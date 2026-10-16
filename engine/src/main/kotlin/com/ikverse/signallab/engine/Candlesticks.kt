@@ -1,5 +1,8 @@
 package com.ikverse.signallab.engine
 
+// Signal Lab 1 only. Deleted together with the old app screens and services in milestone 6 of the
+// Signal Lab 2 rebuild (docs/v2-plan.md). New code must not use it; LayeringTest enforces that.
+
 /**
  * Two candlestick patterns, written to give exactly the answers of TA-Lib's `CDLHARAMI` and
  * `CDLHIKKAKE`, the library the published study of 400 coins used. A test holds them to TA-Lib's own

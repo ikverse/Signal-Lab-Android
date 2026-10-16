@@ -37,6 +37,25 @@ object Golden {
         JSONObject(GZIPInputStream(resource("expected.json.gz")).bufferedReader().readText())
     }
 
+    /**
+     * The research's own signals on [tf], as the golden file saved them: for each variant (in name order)
+     * its family and settings, and for each coin (in the panel's order) the bars it fired on. Tests of
+     * exits, fills and baselines read these instead of recomputing Signal Lab 1's signals.
+     */
+    fun researchSignals(tf: Timeframe): Map<SignalKey, Map<String, BooleanArray>> {
+        val panel = panel(tf)
+        val all = expected.getJSONObject("signals").getJSONObject(tf.label)
+        return all.keyList().sorted().associate { name ->
+            val e = all.getJSONObject(name)
+            val p = e.getJSONObject("params")
+            val key = SignalKey(name, e.getString("family"), p.keyList().associateWith { p.getDouble(it) })
+            val flags = e.getJSONObject("flags")
+            key to panel.keys.filter { flags.has(it) }.associateWith { sym ->
+                BooleanArray(panel.getValue(sym).size).also { b -> flags.getJSONArray(sym).ints().forEach { b[it] = true } }
+            }
+        }
+    }
+
     /** Each coin's BTC-regime series on [tf], computed the way the scorecard does. */
     fun regimes(tf: Timeframe): Map<String, IntArray> {
         val btc = panel(Timeframe.D1).getValue("BTCUSDT")

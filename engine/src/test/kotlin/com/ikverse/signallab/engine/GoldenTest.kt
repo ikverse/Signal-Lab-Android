@@ -81,8 +81,9 @@ class GoldenTest {
             val regimes = Golden.regimes(tf)
             val expTrades = Golden.expected.getJSONObject("trades").getJSONObject(tf.label)
             val expStats = Golden.expected.getJSONObject("stats").getJSONObject(tf.label)
-            for ((key, flags) in signals(tf)) {
-                if (!expTrades.has(key.name)) continue // a pattern the research did not have
+            // The research's saved signals, not Signal Lab 1's: this check of fills, exits and fees outlives the old patterns.
+            for ((key, flags) in Golden.researchSignals(tf)) {
+                if (!expTrades.has(key.name)) continue
                 val run = Scorecard.runVariant(key, flags, panel, tf, regimes)
                 val rows = expTrades.getJSONArray(key.name)
                 assertEquals(rows.length(), run.trades.size, "${tf.label} ${key.name}: trade count")

@@ -1,5 +1,8 @@
 package com.ikverse.signallab.engine
 
+// Signal Lab 1 only. Deleted together with the old app screens and services in milestone 6 of the
+// Signal Lab 2 rebuild (docs/v2-plan.md). New code must not use it; LayeringTest enforces that.
+
 /**
  * Plain-language names for signal variants, for notifications and lists. The variant's own name
  * (`donchian20_1d`) stays the identifier everywhere; this only describes it. A test holds every

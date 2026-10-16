@@ -1,16 +1,9 @@
 package com.ikverse.signallab.engine
 
-import kotlin.math.ceil
+// Signal Lab 1 only. Deleted together with the old app screens and services in milestone 6 of the
+// Signal Lab 2 rebuild (docs/v2-plan.md). New code must not use it; LayeringTest enforces that.
 
-/**
- * One signal variant: a name like `donchian20_1d`, the family it belongs to, and the settings that
- * distinguish it from its siblings. Equal keys are the same variant.
- */
-data class SignalKey(val name: String, val family: String, val params: Map<String, Double>) {
-    fun param(key: String): Double? = params[key]
-    /** Candles to hold a trade for, when the variant has no target and stop. */
-    val holdBars: Int? get() = params["hold_bars"]?.toInt()
-}
+import kotlin.math.ceil
 
 /**
  * The signals. A flag on bar i means "detected when bar i closed", and each rule looks only at bars
