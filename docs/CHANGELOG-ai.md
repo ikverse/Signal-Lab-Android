@@ -31,3 +31,27 @@ asking is logged here.
   signals instead of `Signals.kt`.
 - `RandomFingerprintTest`: the saved signals arrive in name order, which moved the last digit of one sum
   (18.34023686426625 → 18.340236864266156); its three sums are now compared to 1e-12 relative, counts still exact.
+
+### M2: strategy interface, first two built-ins, fills, baseline, backtest
+
+- New `engine.strategy` (`Strategy`, `Tier`, `ExitPlan`, `Breakout`, `TrendTimer`, `Builtins`) and `engine.eval` (`Fills`,
+  `Baseline`, `Backtest`). They use only the kept core (candles, indicators, regime, RNG, cluster statistics); the old
+  `ExitRule`/`ExitPolicy` are not used because they depend on the old lab language.
+- Decisions made without asking:
+  - A strategy's own exit signal, seen at a candle's close, fills at the **next candle's open** (the first price anyone could
+    act on), matching entry at the next open. Time exits still fill at the close of the last candle; the stop is checked first.
+  - Breakout enters on the first close of a run above the prior 50-day high (not every day it stays above). Exit plan: close
+    below the prior 20-day low, 60 days at most, safety stop 3 ATR.
+  - Trend timer has no price stop (its edge is drawdown avoidance); a 200-day cap keeps every window finite for the baseline.
+  - Weeks for clustering start Monday 00:00 UTC (v1 used `time / 7 days`, which starts on Thursdays).
+  - v2 baseline seeds are prefixed with "v2" so they never coincide with v1 draws.
+  - Only the engine changed, so the app suite was not rerun for this milestone; it runs again at M3.
+- First backtest on the 12 golden coins, daily, 2019-01 to 2026-09, research costs:
+
+  | strategy | calls | up | net per call | excess vs random | cluster t | weeks |
+  |---|---|---|---|---|---|---|
+  | breakout50_1d | 274 | 39% | +19.50% | −3.05% | −0.66 | 132 |
+  | trend50_1d | 912 | 22% | +12.95% | +5.58% | 1.34 | 254 |
+
+  Neither beats random entries with confidence here: random entries with the same wide exits also made money in a mostly
+  rising market. Launch tiers stay as the research suggests; the evidence columns (M7) will move them.
