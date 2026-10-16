@@ -2,6 +2,9 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    // Test helpers and the golden data live in the testFixtures source set, so the app's tests use
+    // the same ones instead of reaching into this module's folders by path.
+    `java-test-fixtures`
 }
 
 // The engine is plain Kotlin with no Android in it. That is what lets its tests run on a PC in
@@ -24,6 +27,8 @@ dependencies {
     testImplementation(kotlin("test"))
     // Reads the golden files exported from the research version.
     testImplementation(libs.json)
+    // The fixtures' helpers take and return org.json types, so their users need it too.
+    testFixturesApi(libs.json)
 }
 
 tasks.test {
