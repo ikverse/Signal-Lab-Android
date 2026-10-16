@@ -5,9 +5,9 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
 
-/** The application gives the worker and receivers Signal Lab 2's pieces. */
+/** The application gives the worker and receivers the app's pieces. */
 interface RunnerHost {
-    val v2: V2Graph
+    val graph: com.ikverse.signallab.Graph
 }
 
 /**
@@ -25,7 +25,7 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         } catch (e: Exception) {
             if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
         } finally {
-            runCatching { host.v2.scheduler.arm() }
+            runCatching { host.graph.scheduler.arm() }
         }
     }
 
@@ -34,6 +34,6 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
         /** What a pass does; tests replace it. */
         @Volatile
-        var run: suspend (RunnerHost) -> RunReport = { it.v2.runner.run() }
+        var run: suspend (RunnerHost) -> RunReport = { it.graph.runner.run() }
     }
 }

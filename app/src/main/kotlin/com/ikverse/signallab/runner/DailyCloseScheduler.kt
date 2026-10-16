@@ -70,8 +70,8 @@ class DailyCloseReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val host = context.applicationContext as? RunnerHost ?: return
         runCatching {
-            host.v2.scheduler.runNow()
-            host.v2.scheduler.arm()
+            host.graph.scheduler.runNow()
+            host.graph.scheduler.arm()
         }
     }
 }
@@ -82,9 +82,9 @@ class V2BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val host = context.applicationContext as? RunnerHost ?: return
         runCatching {
-            host.v2.scheduler.arm()
-            host.v2.scheduler.ensureBackstop()
-            host.v2.scheduler.runNow()
+            host.graph.scheduler.arm()
+            host.graph.scheduler.ensureBackstop()
+            host.graph.scheduler.runNow()
         }
     }
 }

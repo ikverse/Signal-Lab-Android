@@ -85,7 +85,7 @@ class RandomBaselineTest {
     fun scoringIsReproducible() {
         val panel = Golden.panel(Timeframe.D1)
         val regimes = Golden.regimes(Timeframe.D1)
-        val (key, flags) = Signals.compute(panel).entries.first { it.key.name == "donchian20_1d" }.toPair()
+        val (key, flags) = Golden.researchSignals(Timeframe.D1).entries.first { it.key.name == "donchian20_1d" }.toPair()
         val run1 = Scorecard.runVariant(key, flags, panel, Timeframe.D1, regimes)
         val run2 = Scorecard.runVariant(key, flags, panel, Timeframe.D1, regimes)
         val s1 = Scorecard.score(key, key.family, Timeframe.D1, run1)

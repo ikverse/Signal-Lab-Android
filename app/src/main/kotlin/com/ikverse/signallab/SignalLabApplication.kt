@@ -1,35 +1,20 @@
 package com.ikverse.signallab
 
 import android.app.Application
-import com.ikverse.signallab.state.AppGraph
-import com.ikverse.signallab.state.LiveAppModel
-import com.ikverse.signallab.state.LiveDebugState
+import com.ikverse.signallab.runner.RunnerHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-class SignalLabApplication : Application(), com.ikverse.signallab.runner.RunnerHost {
+class SignalLabApplication : Application(), RunnerHost {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    lateinit var graph: AppGraph
-        private set
-
-    lateinit var debugState: LiveDebugState
-        private set
-
-    /** What the screens see; made after the graph, and shared by every activity. */
-    lateinit var model: LiveAppModel
+    override lateinit var graph: Graph
         private set
 
     override fun onCreate() {
         super.onCreate()
-        graph = AppGraph(this, appScope)
-        debugState = LiveDebugState(graph, appScope)
-        model = LiveAppModel(graph, this, appScope, debugState)
-        graph.start(appScope)
-        // Signal Lab 2 runs beside Signal Lab 1's scanner until the new screens replace the old ones.
-        graph.v2.start(appScope)
+        graph = Graph(this, appScope)
+        graph.start()
     }
-
-    override val v2 get() = graph.v2
 }

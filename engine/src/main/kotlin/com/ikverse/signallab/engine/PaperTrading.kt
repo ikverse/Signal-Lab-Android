@@ -37,7 +37,7 @@ object PaperTrading {
      * Where a trade that entered at the open of candle [entryIdx] stands, judged on the candles in [c],
      * which are all closed. Returns its exit if it has one, and null while it is still open.
      *
-     * Classic and learned trades end at the first candle to touch the stop or the target (the stop wins when one
+     * Classic trades end at the first candle to touch the stop or the target (the stop wins when one
      * candle touches both, and a gap fills at the open). A trailing trade has a stop that moves: after each candle
      * closes, once the highest close has risen [EngineConfig.TRAIL_ACTIVATE_ATR] candle sizes above the entry, the
      * stop follows it at [EngineConfig.TRAIL_DISTANCE_ATR] below, and never moves down. Every trade ends at the
@@ -85,7 +85,7 @@ object PaperTrading {
      */
     fun simulate(c: Candles, signalIdx: IntArray, tf: Timeframe, atr: DoubleArray, rule: ExitRule): Exits {
         if (rule.mode == ExitMode.CLASSIC) return simulateExits(c, signalIdx, tf, atr, null)
-        if (rule.mode == ExitMode.HELD && !rule.endOfDay) return simulateExits(c, signalIdx, tf, atr, rule.limit)
+        if (rule.mode == ExitMode.HELD) return simulateExits(c, signalIdx, tf, atr, rule.limit)
         val n = c.size
         val m = signalIdx.size
         val valid = BooleanArray(m)
@@ -98,8 +98,8 @@ object PaperTrading {
             val s = signalIdx[j]
             val e = s + 1
             val a = atr[minOf(s, n - 1)]
-            if (a.isNaN() || !rule.allows(c, s)) continue
-            val limit = rule.limitAt(c.t[s] + c.tf.ms, c.tf)
+            if (a.isNaN()) continue
+            val limit = rule.limit
             if (e + limit - 1 >= n) continue
             val spec = rule.spec(c.open[e], a, limit)
             val r = resolve(c, e, spec) ?: continue

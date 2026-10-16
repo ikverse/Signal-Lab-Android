@@ -88,4 +88,36 @@ interface LedgerDao {
 
     @Query("SELECT COUNT(*) FROM custom_strategies")
     suspend fun countCustoms(): Int
+
+    // --- what the screens watch: each emits again whenever its tables change -------------------------------------------
+
+    @Query("SELECT * FROM calls WHERE source = 'v2' ORDER BY signal_time")
+    fun watchLiveCalls(): kotlinx.coroutines.flow.Flow<List<CallRow>>
+
+    @Query("SELECT exits.* FROM exits JOIN calls ON calls.id = exits.call_id WHERE calls.source = 'v2'")
+    fun watchLiveExits(): kotlinx.coroutines.flow.Flow<List<ExitRow>>
+
+    @Query("SELECT * FROM settings")
+    fun watchSettings(): kotlinx.coroutines.flow.Flow<List<SettingRow>>
+
+    @Query("SELECT * FROM settings")
+    suspend fun watchSettingsOnce(): List<SettingRow>
+
+    @Query("SELECT * FROM pins")
+    fun watchPins(): kotlinx.coroutines.flow.Flow<List<PinRow>>
+
+    @Query("SELECT COUNT(*) FROM strategies")
+    fun watchStrategiesTried(): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM calls WHERE source = 'v1'")
+    fun watchImportedCalls(): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM custom_strategies")
+    fun watchCustoms(): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("DELETE FROM pins WHERE symbol = :symbol")
+    suspend fun removePin(symbol: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putPin(row: PinRow)
 }

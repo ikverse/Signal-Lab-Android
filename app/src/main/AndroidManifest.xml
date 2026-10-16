@@ -2,23 +2,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Alerts. Asked for at run time from Android 13, after the first list is switched on. -->
+    <!-- Calls and exits as notifications. Asked for once, on first start, from Android 13. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- The service that keeps scanning alive between candle closes (type "special use"; see ScanService). -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- Wake exactly when a candle closes. USE_EXACT_ALARM is left out on purpose: it is reserved for alarm and calendar apps. -->
+    <!-- Wake just after each daily close. USE_EXACT_ALARM is left out on purpose: it is reserved for alarm and calendar apps. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- Start scanning again after a restart. -->
+    <!-- Arm the daily alarm again after a restart. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Keep the CPU on for the length of a scan. -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Offer to be exempted from battery optimisation, so overnight scans are not cut short. -->
+    <!-- Offer to be exempted from battery optimisation, so Samsung does not put the daily pass to sleep. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Hand a downloaded update to Android's installer (which still asks the user before it installs anything). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- The Analyst hands questions to the Claude app; from Android 11 an app must name the apps it looks for. -->
+    <!-- The analyst can hand a question to the Claude app; from Android 11 an app must name the apps it looks for. -->
     <queries>
         <package android:name="com.anthropic.claude" />
     </queries>
@@ -41,12 +36,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Claude's answer, shared back from the Claude app, is kept as an Analyst report. -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
         </activity>
 
         <!-- Lets the installer read the downloaded update from the app's cache, and nothing else. -->
@@ -60,35 +49,13 @@
                 android:resource="@xml/update_paths" />
         </provider>
 
-        <service
-            android:name=".scan.ScanService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Wakes at each candle close to scan the coins the user watches and record paper trades" />
-        </service>
-
-        <receiver
-            android:name=".scan.ScanAlarmReceiver"
-            android:exported="false" />
-
-        <!-- Signal Lab 2: the daily-close alarm, and re-arming it after a reboot or an update. -->
+        <!-- The daily-close alarm, and arming it again after a reboot or an update. -->
         <receiver
             android:name=".runner.DailyCloseReceiver"
             android:exported="false" />
 
         <receiver
             android:name=".runner.V2BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".scan.BootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
