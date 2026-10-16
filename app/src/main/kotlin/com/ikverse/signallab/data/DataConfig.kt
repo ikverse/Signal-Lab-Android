@@ -30,6 +30,30 @@ object DataConfig {
         com.ikverse.signallab.engine.Timeframe.H4, com.ikverse.signallab.engine.Timeframe.D1 -> 400
     }
 
+    /**
+     * Signal Lab 2 keeps every daily candle back to a coin's listing: the daily strategies are judged on all of it. Daily
+     * history is fetched from here (Binance's spot market opened in July 2017) and never trimmed.
+     */
+    const val FULL_HISTORY_FROM = 1_499_990_400_000L // 14 Jul 2017 00:00 UTC
+
+    /** Charts whose candles the daily tidy-up never deletes. */
+    val ALWAYS_KEPT: Set<com.ikverse.signallab.engine.Timeframe> = setOf(com.ikverse.signallab.engine.Timeframe.D1)
+
+    /** The coins Signal Lab 2 watches: the busiest this many by 30-day turnover, plus pins, minus excludes. */
+    const val UNIVERSE_SIZE = 40
+
+    /** A coin listed more recently than this is left out of the universe: new listings behave differently. */
+    const val UNIVERSE_MIN_AGE_DAYS = 90
+
+    /** Binance's USDⓈ-M futures API, for funding and open interest. Binance.US has none. */
+    const val FUTURES_HOST = "https://fapi.binance.com"
+
+    /** Funding history starts here (the first USDⓈ-M perpetuals settled in September 2019). */
+    const val FUNDING_FROM = 1_567_296_000_000L // 1 Sep 2019 00:00 UTC
+
+    /** Binance serves open interest for the last 30 days only, so it is accumulated locally from the first run. */
+    const val OPEN_INTEREST_DAYS = 30
+
     /** Binance serves at most this many candles per request. */
     const val KLINE_PAGE = 1000
 

@@ -55,3 +55,19 @@ asking is logged here.
 
   Neither beats random entries with confidence here: random entries with the same wide exits also made money in a mostly
   rising market. Launch tiers stay as the research suggests; the evidence columns (M7) will move them.
+
+### M3: data port
+
+- Each candle keeps its USDT turnover (kline field 7); `candles.db` goes to version 4 with an `ALTER TABLE` that keeps every
+  stored row (old rows count as volume × close). `CandleStore.quoteVolumeSince` and `firstOpens` feed the universe.
+- Daily candles are never trimmed (`DataConfig.ALWAYS_KEPT`), and `DailyHistory` fetches them back to the listing
+  (from 14 Jul 2017; the days before a listing are remembered as a known gap and asked once).
+- `Universe.select`: the 40 busiest USDT coins by 30-day turnover that pass the coin filter and were listed at least 90 days
+  ago, plus pins (which override ranking and age, never delisting), minus excludes. A coin whose age is unknown waits.
+- Futures: `FuturesClient` (funding history, open-interest history, premium index) goes through the spot client's pacing and
+  retries via `BinanceClient.fetchFrom`; a symbol with no perpetual is no data, not an error. `DerivativesStore`
+  (`derivatives.db`) and `DerivativesSync` (funding back to Sep 2019; open interest forward from what is stored, never older
+  than 29 days, so it accumulates on the phone). Nothing is asked on Binance.US.
+- Decision: the liquidation veto is deferred. Binance has no key-free REST history of liquidations, and its stream reports
+  at most one per symbol per second, so totals undercount in exactly the cascades that matter.
+- Engine 172, app 752 tests pass.
