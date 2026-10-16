@@ -64,7 +64,10 @@ class AndroidCallAlerts(private val context: Context) : CallAlerts {
     override fun post(alert: CallAlert) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
-            PendingIntent.getActivity(context, alert.id.toInt(), it.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE)
+            PendingIntent.getActivity(
+                context, alert.id.toInt(), it.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(EXTRA_CALL, alert.id),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
         }
         val n = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_signal)
@@ -79,6 +82,9 @@ class AndroidCallAlerts(private val context: Context) : CallAlerts {
 
     companion object {
         const val CHANNEL = "v2_calls"
+
+        /** The call a tapped notification opens. */
+        const val EXTRA_CALL = "call_id"
         private const val TAG = "call"
     }
 }

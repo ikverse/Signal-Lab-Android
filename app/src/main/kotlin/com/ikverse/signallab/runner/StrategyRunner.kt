@@ -7,7 +7,6 @@ import com.ikverse.signallab.data.binance.MarketData
 import com.ikverse.signallab.data.futures.DerivativesSync
 import com.ikverse.signallab.data.history.DailyHistory
 import com.ikverse.signallab.data.universe.Universe
-import com.ikverse.signallab.engine.EngineConfig
 import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.eval.Live
 import com.ikverse.signallab.engine.eval.NewCall
@@ -16,6 +15,8 @@ import com.ikverse.signallab.engine.strategy.Strategy
 import com.ikverse.signallab.ledger.CallRow
 import com.ikverse.signallab.ledger.ExitRow
 import com.ikverse.signallab.ledger.LedgerDatabase
+import com.ikverse.signallab.ledger.Preferences
+import com.ikverse.signallab.ledger.SettingRow
 import com.ikverse.signallab.ledger.StrategyRow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,7 +36,8 @@ class RunReport(
  * Signal Lab 2's daily pass, run after each daily close. In order: the pair list is refreshed if stale, every offered
  * coin's daily history is brought up to date (the cross-coin rankings and the universe need all of them), the universe is
  * chosen, open calls are checked for their exits, and each strategy's signals on the newest closed candle become calls
- * that enter at the open of the candle now forming. Each call and exit is notified when its strategy is trusted enough.
+ * that enter at the open of the candle now forming. Each call and exit is notified when its strategy is switched on
+ * (by hand, or by being Proven or Promising) and notifications are wanted. Every call is recorded either way.
  *
  * Running it twice changes nothing the second time: every call and exit is keyed, so a repeat is ignored.
  */
@@ -48,7 +50,8 @@ class StrategyRunner(
     private val alerts: CallAlerts,
     private val derivatives: DerivativesSync? = null,
     private val strategies: List<Strategy> = Builtins.all,
-    private val costFor: (String) -> Double = EngineConfig::costFor,
+    /** The person's costs, switches and notification choice, read at the start of each run. */
+    private val preferences: suspend () -> Preferences = { Preferences() },
 ) {
     private val lock = Mutex()
     private val dao get() = ledger.dao()
@@ -56,6 +59,7 @@ class StrategyRunner(
     suspend fun run(): RunReport = lock.withLock { runLocked() }
 
     private suspend fun runLocked(): RunReport {
+        val prefs = preferences()
         market.serverTime()
         pairs.refreshIfStale()
         val offered = pairs.top(OFFERED_LIMIT)
@@ -100,7 +104,7 @@ class StrategyRunner(
                 if (inserted == -1L) continue
                 exits++
                 openCount--
-                if (s.launchTier.makesCalls) alerts.post(CallWords.exit(row.id, s.name, symbol, closed.reason.label, closed.exitPrice, closed.net))
+                if (prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.exit(row.id, s.name, symbol, closed.reason.label, closed.exitPrice, closed.net))
             }
 
             if (symbol !in universe || formingOpen == null) continue
@@ -110,7 +114,7 @@ class StrategyRunner(
                 val latest = dao.latestCall(s.id, symbol)
                 // Busy while a call is open, or when the last one leaves at the very open a new one would enter at.
                 val busy = latest != null && (dao.exitOf(latest.id)?.let { it.exitTime >= entryTime } ?: true)
-                val call = Live.signal(s, c, btc, formingOpen, busy, costFor(symbol)) ?: continue
+                val call = Live.signal(s, c, btc, formingOpen, busy, prefs.costFor(symbol)) ?: continue
                 val size = if (openCount >= MAX_OPEN_CALLS) 0.0 else call.sizeFraction
                 val id = dao.insertCall(CallRow(
                     strategyId = call.strategyId, symbol = symbol, tf = s.timeframe.label, signalTime = call.signalTime,
@@ -121,7 +125,7 @@ class StrategyRunner(
                 if (id == -1L) continue
                 newCalls++
                 openCount++
-                if (s.launchTier.makesCalls) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size))
+                if (prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size))
             }
         }
 
@@ -131,6 +135,8 @@ class StrategyRunner(
                 runCatching { d.syncFunding(symbol); d.syncOpenInterest(symbol) }
             }
         }
+        dao.putSetting(SettingRow(LAST_PASS, now.toString(), now))
+        dao.putSetting(SettingRow(UNIVERSE, universe.joinToString(","), now))
         return RunReport(universe, newCalls, exits, synced.failures)
     }
 
@@ -146,5 +152,9 @@ class StrategyRunner(
         const val MAX_OPEN_CALLS = 8
 
         val DERIVATIVES_COINS = listOf("BTCUSDT", "ETHUSDT")
+
+        /** Settings the runner leaves for the screens: when it last ran, and the coins it watched. */
+        const val LAST_PASS = "last_pass_at"
+        const val UNIVERSE = "universe"
     }
 }

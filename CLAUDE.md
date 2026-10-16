@@ -1,11 +1,12 @@
 # Signal Lab Android
 
-A native Kotlin and Compose app that watches the coins in the user's active watchlists, turns every
-signal into a paper trade, and keeps an honest scorecard of whether each signal beats random entries
-after fees. Research tool, not financial advice: no real money is ever traded.
+A native Kotlin and Compose app that gives daily calls from a small set of research-backed crypto strategies (Binance spot,
+long-only, daily closes), each with its evidence, and keeps an honest paper ledger of whether each strategy beats random
+entries after fees. Research tool, not financial advice: no real money is ever traded.
 
-It is the whole product. The earlier Python and Termux version (`ikverse/Signal-Lab`) is retired and
-frozen; its one remaining job was exporting test data once (see `tools/`). Minimum Android 10 (API 29).
+Signal Lab 2 (branch `v2`, plan in `docs/v2-plan.md`, evidence in `docs/strategy-research.md`) replaced Signal Lab 1's
+screens and patterns; Signal Lab 1's record is imported once into the new ledger. The Python and Termux version
+(`ikverse/Signal-Lab`) is retired; its one remaining job was exporting test data once (see `tools/`). Minimum Android 10.
 
 ## Working agreements
 
@@ -45,22 +46,23 @@ Wrap every adb call in `timeout N`.
 
 ## Layout
 
-- `engine/` — plain Kotlin, **no Android**: indicators, signals, exits, random baselines, statistics.
-  Its tests run on a PC in seconds. `allWarningsAsErrors` is on.
-- `app/` — Compose UI, services, storage, Drive backup, updater. Depends on `:engine`.
+- `engine/` — plain Kotlin, **no Android**: candles, indicators, regime, random baselines, statistics (`core` package),
+  `strategy/` (the `Strategy` interface and built-ins), `eval/` (fills, baseline, backtest, live rules). Its tests run on a
+  PC in seconds. `allWarningsAsErrors` is on. Test helpers and golden data live in `src/testFixtures`.
+- `app/` — `data/` (Binance, candles, universe, futures), `ledger/` (Room ledger, importer, preferences), `runner/` (daily
+  pass, worker, alarm, notifications), `model/` (screen state), `view/` (Compose screens), `update/`. Depends on `:engine`.
 - `tools/` — one-off scripts, not part of the build.
 
-## The engine's rules (carried over from the research)
+## The engine's rules
 
-- A signal on bar *i* uses only bars up to *i*. Cutting history at *i* must give the same answer for
-  bars up to *i* as the full history. Tested.
-- A paper trade enters at the **next** candle's open. Target 2×ATR, stop 1×ATR, time limit by
-  timeframe; stop is assumed first when both are touched in one candle; a gap fills at the open.
-- Costs: 0.25% round trip for BTC and ETH, 0.40% for everything else.
-- Random baselines come from the same coin, ±90 days, same BTC regime, same exits. Their generator
-  is counter-based (splitmix64), so a draw never depends on iteration order.
-- A variant defined after seeing a backtest is **forward-only**: its backtest is shown, but only live
-  paper trades can give it a verdict.
+- A signal on bar *i* uses only bars up to *i*. Cutting history at *i* must give the same answer for bars up to *i* as the
+  full history. Tested for every registered strategy.
+- A call enters at the **next** candle's open. Each strategy has its own exit plan (a safety stop in ATR, its own exit
+  signal filled at the next open, a time limit); the stop is checked first, and a gap fills at the open.
+- Costs: 0.25% round trip for BTC and ETH, 0.40% for everything else, unless changed in Settings.
+- Random baselines come from the same coin, ±90 days, same BTC regime, same exit plan. Their generator is counter-based
+  (splitmix64), so a draw never depends on iteration order.
+- Every strategy is registered before it runs; the count of everything ever tried is the multiple-testing denominator.
 
 ## Signing
 

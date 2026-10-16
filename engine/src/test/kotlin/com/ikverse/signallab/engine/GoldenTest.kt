@@ -8,16 +8,11 @@ import kotlin.test.assertTrue
 
 /**
  * The Kotlin engine against what the research version produced from the same real candles.
- * Signals, exits, fees and the deterministic statistics must agree; the random baselines are not
+ * Indicators, exits, fees and the deterministic statistics must agree, trade for trade on the research's own signals; the random baselines are not
  * compared here (different generator) and are checked statistically in [RandomBaselineTest].
  */
 class GoldenTest {
     private val tfs = listOf(Timeframe.D1, Timeframe.H4, Timeframe.H1)
-
-    private val signalCache = HashMap<Timeframe, Map<SignalKey, Map<String, BooleanArray>>>()
-
-    @Synchronized
-    private fun signals(tf: Timeframe) = signalCache.getOrPut(tf) { Signals.compute(Golden.panel(tf)) }
 
     @Test
     fun indicatorsMatchOnRealBitcoin() {
@@ -39,38 +34,6 @@ class GoldenTest {
         for (i in got.indices) assertEquals(crossed.getBoolean(i), got[i], "crossed_above[$i]")
         val regime = ind.getJSONArray("regime").ints()
         assertTrue(regime.contentEquals(PaperTrading.regimeSeries(c, c.closeTime)), "regime series differs")
-    }
-
-    @Test
-    fun everySignalFiresOnExactlyTheSameBars() {
-        for (tf in tfs) {
-            val expected = Golden.expected.getJSONObject("signals").getJSONObject(tf.label)
-            val got = signals(tf).entries.associate { it.key.name to it }
-            // The app now also runs patterns the research never had, and no longer runs 1-4 week momentum on 1h charts.
-            val gone = expected.keyList().toSet() - got.keys
-            assertEquals(if (tf == Timeframe.H1) expected.keyList().filter { it.startsWith("tsmom") }.toSet() else emptySet(), gone, "${tf.label}: research variants missing")
-            val added = got.keys - expected.keyList().toSet()
-            assertTrue(added.isNotEmpty() && added.all { it.startsWith("bullish_") || it.startsWith("intraday_breakout_") }, "${tf.label}: unexpected new variants $added")
-            var totalFlags = 0
-            for (name in expected.keyList()) {
-                if (name in gone) continue
-                val e = expected.getJSONObject(name)
-                val (key, bySymbol) = got.getValue(name).let { it.key to it.value }
-                assertEquals(e.getString("family"), key.family, "$name family")
-                val params = e.getJSONObject("params")
-                assertEquals(params.keyList().toSet(), key.params.keys, "$name params")
-                for (p in params.keyList()) assertClose(params.getDouble(p), key.params.getValue(p), "$name param $p")
-                val flags = e.getJSONObject("flags")
-                assertEquals(flags.keyList().toSet(), bySymbol.keys, "$name coins")
-                for (sym in flags.keyList()) {
-                    val want = flags.getJSONArray(sym).ints()
-                    val have = bySymbol.getValue(sym).indices.filter { bySymbol.getValue(sym)[it] }.toIntArray()
-                    assertTrue(want.contentEquals(have), "$name $sym: signals differ (python ${want.size}, kotlin ${have.size})")
-                    totalFlags += want.size
-                }
-            }
-            assertTrue(totalFlags > 1000, "${tf.label}: golden data exercised only $totalFlags signals")
-        }
     }
 
     @Test

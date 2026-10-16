@@ -108,3 +108,31 @@ asking is logged here.
   native SQLite not loading; a clean run (`./gradlew --stop`) does not.
 - R8 keeps Room's generated `LedgerDatabase_Impl` and `LedgerDao_Impl` (only unused members are stripped). Release APK 5.9 MB.
 - Engine 174, app 763 tests pass; release build signed from `local.properties`.
+
+### M6: the new screens, and Signal Lab 1 removed
+
+- New look "Night desk" (the approved mockup, artifact RSHKrn1juGBc16HRA1wM9m): `view/theme`, shared parts in `view/common`,
+  icons drawn from the mockup's own stroke paths (no icon library).
+- Screens: Today (market line, new calls, open calls with what to do, leave-now rows, this week's exits), a call's page
+  (chart with entry, safety stop and exit lines; the plan; why now), Ledger (account curve against random entries, period
+  switch, by strategy and coin, Signal Lab 1 history, CSV), Strategies (tiers, on/off), a strategy's evidence (research,
+  backtest on your coins at your fees and at double, live record, sources, exact rule), Markets (market cards, search,
+  watched coins), a coin's page (chart, its calls, pin or exclude), Settings, and an Analyst placeholder until M8.
+- Navigation Compose with typed routes; a bottom bar under 600 dp, a side rail from 600 dp, and from 700 dp Today puts the
+  chosen call's page beside the list (the Fold7's inner screen).
+- State in `model/` over the ledger's Room flows; preferences (`ledger/Preferences`) for account size, costs, switches,
+  notifications, host and futures data. The runner reads them: costs, and whether a strategy notifies (switched by hand, else
+  Proven or Promising). Every call is recorded either way.
+- Decisions made without asking:
+  - Fonts: the phone's own sans serif and monospace with tabular figures. The mockup's IBM Plex would need font files
+    downloaded; left for the owner to decide.
+  - Calls from strategies that are off are hidden from Today but still recorded and still in the Ledger, marked "Off Today".
+  - A strategy's live line says "About K more calls before a live verdict" with K counted to 100 calls; M7 replaces this
+    with the minimum track record length.
+  - On first start after the update: Signal Lab 1's alarm is cancelled and its five notification channels removed (once),
+    and a pass runs at once if none ran in the last day. The notification permission is asked once on Android 13+.
+- Removed: Signal Lab 1's `ui/`, `state/`, `scan/`, `analyst/` and `sync/` packages, its record classes, the Learn pages and
+  Mermaid, the foreground scan service and its permissions; in the engine `Signals`, `Candlesticks`, `LabPatterns`,
+  `LiveScan`, `VariantLabels`, the learned exit and end-of-day rules. Drive sync returns in M9 on the new ledger.
+- Tests: the old screen, state, scanner, sync and lab tests go with their code; golden, fingerprint and exit tests keep their
+  numbers exactly (the classic scorecard path is unchanged). New `ScreensTest` and `ModelsTest`.

@@ -95,9 +95,9 @@ class ExitsTest {
         var compared = 0
         for (tf in listOf(Timeframe.D1, Timeframe.H1)) {
             val panel = Golden.panel(tf)
-            // The research's saved signals cover the trailing, learned and fixed-hold exits.
+            // The research's saved signals, each under the classic and the trailing exit (or its fixed hold).
             for ((key, bySymbol) in Golden.researchSignals(tf)) {
-                val rule = if (ExitPolicy.modeOf(key) == ExitMode.LEARNED) ExitRule(ExitMode.LEARNED, 6, targetPct = 0.02) else ExitPolicy.baseRule(key, tf)
+                for (rule in key.holdBars?.let { listOf(ExitRule.held(it)) } ?: listOf(ExitRule.classic(tf), ExitRule(ExitMode.TRAIL, EngineConfig.trailCapBars(tf)))) {
                 for ((symbol, flags) in bySymbol) {
                     val c = panel.getValue(symbol)
                     val idx = flags.indices.filter { flags[it] }.toIntArray()
@@ -107,71 +107,18 @@ class ExitsTest {
                     for (j in idx.indices) {
                         if (!ex.valid[j]) continue
                         val s = idx[j]
-                        val limit = rule.limitAt(c.t[s] + tf.ms, tf)
+                        val limit = rule.limit
                         val r = assertNotNull(PaperTrading.resolve(c, s + 1, rule.spec(c.open[s + 1], a[s], limit)), "${key.name} $symbol $s")
                         assertEquals(ex.exitIdx[j], r.exitIdx, "${key.name} $symbol $s exit candle")
                         assertEquals(ex.exitPrice[j], r.exitPrice, "${key.name} $symbol $s exit price")
                         compared++
                     }
                 }
+                }
             }
         }
         assertTrue(compared > 3_000, "only $compared trades compared")
     }
-
-    @Test
-    fun everyPatternGetsTheExitItsKindCallsFor() {
-        fun key(name: String, family: String, vararg p: Pair<String, Double>) = SignalKey(name, family, mapOf(*p))
-        for (family in listOf("trend_state", "donchian", "ts_momentum", "xs_momentum", "intraday_breakout")) {
-            assertEquals(ExitMode.TRAIL, ExitPolicy.modeOf(key("x", family)), family)
-        }
-        assertEquals(ExitMode.LEARNED, ExitPolicy.modeOf(key("bullish_harami_1h", "candlestick")))
-        assertEquals(ExitMode.LEARNED, ExitPolicy.modeOf(key("fade2h_1h", "big_move_fade", "hours" to 2.0)))
-        assertEquals(ExitMode.HELD, ExitPolicy.modeOf(key("fade1h_hold24_1h", "big_move_fade", "hold_bars" to 24.0)))
-        assertEquals(ExitMode.HELD, ExitPolicy.modeOf(key("intraday_mom_30m", "intraday_momentum", "hold_bars" to 1.0)))
-        // and the fixed-time patterns keep the fixed time they were defined with
-        assertEquals(24, ExitPolicy.baseRule(key("fade1h_hold24_1h", "big_move_fade", "hold_bars" to 24.0), Timeframe.H1).limit)
-    }
-
-    @Test
-    fun theTimeCapsAreWhatWasPromised() {
-        val hours = mapOf(
-            Timeframe.M1 to 2, Timeframe.M5 to 6, Timeframe.M15 to 24, Timeframe.M30 to 24, Timeframe.H1 to 72, Timeframe.H4 to 360, Timeframe.D1 to 720,
-        )
-        for ((tf, h) in hours) assertEquals(h * 60L * 60_000, EngineConfig.trailCapBars(tf) * tf.ms, tf.label)
-    }
-
-    // --- end of the day ------------------------------------------------------------------------------------------
-
-    @Test
-    fun anEndOfDayTradeMayOnlyLastUntilTheLastCandleOfItsDay() {
-        val rule = ExitRule(ExitMode.TRAIL, EngineConfig.trailCapBars(Timeframe.H1), endOfDay = true)
-        val h = Timeframe.H1.ms
-        val day = Synth.START_MS
-        assertEquals(24, rule.limitAt(day, Timeframe.H1))
-        assertEquals(3, rule.limitAt(day + 21 * h, Timeframe.H1))
-        assertEquals(1, rule.limitAt(day + 23 * h, Timeframe.H1))
-        assertTrue(rule.allowsSignalAt(day + 21 * h, Timeframe.H1))
-        assertFalse(rule.allowsSignalAt(day + 23 * h, Timeframe.H1), "a signal on the last candle has no candle left in its day to enter on")
-        assertTrue(ExitRule(ExitMode.TRAIL, 72).allowsSignalAt(day + 23 * h, Timeframe.H1))
-    }
-
-    @Test
-    fun anEndOfDayTradeLeavesAtTheLastCandlesCloseAtTheLatest() {
-        val perDay = Timeframe.H1.barsPerDay
-        val t = LongArray(3 * perDay) { Synth.START_MS + it * Timeframe.H1.ms }
-        val n = t.size
-        val c = Candles("DAYUSDT", Timeframe.H1, t, DoubleArray(n) { 100.0 }, DoubleArray(n) { 100.5 }, DoubleArray(n) { 99.5 }, DoubleArray(n) { 100.0 + it % 3 * 0.01 }, DoubleArray(n) { 1.0 }, LongArray(n) { t[it] + Timeframe.H1.ms - 1 })
-        val rule = ExitRule(ExitMode.TRAIL, EngineConfig.trailCapBars(Timeframe.H1), endOfDay = true)
-        val a = DoubleArray(n) { 1.0 }
-        val ex = PaperTrading.simulate(c, intArrayOf(perDay + 9, perDay + 23), Timeframe.H1, a, rule)
-        assertTrue(ex.valid[0])
-        assertEquals(2 * perDay - 1, ex.exitIdx[0], "enters at 10:00 and leaves at 23:59")
-        assertEquals(ExitReason.TIME, ex.reason[0])
-        assertFalse(ex.valid[1], "the last candle of the day cannot be a signal")
-    }
-
-    // --- excursions ----------------------------------------------------------------------------------------------
 
     @Test
     fun aTradeRemembersItsBestRiseItsWorstDipAndHowLongTheHighTook() {
@@ -185,95 +132,6 @@ class ExitsTest {
     // --- learned exits -------------------------------------------------------------------------------------------
 
     private val day = Timeframe.D1.ms
-
-    private fun outcomes(n: Int, startDay: Int, rise: Double, bars: Int) = List(n) { LearnedExit.Outcome(Synth.START_MS + (startDay + it) * day, rise, bars) }
-
-    @Test
-    fun theTargetAndTimeLimitAreTheMiddleOfWhatFollowedEarlierFinishedSignals() {
-        val own = (0 until 25).map { LearnedExit.Outcome(Synth.START_MS + it * day, 0.01 * (it + 1), 1 + it % 5) }
-        val rule = LearnedExit.rule(Timeframe.D1, Synth.START_MS + 100 * day, own, emptyList())
-        assertEquals(ExitMode.LEARNED, rule.mode)
-        assertEquals(0.13, rule.targetPct!!, 1e-12) // the median of 0.01..0.25
-        assertEquals(3, rule.limit) // the median of 1,2,3,4,5 repeated is 3
-    }
-
-    @Test
-    fun aSignalNeverLearnsFromOneWhoseWindowHadNotClosedYet() {
-        val window = EngineConfig.learnWindowBars(Timeframe.D1)
-        val now = Synth.START_MS + 100 * day
-        // 20 finished signals at +1%, and 10 more whose look-ahead window ends after "now", at +50%.
-        val finished = outcomes(20, 60, 0.01, 2)
-        val unfinished = (0 until 10).map { LearnedExit.Outcome(now - (window - 1 - it % 3) * day, 0.50, 2) }
-        val rule = LearnedExit.rule(Timeframe.D1, now, finished + unfinished, emptyList())
-        assertEquals(0.01, rule.targetPct!!, 1e-12)
-        val onlyUnfinished = LearnedExit.rule(Timeframe.D1, now, unfinished, emptyList())
-        assertNull(onlyUnfinished.targetPct, "nothing finished means nothing learned")
-    }
-
-    @Test
-    fun oldSignalsAreNotLearnedFrom() {
-        val now = Synth.START_MS + 1000 * day
-        val old = outcomes(30, 100, 0.40, 4) // far outside the lookback
-        assertNull(LearnedExit.rule(Timeframe.D1, now, old, emptyList()).targetPct)
-    }
-
-    @Test
-    fun withTooFewOfItsOwnACoinLearnsFromTheWholeListAndThenFromNothing() {
-        val now = Synth.START_MS + 200 * day
-        val few = outcomes(5, 100, 0.99, 6)
-        val list = listOf(outcomes(12, 100, 0.03, 2), outcomes(12, 110, 0.03, 2), few)
-        val rule = LearnedExit.rule(Timeframe.D1, now, few, list)
-        assertEquals(0.03, rule.targetPct!!, 1e-12)
-        assertEquals(2, rule.limit)
-        val nothing = LearnedExit.rule(Timeframe.D1, now, few, listOf(few))
-        assertNull(nothing.targetPct)
-        assertEquals(EngineConfig.LEARN_FALLBACK_HOLD_BARS, nothing.limit)
-        assertEquals(ExitMode.LEARNED, nothing.mode)
-        assertNull(nothing.spec(100.0, 2.0, nothing.limit).stop, "a plain hold has no stop")
-    }
-
-    @Test
-    fun aLearnedTradeHasATargetAndAStopThreeCandleSizesDown() {
-        val rule = ExitRule(ExitMode.LEARNED, 4, targetPct = 0.02)
-        val spec = rule.spec(100.0, 2.0, 4)
-        assertEquals(102.0, spec.target!!, 1e-12)
-        assertEquals(94.0, spec.stop!!, 1e-12)
-    }
-
-    @Test
-    fun whatIsLearnedAtASignalDoesNotChangeWhenLaterCandlesArrive() {
-        val tf = Timeframe.D1
-        val c = Golden.panel(tf).getValue("BTCUSDT")
-        // Synthetic signals, every ninth candle: what matters is that there are plenty to learn from.
-        val flags = BooleanArray(c.size) { it % 9 == 4 }
-        val cut = c.size - 150
-        val at = c.t[cut - 1]
-        val early = LearnedExit.rule(tf, at, LearnedExit.outcomes(c.head(cut), flags.copyOf(cut)), emptyList())
-        val late = LearnedExit.rule(tf, at, LearnedExit.outcomes(c, flags), emptyList())
-        assertNotNull(late.targetPct, "this coin has enough signals to learn from")
-        assertEquals(late.targetPct, early.targetPct)
-        assertEquals(late.limit, early.limit)
-    }
-
-    @Test
-    fun theBacktestOfALearnedPatternGivesEachSignalItsOwnLearnedExit() {
-        val tf = Timeframe.D1
-        val panel = Golden.panel(tf)
-        val regimes = Golden.regimes(tf)
-        // A pattern of a learned-exit family, firing on synthetic candles: every eleventh one on each coin.
-        val key = SignalKey("synthetic_learned_1d", "candlestick", emptyMap())
-        val flags = mapOf(key to panel.mapValues { (_, c) -> BooleanArray(c.size) { it % 11 == 5 } })
-        val run = Scorecard.runVariant(key, flags.getValue(key), panel, tf, regimes, costFor = { 0.002 }, perPatternExits = true)
-        assertTrue(run.trades.size > 100)
-        assertTrue(run.trades.all { it.rule.mode == ExitMode.LEARNED })
-        val learned = run.trades.filter { it.rule.targetPct != null }
-        assertTrue(learned.size > run.trades.size / 2, "most trades should have enough history to learn from")
-        assertTrue(learned.map { it.rule.targetPct }.toSet().size > 5, "each signal learns its own target, it is not one constant")
-        assertTrue(run.trades.all { it.net == it.gross - 0.002 })
-        // The classic backtest of the same signals is a different set of exits, so the research numbers are untouched.
-        val classic = Scorecard.runVariant(key, flags.getValue(key), panel, tf, regimes)
-        assertTrue(classic.trades.all { it.rule.mode == ExitMode.CLASSIC })
-    }
 
     @Test
     fun randomEntriesAreGivenTheSameExitAsTheTradeTheyAreComparedWith() {

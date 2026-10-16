@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.ikverse.signallab.data.binance.BinanceClient
 import com.ikverse.signallab.engine.Candles
-import com.ikverse.signallab.engine.Signals
 import com.ikverse.signallab.engine.Timeframe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -62,7 +61,7 @@ class GoldenPipelineTest {
     }
 
     @Test
-    fun candlesAndSignalsSurviveTheWholePathUnchanged() = runTest {
+    fun candlesAndStrategySignalsSurviveTheWholePathUnchanged() = runTest {
         val expected = JSONObject(GZIPInputStream(resource("expected.json.gz")).bufferedReader().readText())
         val farFuture = 4_000_000_000_000L
         val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
@@ -95,24 +94,17 @@ class GoldenPipelineTest {
                 panel[sym] = c
             }
 
-            // 2. The engine, fed from the database, fires on exactly the bars the research version did.
-            val want = expected.getJSONObject("signals").getJSONObject(tf.label)
-            val got = Signals.compute(panel).entries.associate { it.key.name to it.value }
-            // The app also runs patterns the research did not have, and no longer runs 1-4 week momentum on 1h charts.
-            val gone = want.keys().asSequence().toSet() - got.keys
-            assertEquals(if (tf == Timeframe.H1) want.keys().asSequence().filter { it.startsWith("tsmom") }.toSet() else emptySet(), gone, "${tf.label}: research variants missing")
-            for (name in want.keys()) {
-                if (name in gone) continue
-                val flags = want.getJSONObject(name).getJSONObject("flags")
-                for (sym in flags.keys()) {
-                    val arr = flags.getJSONArray(sym)
-                    val expectedBars = IntArray(arr.length()) { arr.getInt(it) }
-                    val have = got.getValue(name).getValue(sym).let { f -> f.indices.filter { f[it] }.toIntArray() }
-                    assertTrue(expectedBars.contentEquals(have), "${tf.label} $name $sym: signals differ after the database round trip")
-                    checkedSignals += expectedBars.size
+            // 2. Every strategy, fed from the database, fires on exactly the candles it fires on from the golden data itself.
+            val direct = com.ikverse.signallab.engine.Golden.panel(tf)
+            for (st in com.ikverse.signallab.engine.strategy.Builtins.all.filter { it.timeframe == tf }) {
+                for ((sym, c) in panel) {
+                    val want = st.entries(direct.getValue(sym))
+                    val have = st.entries(c)
+                    assertTrue(want.contentEquals(have), "${st.id} $sym: signals differ after the database round trip")
+                    checkedSignals += want.count { it }
                 }
             }
         }
-        assertTrue(checkedSignals > 10_000, "only $checkedSignals signals were compared")
+        assertTrue(checkedSignals > 100, "only $checkedSignals signals were compared")
     }
 }

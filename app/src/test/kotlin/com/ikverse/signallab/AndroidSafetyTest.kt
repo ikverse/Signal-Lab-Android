@@ -47,9 +47,11 @@ class AndroidSafetyTest {
         val roots = listOf(File("src/main/kotlin"), File("../engine/src/main/kotlin"))
         val literal = Regex("""Regex\(\s*(?:\"\"\"(.*?)\"\"\"|\"((?:[^\"\\]|\\.)*)\")""", RegexOption.DOT_MATCHES_ALL)
         var checked = 0
+        var files = 0
         for (root in roots) {
             assertTrue("run from the app module: ${root.absolutePath}", root.isDirectory)
             root.walkTopDown().filter { it.extension == "kt" }.forEach { f ->
+                files++
                 for (m in literal.findAll(f.readText())) {
                     val raw = m.groups[1]?.value
                     val pattern = raw ?: m.groups[2]!!.value.replace("\\\\", "\\").replace("\\\"", "\"")
@@ -59,6 +61,8 @@ class AndroidSafetyTest {
                 }
             }
         }
-        assertTrue("found only $checked patterns; the scan is not looking in the right place", checked >= 5)
+        // Signal Lab 2 has few regular expressions; that the scan read the whole source tree is the check that it looked.
+        assertTrue("read only $files files; the scan is not looking in the right place", files >= 40)
+        assertTrue("found no patterns at all", checked >= 1)
     }
 }

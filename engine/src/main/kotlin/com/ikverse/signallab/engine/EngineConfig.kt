@@ -84,7 +84,7 @@ object EngineConfig {
     const val FORWARD_ONLY_VERDICT = "Judged on live trades only"
 
     /** True for a variant only live trades can judge: one of [FORWARD_ONLY_VARIANTS], or any lab pattern, which is always shaped after seeing data. */
-    fun isForwardOnly(variant: String): Boolean = variant in FORWARD_ONLY_VARIANTS || LabPatterns.isLab(variant)
+    fun isForwardOnly(variant: String): Boolean = variant in FORWARD_ONLY_VARIANTS
 
     // --- The pattern lab ---
 
