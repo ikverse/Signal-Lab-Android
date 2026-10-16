@@ -52,6 +52,17 @@ class AnalystScreensTest {
         override fun setReview(on: Boolean) {}
         override fun clearChat() {}
         override fun openKeyPage() {}
+        var paired: Pair<String, String>? = null
+        var confirmed = false
+        override fun pairPc(address: String, code: String) {
+            paired = address to code
+        }
+        override fun confirmPairing() {
+            confirmed = true
+        }
+        override fun cancelPairing() {}
+        override fun forgetPc() {}
+        override fun checkPc() {}
         var shared: String? = null
         override fun shareToClaude(question: String) {
             shared = question
@@ -62,9 +73,12 @@ class AnalystScreensTest {
     fun withoutAKeyTheAnalystExplainsHowToConnectAndChecksThePaste() {
         val actions = Recorder()
         rule.setContent { SignalLabTheme { AnalystScreen(AnalystUi(loaded = true), actions, onRuns = {}) } }
-        rule.onNodeWithText("Connect your Claude account").assertIsDisplayed()
+        rule.onNodeWithText("Use your PC").assertIsDisplayed()
+        rule.onNodeWithTag("analyst-list").performScrollToNode(hasTestTag("key-field"))
         rule.onNodeWithTag("key-field").performTextInput("nope")
+        rule.onNodeWithTag("analyst-list").performScrollToNode(hasTestTag("save-key"))
         rule.onNodeWithTag("save-key").performClick()
+        rule.onNodeWithTag("analyst-list").performScrollToNode(hasTestTag("key-problem"))
         rule.onNodeWithTag("key-problem").assertIsDisplayed()
         assertEquals(0, rule.onAllNodesWithTag("ask").fetchSemanticsNodes().size, "no question box before a key")
         rule.onNodeWithTag("analyst-list").performScrollToNode(hasTestTag("share-claude"))
@@ -127,5 +141,34 @@ class AnalystScreensTest {
         rule.onNodeWithText("Proposed by the analyst · not started").assertIsDisplayed()
         rule.onNodeWithTag("run-custom_ab").performClick()
         assertEquals("custom_ab" to true, run)
+    }
+
+    @Test
+    fun pairingAPcAsksForItsAddressAndCodeThenTheFingerprint() {
+        val actions = Recorder()
+        rule.setContent { SignalLabTheme { AnalystScreen(AnalystUi(loaded = true), actions, onRuns = {}) } }
+        rule.onNodeWithTag("pc-address").performTextInput("192.168.1.20")
+        rule.onNodeWithTag("pc-code").performTextInput("ABCDE-23456")
+        rule.onNodeWithTag("pc-connect").performClick()
+        assertEquals("192.168.1.20" to "ABCDE-23456", actions.paired)
+    }
+
+    @Test
+    fun theFingerprintIsShownForTheOwnerToCompare() {
+        val actions = Recorder()
+        val probe = com.ikverse.signallab.analyst.HostProbe("192.168.1.20", "ABCDE23456", "00".repeat(29) + "AB12CD", "2.1.296 (Claude Code)")
+        rule.setContent { SignalLabTheme { AnalystScreen(AnalystUi(loaded = true, pairing = probe), actions, onRuns = {}) } }
+        rule.onNodeWithTag("pc-fingerprint").assertIsDisplayed()
+        rule.onNodeWithText("AB12CD").assertIsDisplayed()
+        rule.onNodeWithTag("pc-confirm").performClick()
+        assertEquals(true, actions.confirmed)
+    }
+
+    @Test
+    fun aPairedPcIsEnoughToAsk() {
+        val state = AnalystUi(loaded = true, pcAddress = "192.168.1.20", pcAnswering = true)
+        rule.setContent { SignalLabTheme { AnalystScreen(state, Recorder(), onRuns = {}) } }
+        rule.onNodeWithTag("ask").assertIsDisplayed()
+        rule.onNodeWithText("Through your PC, on your Claude plan · Claude Opus 5.5").assertIsDisplayed()
     }
 }

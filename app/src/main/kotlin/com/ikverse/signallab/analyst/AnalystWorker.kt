@@ -28,7 +28,11 @@ class AnalystWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val graph = host.graph
         return try {
             val analyst = graph.analyst
-            if (analyst.blocked() != null) return Result.success()
+            if (analyst.blocked() != null) {
+                // Nowhere to run it now (the PC is off, and there is no key): it is queued again after the next pass.
+                graph.ledger.dao().deleteSetting(if (kind == RunKind.BRIEF) BRIEF_DAY else REVIEW_WEEK)
+                return Result.success()
+            }
             val result = analyst.run(kind, if (kind == RunKind.BRIEF) AnalystPrompt.BRIEF else AnalystPrompt.REVIEW)
             if (result.log.ending.startsWith("failed")) {
                 return if (runAttemptCount < 2) Result.retry() else Result.success()

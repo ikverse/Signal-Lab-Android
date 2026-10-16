@@ -156,6 +156,8 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    // Certificates for the tests of pairing with the analyst host on a PC.
+    testImplementation(libs.okhttp.tls)
     // Plain-JVM tests (the Binance client) need a real org.json; Android's own is a stub there.
     // Robolectric tests bring Android's, and the two coexist.
     testImplementation(libs.json)

@@ -53,6 +53,9 @@ Wrap every adb call in `timeout N`.
   PC in seconds. `allWarningsAsErrors` is on. Test helpers and golden data live in `src/testFixtures`.
 - `app/` — `data/` (Binance, candles, universe, futures), `ledger/` (Room ledger, importer, preferences), `runner/` (daily
   pass, worker, alarm, notifications), `model/` (screen state), `view/` (Compose screens), `update/`. Depends on `:engine`.
+- `analyst-host/` — the analyst host for the owner's PC (JDK only, no Android): runs the installed Claude Code headless for the
+  phone, with Signal Lab's tools bridged back to the phone. Start it with `tools\start-analyst-host.cmd`. Its live test runs
+  only with `SIGNAL_LAB_LIVE_CLAUDE=1`, because it uses the plan's usage.
 - `tools/` — one-off scripts, not part of the build.
 
 ## The engine's rules

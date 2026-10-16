@@ -105,7 +105,10 @@ class Graph(context: Context, private val scope: CoroutineScope) {
         return ClaudeApiTransport(key).also { transport = key to it }
     }
     val analystTools = AnalystTools(ledger.dao(), candles, derivativesStore, catalog, prefsStore)
-    val analyst = Analyst(::transport, analystTools.all, analystStore, spend, { prefsStore.current() })
+    val pcHost = com.ikverse.signallab.analyst.HostPairing(
+        ledger.dao(), File(app.noBackupFilesDir, com.ikverse.signallab.analyst.HostPairing.FILE_NAME), KeystoreCipher(com.ikverse.signallab.analyst.KeystoreCipher.ALIAS),
+    )
+    val analyst = Analyst(::transport, analystTools.all, analystStore, spend, { prefsStore.current() }, pc = pcHost)
     val importer = LegacyImporter(app, ledger)
     val scheduler = DailyCloseScheduler(app, offsetMs = { market.nowMs() - System.currentTimeMillis() })
 
@@ -129,7 +132,7 @@ class Graph(context: Context, private val scope: CoroutineScope) {
     val strategiesModel = StrategiesModel(ledger.dao(), prefsStore, candles, strategies, scope, allStrategies, catalog.saved)
     val markets = MarketsModel(ledger.dao(), candles, pairs, derivativesStore, allStrategies, scope)
     val calls = CallModel(ledger.dao(), candles, allStrategies) { prefsStore.current() }
-    val analystModel = AnalystModel(analyst, analystStore, apiKeys, spend, prefsStore, ledger.dao(), scope, analystTools.all)
+    val analystModel = AnalystModel(analyst, analystStore, apiKeys, spend, prefsStore, ledger.dao(), scope, analystTools.all, pcHost)
     // Sync between the owner's devices, through the app's hidden folder in their Google Drive.
     val deviceSync = DeviceSync(
         SyncSettings(ledger.dao()), GoogleAuthorizer(app), { token -> DriveFolder(BinanceClient.defaultHttp(), token) }, LedgerSync(ledger),

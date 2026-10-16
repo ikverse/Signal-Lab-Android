@@ -24,7 +24,7 @@ jobs:
       # ANDROID_HOME is already set, so Gradle finds the SDK without it. (The setup-android action
       # is not used: it fails on the runner's pre-installed SDK with "Failed to find package 'tools'".)
       - name: Test
-        run: ./gradlew :engine:test :app:testDebugUnitTest --no-daemon
+        run: ./gradlew :engine:test :analyst-host:test :app:testDebugUnitTest --no-daemon
 
       - name: Assemble debug
         run: ./gradlew :app:assembleDebug --no-daemon

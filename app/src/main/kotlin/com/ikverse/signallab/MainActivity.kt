@@ -90,6 +90,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                override fun pairPc(address: String, code: String) = a.pair(address, code)
+                override fun confirmPairing() = a.confirmPairing()
+                override fun cancelPairing() = a.cancelPairing()
+                override fun forgetPc() = a.forgetPc()
+                override fun checkPc() = a.checkPc()
+
                 override fun openKeyPage() {
                     runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(CONSOLE_KEYS))) }
                 }
