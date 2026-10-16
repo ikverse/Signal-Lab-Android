@@ -15,9 +15,9 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 /**
- * When Signal Lab 2's daily pass runs: an exact alarm a little after each daily close (00:00 UTC by Binance's clock) starts
- * it, and a job every [BACKSTOP_HOURS] hours runs it too, so a missed alarm (a phone Samsung put to sleep, a reboot) costs
- * hours, not days. Both start the same unique work, so they never run twice at once. Nothing runs as a foreground service.
+ * When Signal Lab 2's pass runs: an exact alarm a little after each hourly close (by Binance's clock) starts it; the
+ * first pass after 00:00 UTC does the daily work. A job every [BACKSTOP_HOURS] hours runs it too, so a missed alarm (a phone
+ * Samsung put to sleep, a reboot) costs hours, not days. Both start the same unique work, so they never run twice at once. Nothing runs as a foreground service.
  */
 class DailyCloseScheduler(
     private val context: Context,
@@ -50,7 +50,7 @@ class DailyCloseScheduler(
     private val networked = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
     companion object {
-        private const val DAY_MS = 86_400_000L
+        private const val HOUR_MS = 3_600_000L
 
         /** After the close, wait this long so Binance has published the closed candle and the next one's first trade. */
         const val SETTLE_MS = 90_000L
@@ -60,8 +60,11 @@ class DailyCloseScheduler(
         const val ACTION = "com.ikverse.signallab.V2_DAILY_CLOSE"
         private const val REQUEST_CODE = 200
 
-        /** The next run time by Binance's clock: the next 00:00 UTC after [serverNow], plus the settling wait. */
-        fun nextRunAt(serverNow: Long): Long = (Math.floorDiv(serverNow, DAY_MS) + 1) * DAY_MS + SETTLE_MS
+        /**
+         * The next run time by Binance's clock: the next hourly close after [serverNow], plus the settling wait. The daily close
+         * at 00:00 UTC is one of them, and the runner does its daily work only on the first pass after it.
+         */
+        fun nextRunAt(serverNow: Long): Long = (Math.floorDiv(serverNow, HOUR_MS) + 1) * HOUR_MS + SETTLE_MS
     }
 }
 

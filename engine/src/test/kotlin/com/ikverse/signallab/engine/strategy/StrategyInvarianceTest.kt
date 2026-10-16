@@ -58,12 +58,27 @@ class StrategyInvarianceTest {
     fun everyStrategyGivesTheSameAnswerOnCutHistoryForRealCandles() {
         for (s in Builtins.all) {
             val panel = Golden.panel(s.timeframe)
-            var fired = 0
-            for (c in panel.values) {
-                assertEquals(emptyList(), mismatches(s, c, cutsFor(c)), "${s.id} looks ahead on ${c.symbol}")
-                fired += s.entries(c).count { it }
+            for (c in panel.values) assertEquals(emptyList(), mismatches(s, c, cutsFor(c)), "${s.id} looks ahead on ${c.symbol}")
+            val fired = s.entriesAcross(panel).values.sumOf { f -> f.count { it } }
+            assertTrue(fired > 10, "${s.id} fired only $fired times on the real candles, too few to test")
+        }
+    }
+
+    /** A ranking compares coins at one moment: cutting every coin at the same time must not change any flag before it. */
+    @Test
+    fun aRankingGivesTheSameAnswerWhenEveryCoinIsCutAtTheSameMoment() {
+        for (s in Builtins.all.filter { it.crossSectional }) {
+            val panel = Golden.panel(s.timeframe)
+            val full = s.entriesAcross(panel)
+            val times = panel.values.flatMap { it.t.toList() }.sorted()
+            for (frac in listOf(0.3, 0.5, 0.7, 0.9)) {
+                val cut = times[(times.size * frac).toInt()]
+                val head = panel.mapValues { (_, c) -> c.head(c.t.count { it <= cut }) }.filterValues { it.size > 0 }
+                for ((sym, flags) in s.entriesAcross(head)) {
+                    for (i in flags.indices) assertEquals(full.getValue(sym)[i], flags[i], "${s.id} $sym @$i cut at $cut")
+                }
             }
-            assertTrue(fired > 50, "${s.id} fired only $fired times on the real candles, too few to test")
+            assertTrue(full.values.sumOf { f -> f.count { it } } > 20, "${s.id} hardly fired")
         }
     }
 

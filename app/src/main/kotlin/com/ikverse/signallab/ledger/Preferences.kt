@@ -2,6 +2,7 @@ package com.ikverse.signallab.ledger
 
 import com.ikverse.signallab.engine.EngineConfig
 import com.ikverse.signallab.engine.strategy.Strategy
+import com.ikverse.signallab.engine.strategy.Tier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -21,9 +22,15 @@ data class Preferences(
     val switches: Map<String, Boolean> = emptyMap(),
     /** When Today was last looked at, so calls since then are "new". */
     val todaySeenAt: Long = 0,
+    /** Each strategy's tier as its evidence last set it, by id; a strategy not judged yet has its launch tier. */
+    val tiers: Map<String, Tier> = emptyMap(),
+    /** Why each strategy has its tier, in a sentence. */
+    val tierReasons: Map<String, String> = emptyMap(),
 ) {
-    /** Whether [s] puts its calls on Today and notifies: as switched by hand, else whether its tier makes calls. */
-    fun isOn(s: Strategy): Boolean = switches[s.id] ?: s.launchTier.makesCalls
+    fun tierOf(s: Strategy): Tier = tiers[s.id] ?: s.launchTier
+
+    /** Whether [s] puts its calls on Today and notifies: as switched by hand, else whether its current tier makes calls. */
+    fun isOn(s: Strategy): Boolean = switches[s.id] ?: tierOf(s).makesCalls
 
     fun costFor(symbol: String): Double = if (symbol in EngineConfig.MAJORS) costMajors else costOthers
 
@@ -37,6 +44,8 @@ data class Preferences(
         const val SWITCH_PREFIX = "strategy_on."
         const val TODAY_SEEN = "today_seen_at"
         const val HOST_US = "https://api.binance.us"
+        const val TIER_PREFIX = "tier."
+        const val TIER_REASON_PREFIX = "tier_reason."
 
         fun from(rows: List<SettingRow>): Preferences {
             val m = rows.associate { it.key to it.value }
@@ -50,6 +59,10 @@ data class Preferences(
                 futuresData = bool(FUTURES, true),
                 switches = m.filterKeys { it.startsWith(SWITCH_PREFIX) }.map { (k, v) -> k.removePrefix(SWITCH_PREFIX) to (v == "1") }.toMap(),
                 todaySeenAt = m[TODAY_SEEN]?.toLongOrNull() ?: 0,
+                tiers = m.filterKeys { it.startsWith(TIER_PREFIX) }.mapNotNull { (k, v) ->
+                    Tier.entries.firstOrNull { it.name == v }?.let { k.removePrefix(TIER_PREFIX) to it }
+                }.toMap(),
+                tierReasons = m.filterKeys { it.startsWith(TIER_REASON_PREFIX) }.mapKeys { it.key.removePrefix(TIER_REASON_PREFIX) },
             )
         }
     }

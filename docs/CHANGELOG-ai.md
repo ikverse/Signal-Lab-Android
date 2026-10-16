@@ -136,3 +136,32 @@ asking is logged here.
   `LiveScan`, `VariantLabels`, the learned exit and end-of-day rules. Drive sync returns in M9 on the new ledger.
 - Tests: the old screen, state, scanner, sync and lab tests go with their code; golden, fingerprint and exit tests keep their
   numbers exactly (the classic scorecard path is unchanged). New `ScreensTest` and `ModelsTest`.
+
+### M7: five more strategies, vetoes, evidence, tiers, and the rule language
+
+- New built-ins (docs/strategy-research.md): Momentum 2w, Leaders (weekly ranking, needs at least 8 coins), Near high,
+  Quiet dip and Hourly trend, beside Breakout and Trend timer: seven in all. Each has its plain words, sources and exact rule
+  in `model/StrategyTexts`.
+- Vetoes on every entry, backtest and live alike: signal-day volume over 5× its 30-day median together with a range over
+  3 ATR. A vetoed signal is not recorded as a call. The liquidation-spike veto waits for enough stored futures data.
+- `eval/Evidence`: per-call Sharpe moments, probabilistic and deflated Sharpe, minimum track record length, a stationary block
+  bootstrap and the probability of backtest overfitting (combinatorial cross-validation). `eval/Tiers` turns the backtest at
+  the person's fees and at double, the live record and the number of strategies ever tried into a tier and a sentence.
+- The runner now wakes 90 seconds after every hourly close. The daily pass runs once per daily close (setting
+  `daily_pass_day`); the hourly pass runs Hourly trend on the universe's hourly candles (100 days kept). Tiers are
+  recomputed after each daily pass and stored as `tier.<id>` and `tier_reason.<id>`; Today, Strategies and notifications
+  read them. A strategy switched by hand keeps its switch.
+- The live line on Ledger and the evidence page now counts the calls still needed with the minimum track record length,
+  never fewer than 100 in all.
+- The rule language for custom strategies (`engine/strategy/dsl/Rule.kt`): a bracketed text form the engine parses, checks
+  and prints back exactly, with 30 operations that can only read the candle they are on and earlier ones. Limits: windows and
+  trades up to 500 candles, 120 operations, 12 levels, timeframes 1h, 4h and 1d only. Decided without asking: a text form
+  instead of JSON, because the engine has no JSON library and the analyst can write it as one string; an entry condition that
+  holds for several candles enters once. The builder screen and the analyst's use of it come in M8.
+- Decisions made without asking:
+  - The backtest ignores live universe ranks: it runs on whichever coins it is given.
+  - The hourly strategy is only judged once hourly candles exist.
+- Finding: on the 12 golden coins only Trend timer reaches a tier that makes calls (Promising). Breakout and Momentum are
+  Watch, Leaders is Failing, Near high, Quiet dip and Hourly trend stay Testing. Today will show few calls until the owner
+  switches strategies on or live calls build a record.
+- Engine 123 and app 172 tests pass (2 skipped); release APK 4.2 MB.

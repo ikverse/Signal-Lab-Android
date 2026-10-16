@@ -67,7 +67,7 @@ class Graph(context: Context, private val scope: CoroutineScope) {
     val strategies = Builtins.all
     val runner = StrategyRunner(
         market, pairs, candles, DailyHistory(sync), ledger, AndroidCallAlerts(app), derivatives, strategies,
-        preferences = { prefsStore.current() },
+        preferences = { prefsStore.current() }, hourly = sync,
     )
     val importer = LegacyImporter(app, ledger)
     val scheduler = DailyCloseScheduler(app, offsetMs = { market.nowMs() - System.currentTimeMillis() })
