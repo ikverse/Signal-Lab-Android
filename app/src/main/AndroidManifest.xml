@@ -73,6 +73,20 @@
             android:name=".scan.ScanAlarmReceiver"
             android:exported="false" />
 
+        <!-- Signal Lab 2: the daily-close alarm, and re-arming it after a reboot or an update. -->
+        <receiver
+            android:name=".runner.DailyCloseReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".runner.V2BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".scan.BootReceiver"
             android:exported="true">

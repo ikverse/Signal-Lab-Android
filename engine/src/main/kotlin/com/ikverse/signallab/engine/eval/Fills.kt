@@ -43,6 +43,13 @@ object Fills {
     }
 
     /**
+     * When a fill happened: a fill at a candle's open (an exit signal, or a gap through the stop) at that candle's open
+     * time, any other at its close. Shared by the backtest and the live runner, so both record the same time.
+     */
+    fun exitTime(c: Candles, fill: Fill): Long =
+        if (fill.reason != Leave.TIME && fill.exitPrice == c.open[fill.exitIdx]) c.t[fill.exitIdx] else c.closeTime[fill.exitIdx]
+
+    /**
      * Whether a signal on candle [signalIdx] can be judged in a backtest: its average true range exists and its whole
      * window, up to the last candle the plan allows, lies inside [c]. Counting only such trades means a trade that
      * happens to end early is not favoured over one still running when the data ends.

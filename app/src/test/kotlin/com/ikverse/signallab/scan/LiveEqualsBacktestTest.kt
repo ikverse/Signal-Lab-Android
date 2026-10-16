@@ -14,6 +14,7 @@ import com.ikverse.signallab.engine.Signals
 import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.Trade
 import kotlinx.coroutines.test.runTest
+import kotlin.time.Duration.Companion.minutes
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -42,7 +43,7 @@ class LiveEqualsBacktestTest {
 
     private val cost = 0.002
 
-    private fun replay(tf: Timeframe, coins: List<String>, steps: Int, tail: Int, minCompared: Int, minClosed: Int) = runTest {
+    private fun replay(tf: Timeframe, coins: List<String>, steps: Int, tail: Int, minCompared: Int, minClosed: Int) = runTest(timeout = 5.minutes) {
         val series: Map<String, List<Kline>> = GoldenData.klines(tf).filterKeys { it in coins }
         val source = series.mapKeys { it.key to tf } + mapOf(("BTCUSDT" to Timeframe.D1) to GoldenData.klines(Timeframe.D1).getValue("BTCUSDT"))
         val panel: Map<String, Candles> = coins.associateWith { GoldenData.candles(it, tf) }

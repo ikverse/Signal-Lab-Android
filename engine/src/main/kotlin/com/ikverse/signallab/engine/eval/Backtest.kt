@@ -16,7 +16,7 @@ class BacktestTrade(
     val signalTime: Long,
     val entryTime: Long,
     val entryPrice: Double,
-    /** Close time of the candle the trade left on (for a fill at an open, that candle's open time). */
+    /** When the trade left: a fill at a candle's open is timed at that open, any other at the candle's close. */
     val exitTime: Long,
     val exitPrice: Double,
     val reason: Leave,
@@ -99,7 +99,7 @@ object Backtest {
                 val net = gross - cost
                 out.add(BacktestTrade(
                     symbol = symbol, signalTime = c.t[s], entryTime = c.t[s + 1], entryPrice = entry,
-                    exitTime = if (f.reason == Leave.SIGNAL) c.t[f.exitIdx] else c.closeTime[f.exitIdx],
+                    exitTime = Fills.exitTime(c, f),
                     exitPrice = f.exitPrice, reason = f.reason, barsHeld = f.exitIdx - s, gross = gross, net = net,
                     randomMean = random[j], excess = if (random[j].isNaN()) Double.NaN else net - random[j], regime = regime[s],
                 ))

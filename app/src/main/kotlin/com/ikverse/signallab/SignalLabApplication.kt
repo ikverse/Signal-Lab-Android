@@ -8,7 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-class SignalLabApplication : Application() {
+class SignalLabApplication : Application(), com.ikverse.signallab.runner.RunnerHost {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     lateinit var graph: AppGraph
@@ -27,5 +27,9 @@ class SignalLabApplication : Application() {
         debugState = LiveDebugState(graph, appScope)
         model = LiveAppModel(graph, this, appScope, debugState)
         graph.start(appScope)
+        // Signal Lab 2 runs beside Signal Lab 1's scanner until the new screens replace the old ones.
+        graph.v2.start(appScope)
     }
+
+    override val v2 get() = graph.v2
 }
