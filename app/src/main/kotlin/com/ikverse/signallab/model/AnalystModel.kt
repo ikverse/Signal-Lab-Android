@@ -5,6 +5,8 @@ import com.ikverse.signallab.analyst.ClaudeModel as Model
 import com.ikverse.signallab.analyst.AnalystPrompt
 import com.ikverse.signallab.analyst.AnalystStore
 import com.ikverse.signallab.analyst.ApiKeyStore
+import com.ikverse.signallab.analyst.HostPairing
+import com.ikverse.signallab.analyst.HostProbe
 import com.ikverse.signallab.analyst.RunEvent
 import com.ikverse.signallab.analyst.RunKind
 import com.ikverse.signallab.analyst.RunLog
@@ -48,8 +50,26 @@ data class AnalystUi(
     /** Why a run cannot start or did not finish. */
     val problem: String? = null,
     val reports: List<ReportUi> = emptyList(),
+    /** The PC this phone is paired with, by its address; null when none. */
+    val pcAddress: String? = null,
+    /** Whether the paired PC answered the last check; null before one. */
+    val pcAnswering: Boolean? = null,
+    /** A pairing waiting for the owner to compare fingerprints. */
+    val pairing: HostProbe? = null,
+    val pairingBusy: Boolean = false,
+    val pairingProblem: String? = null,
 ) {
-    val spendLine: String get() = "This month ${Words.usd(monthUsd)} of ${Words.usd(capUsd)} · $model"
+    val pcPaired: Boolean get() = pcAddress != null
+
+    /** The analyst can be asked: through the PC or on an API key. */
+    val canAsk: Boolean get() = pcPaired || keySet
+
+    val spendLine: String
+        get() = when {
+            pcPaired && keySet -> "Through your PC on your Claude plan, or this month ${Words.usd(monthUsd)} of ${Words.usd(capUsd)} on your key · $model"
+            pcPaired -> "Through your PC, on your Claude plan · $model"
+            else -> "This month ${Words.usd(monthUsd)} of ${Words.usd(capUsd)} · $model"
+        }
 }
 
 /** The Analyst tab: the conversation, the reports, the key and the budget. */
@@ -63,7 +83,11 @@ class AnalystModel(
     private val scope: CoroutineScope,
     /** The analyst's read-only tools, for the snapshot handed to the Claude app when there is no key. */
     private val tools: List<ToolSpec> = emptyList(),
+    private val host: HostPairing? = null,
 ) {
+    private class Pc(val address: String? = null, val answering: Boolean? = null, val probe: HostProbe? = null, val busy: Boolean = false, val problem: String? = null)
+
+    private val pc = MutableStateFlow(Pc())
     private class Live(
         val turns: List<Turn> = emptyList(),
         val running: Boolean = false,
@@ -78,9 +102,10 @@ class AnalystModel(
     private val live = MutableStateFlow(Live())
     private var job: Job? = null
 
-    val state: StateFlow<AnalystUi> = combine(live, prefs.preferences, dao.watchReports(20)) { l, p, reports ->
+    val state: StateFlow<AnalystUi> = combine(live, prefs.preferences, dao.watchReports(20), pc) { l, p, reports, h ->
         val m = Model.of(p.analystModel)
         AnalystUi(
+            pcAddress = h.address, pcAnswering = h.answering, pairing = h.probe, pairingBusy = h.busy, pairingProblem = h.problem,
             loaded = true, keySet = l.keySet, keyHint = l.hint, model = m.label, modelId = m.id, monthUsd = l.month,
             capUsd = p.analystCapUsd, brief = p.analystBrief, review = p.analystReview, turns = l.turns, running = l.running,
             streaming = l.streaming, working = l.working, problem = l.problem,
@@ -92,9 +117,11 @@ class AnalystModel(
         refresh()
     }
 
-    /** Re-reads the conversation, the month's spend and the key, after anything outside this model changed them. */
+    /** Re-reads the conversation, the month's spend, the key and the paired PC, after anything outside this model changed them. */
     fun refresh() {
         scope.launch {
+            val paired = runCatching { host?.paired() }.getOrNull()
+            pc.value = Pc(paired?.address, pc.value.answering.takeIf { paired != null }, pc.value.probe, pc.value.busy, pc.value.problem)
             val month = spend.month()
             live.value = Live(store.chat(), live.value.running, live.value.streaming, live.value.working, live.value.problem, month, keys.isSet,
                 runCatching { keys.hint() }.getOrNull())
@@ -189,6 +216,51 @@ class AnalystModel(
             snapshot[name] = runCatching { spec.run(kotlinx.serialization.json.JsonObject(emptyMap())).text }.getOrElse { "unavailable" }
         }
         return AnalystPrompt.handoff(snapshot, question)
+    }
+
+    /** First contact with a PC: shows its fingerprint for the owner to compare. */
+    fun pair(address: String, code: String) {
+        val h = host ?: return
+        pc.value = Pc(pc.value.address, pc.value.answering, null, busy = true)
+        scope.launch {
+            pc.value = try {
+                Pc(pc.value.address, pc.value.answering, h.probe(address, code))
+            } catch (e: Exception) {
+                Pc(pc.value.address, pc.value.answering, problem = e.message ?: "The PC could not be reached.")
+            }
+        }
+    }
+
+    /** The fingerprints matched: the phone trusts that PC from now on. */
+    fun confirmPairing() {
+        val h = host ?: return
+        val probe = pc.value.probe ?: return
+        scope.launch {
+            h.confirm(probe)
+            pc.value = Pc(probe.address, answering = true)
+        }
+    }
+
+    fun cancelPairing() {
+        pc.value = Pc(pc.value.address, pc.value.answering)
+    }
+
+    fun forgetPc() {
+        val h = host ?: return
+        scope.launch {
+            h.forget()
+            pc.value = Pc()
+        }
+    }
+
+    /** Asks the paired PC whether it is answering now. */
+    fun checkPc() {
+        val h = host ?: return
+        scope.launch {
+            h.recheck()
+            val ok = runCatching { h.reachable() }.getOrNull() != null
+            pc.value = Pc(pc.value.address, ok, pc.value.probe, problem = if (ok) null else "Your PC is not answering. Is the analyst host running, and is the phone on the same network?")
+        }
     }
 
     /** The last runs, newest first, for the "what was sent" page. */

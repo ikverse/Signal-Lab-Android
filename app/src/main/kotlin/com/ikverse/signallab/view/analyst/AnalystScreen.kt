@@ -76,6 +76,12 @@ interface AnalystActions {
 
     /** Without a key: hands the question and a snapshot of the data to the Claude app through the share sheet. */
     fun shareToClaude(question: String)
+
+    fun pairPc(address: String, code: String)
+    fun confirmPairing()
+    fun cancelPairing()
+    fun forgetPc()
+    fun checkPc()
 }
 
 private val starters = listOf(
@@ -115,11 +121,12 @@ fun AnalystScreen(state: AnalystUi, actions: AnalystActions, onRuns: () -> Unit,
                     }
                 }
             }
-            if (!state.keySet) item(key = "setup") { KeySetup(actions) }
+            if (!state.canAsk) item(key = "pc-setup") { PcSetup(state, actions) }
+            if (!state.canAsk) item(key = "setup") { KeySetup(actions) }
             state.reports.firstOrNull()?.let { r ->
                 item(key = "report-${r.id}") { ReportPanel(r.title, r.at, r.body) }
             }
-            if (state.keySet && state.turns.isEmpty() && !state.running) {
+            if (state.canAsk && state.turns.isEmpty() && !state.running) {
                 item(key = "starters") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Ask about your calls, your strategies or the market. It reads the app's own numbers and the news.", style = Type.Small)
@@ -141,15 +148,15 @@ fun AnalystScreen(state: AnalystUi, actions: AnalystActions, onRuns: () -> Unit,
                 }
             }
             state.problem?.let { p -> item(key = "problem") { Text(p, style = Type.Small.copy(color = Ink.Loss), modifier = Modifier.testTag("problem")) } }
-            if (state.keySet) item(key = "settings") { AnalystSettings(state, actions) }
+            if (state.canAsk) item(key = "settings") { AnalystSettings(state, actions) }
             item(key = "note") {
                 Text(
-                    "Runs on your Claude API key. What leaves the phone is what each run sent: your question, your recent messages and the data its tools returned, to Anthropic only. Research, not financial advice.",
+                    "Runs on your PC's Claude Code or your Claude API key. What leaves the phone is what each run sent: your question, your recent messages and the data its tools returned, to your PC or to Anthropic. Research, not financial advice.",
                     style = Type.Caption.copy(color = Ink.Faint),
                 )
             }
         }
-        if (state.keySet) {
+        if (state.canAsk) {
             Row(
                 Modifier.fillMaxWidth().background(Ink.Bar).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -168,12 +175,52 @@ fun AnalystScreen(state: AnalystUi, actions: AnalystActions, onRuns: () -> Unit,
     }
 }
 
+/** Pairing with the analyst host on the owner's PC: its address and code, then the fingerprint check. */
+@Composable
+private fun PcSetup(state: AnalystUi, actions: AnalystActions) {
+    var address by rememberSaveable { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
+    Panel(Modifier.testTag("pc-setup")) {
+        Text("Use your PC", style = Type.Subhead)
+        val probe = state.pairing
+        if (probe == null) {
+            Text(
+                "The analyst can run in Claude Code on your PC, on your own Claude plan. Start the analyst host there (tools\\start-analyst-host.cmd in the Signal Lab folder) and type what its window shows. The phone must be on the same network.",
+                style = Type.Body.copy(color = Ink.Body),
+            )
+            OutlinedTextField(
+                address, { address = it }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("pc-address"),
+                placeholder = { Text("Address, such as 192.168.1.20", color = Ink.Faint) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Ink.Accent, unfocusedBorderColor = Ink.Outline),
+            )
+            OutlinedTextField(
+                code, { code = it }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("pc-code"),
+                placeholder = { Text("Pairing code", color = Ink.Faint) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Ink.Accent, unfocusedBorderColor = Ink.Outline),
+            )
+            state.pairingProblem?.let { Text(it, style = Type.Small.copy(color = Ink.Loss), modifier = Modifier.testTag("pc-problem")) }
+            PrimaryButton(if (state.pairingBusy) "Connecting…" else "Connect", { actions.pairPc(address, code) }, Modifier.testTag("pc-connect"),
+                enabled = !state.pairingBusy && address.isNotBlank() && code.isNotBlank())
+        } else {
+            Text("Does the PC's window say the fingerprint ends in", style = Type.Body.copy(color = Ink.Body))
+            Text(probe.shortFingerprint, style = Type.BigNumber, modifier = Modifier.testTag("pc-fingerprint"))
+            Text("Pair only if it does: then this phone trusts that PC and no other." + (probe.claude?.let { " It runs $it." } ?: ""), style = Type.Small)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrimaryButton("It matches", actions::confirmPairing, Modifier.testTag("pc-confirm"))
+                QuietButton("It doesn't", actions::cancelPairing, Modifier.testTag("pc-cancel"))
+            }
+        }
+    }
+}
+
 @Composable
 private fun KeySetup(actions: AnalystActions) {
     var key by rememberSaveable { mutableStateOf("") }
     var problem by remember { mutableStateOf<String?>(null) }
     Panel(Modifier.testTag("key-setup")) {
-        Text("Connect your Claude account", style = Type.Subhead)
+        Text("Or use a Claude API key", style = Type.Subhead)
         Text(
             "The analyst runs on an API key from your own Claude account. In the Claude Console, open API keys, create one, copy it and paste it here. Paid Claude plans include a monthly API credit that covers it first. The key is sealed on this phone and is never backed up or synced.",
             style = Type.Body.copy(color = Ink.Body),
@@ -214,13 +261,32 @@ private fun AnalystSettings(state: AnalystUi, actions: AnalystActions) {
         }
         if (!open) return@Column
         var cap by rememberSaveable(state.capUsd) { mutableStateOf(String.format(Locale.US, "%.0f", state.capUsd)) }
-        RowsPanel(rows = listOf(
-            @Composable {
+        RowsPanel(rows = listOfNotNull<@Composable () -> Unit>(
+            state.pcAddress?.let { address ->
+                @Composable {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val status = when (state.pcAnswering) {
+                            true -> "answering"
+                            false -> "not answering"
+                            null -> "not checked yet"
+                        }
+                        Text("Your PC at $address · $status", style = Type.Body.copy(color = Ink.Text), modifier = Modifier.testTag("pc-line"))
+                        Text("Questions go to your PC first, on your Claude plan, while it runs the analyst host.", style = Type.Caption)
+                        state.pairingProblem?.let { Text(it, style = Type.Caption.copy(color = Ink.Loss)) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(actions::checkPc, Modifier.testTag("pc-check")) { Text("Check now", color = Ink.Accent) }
+                            TextButton(actions::forgetPc, Modifier.testTag("pc-forget")) { Text("Unpair", color = Ink.Loss) }
+                        }
+                    }
+                }
+            },
+            (@Composable { PcSetup(state, actions) }).takeIf { state.pcAddress == null },
+            (@Composable {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Key ending ${state.keyHint ?: "…"}", style = Type.Body.copy(color = Ink.Text), modifier = Modifier.weight(1f))
                     TextButton(actions::removeKey, Modifier.testTag("remove-key")) { Text("Remove", color = Ink.Loss) }
                 }
-            },
+            }).takeIf { state.keySet },
             @Composable {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Model", style = Type.Body.copy(color = Ink.Text))

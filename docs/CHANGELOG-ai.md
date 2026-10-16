@@ -220,3 +220,34 @@ asking is logged here.
   pre-release when the version's `CHANGELOG.md` heading ends in "(pre-release)", and 2.0.0 is marked so: Signal Lab 1.7's
   updater offers only the latest full release, so no phone is offered 2.0.0 before it is verified on the Fold7.
 - `CHANGELOG.md` has the 2.0.0 section. The `v2.0.0` tag is not made: it waits for the owner (stop point 3).
+
+### M10: the analyst on the owner's PC
+
+- Approved with "approve" on 2026-10-17, after the owner said their plan has no API credit. The owner's consumer login is
+  never used by Signal Lab: the PC runs Anthropic's own Claude Code, signed in as it already is, and Signal Lab only talks to it.
+- `analyst-host/`: a Kotlin program on the JDK alone (its HTTP and HTTPS servers are the JDK's). For each question it starts
+  `claude -p` with stream-json output, the analyst's instructions as the system prompt, `--restricted` (no settings files, so
+  none of the owner's hooks, plugins or global instructions), `--tools WebSearch,WebFetch`, the bridge as the only MCP server
+  (`--strict-mcp-config`), `--permission-mode dontAsk` with only those tools allowed, `--max-budget-usd 5` as a runaway stop,
+  and no saved session. The conversation so far goes in the input as a transcript.
+- Decided without asking:
+  - Claude Code's command line, not the Agent SDK: there is no Agent SDK for the JVM, and the CLI is what is installed.
+  - `--safe-mode` is not used: a live run showed it also drops the bridge's MCP server. `--bare` is not used: it reads only
+    an API key, never the plan's login. A live check showed restricted mode keeps the owner's global CLAUDE.md out.
+  - The tools stay on the phone: the bridge (MCP over HTTP on 127.0.0.1, with its own random token) forwards each call
+    to the phone through the run's event stream and waits up to 60 seconds for the answer. The PC keeps no copy of the
+    ledger or candles, so there is nothing to sync and no JDBC port of the candle store.
+  - Arguments reach Claude Code on Windows' command line, where Java does not escape quotes: the MCP configuration goes
+    in a file, and straight quotes in the instructions become typographic ones.
+  - One question at a time (409 otherwise). The phone's Stop ends the run at once (`POST /runs/<id>/stop`); a dropped
+    connection is noticed at the next keep-alive, within five seconds, and Claude Code is killed.
+  - Pairing: the host prints its LAN address, a 10-character code and the end of its certificate's SHA-256; the phone shows
+    the fingerprint it received and pins it once the owner confirms the two match. The code is sealed like the API key; the
+    address and pin are settings that are never synced. A wrong code waits longer each time.
+  - Runs on the PC cost nothing on the API budget; the run's log notes the plan's limits used (from Claude Code's rate-limit
+    event) and what it would have cost at API prices.
+  - The brief and the review, with the PC off and no key, are queued again after the next pass instead of failing.
+- Tests: host 8 against a stand-in Claude Code (recorded real output, real bridge calls), plus a live test run once through
+  real Claude Code on the owner's login (the tool was called and its answer used); phone 5 for the PC route, fallback and
+  pinning with real certificates, 3 screen tests. Engine 128, host 9, app 213 pass; release APK 13.5 MB.
+- Not verified yet: a run from the phone itself to the PC over the home network.

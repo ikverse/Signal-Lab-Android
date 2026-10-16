@@ -3,6 +3,12 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 2.1.0 - not released yet
+
+- The analyst can run on your PC, in Claude Code signed in with your own Claude account, on your plan's usage instead of an API key. Start the analyst host on the PC (tools\start-analyst-host.cmd), then pair the phone in the Analyst tab with the address and code the PC shows, checking that both show the same fingerprint.
+- Signal Lab's tools still run on the phone, on its own data; the PC keeps no copy of your ledger.
+- The phone asks the PC first, then an API key if you have one, then offers the Claude app. A run on the PC shows how much of your plan's limits is used.
+
 ## 2.0.0 - 2026-10-17 (pre-release)
 
 Signal Lab 2, rebuilt from the ground up around one question: does a strategy beat random entries after fees? This is a pre-release; Signal Lab 1.7 does not offer it as an update until it is marked final.

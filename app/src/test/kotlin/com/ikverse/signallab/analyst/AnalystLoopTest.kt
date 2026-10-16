@@ -208,7 +208,7 @@ class AnalystLoopTest {
     @Test
     fun withoutAKeyNothingIsSent() = runTest {
         val a = analyst(key = null)
-        assertEquals("Add your Claude API key in Settings first.", a.blocked())
+        assertEquals("Pair your PC, or add a Claude API key, under Key, model and budget.", a.blocked())
         assertEquals("no key", a.run(RunKind.CHAT, "Anything").log.ending)
         assertEquals(0, server.requestCount)
     }
