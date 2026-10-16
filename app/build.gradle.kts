@@ -1,10 +1,12 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 // One place decides the version; the code is derived from it so the two can never disagree.
-val appVersionName = "1.7.0"
+val appVersionName = "2.0.0"
 val appVersionCode = appVersionName.split(".").let { (major, minor, patch) ->
     major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
 }
@@ -104,10 +106,12 @@ android {
         // once the suite passed 500 tests (the backtest and screen tests are the heavy ones).
         unitTests.all { it.maxHeapSize = "3g" }
     }
+}
 
-    // The engine's golden files (real candles and what the research version produced) are read by
-    // the pipeline test here too, without copying them.
-    sourceSets.getByName("test").resources.directories.add("../engine/src/test/resources")
+ksp {
+    // Room writes each schema version here, so a later migration can be tested against the exact
+    // schema an installed phone has.
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -127,6 +131,23 @@ dependencies {
     // Google's authorization for the app's hidden Drive folder, used by sync between devices.
     implementation(libs.play.services.auth)
 
+    // Signal Lab 2: the ledger database, the daily scan, screens and the foldable layouts.
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.compose.material3.adaptive)
+    implementation(libs.androidx.compose.material3.adaptive.layout)
+    implementation(libs.androidx.compose.material3.adaptive.navigation)
+
+    // The engine's golden files (real candles and what the research version produced) and its test
+    // helpers, shared without copying them.
+    testImplementation(testFixtures(project(":engine")))
+    testImplementation(libs.androidx.room.testing)
+    testImplementation(libs.androidx.work.testing)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
