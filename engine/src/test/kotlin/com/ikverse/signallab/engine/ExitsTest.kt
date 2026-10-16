@@ -95,7 +95,8 @@ class ExitsTest {
         var compared = 0
         for (tf in listOf(Timeframe.D1, Timeframe.H1)) {
             val panel = Golden.panel(tf)
-            for ((key, bySymbol) in Signals.compute(panel)) {
+            // The research's saved signals cover the trailing, learned and fixed-hold exits.
+            for ((key, bySymbol) in Golden.researchSignals(tf)) {
                 val rule = if (ExitPolicy.modeOf(key) == ExitMode.LEARNED) ExitRule(ExitMode.LEARNED, 6, targetPct = 0.02) else ExitPolicy.baseRule(key, tf)
                 for ((symbol, flags) in bySymbol) {
                     val c = panel.getValue(symbol)
@@ -243,7 +244,8 @@ class ExitsTest {
     fun whatIsLearnedAtASignalDoesNotChangeWhenLaterCandlesArrive() {
         val tf = Timeframe.D1
         val c = Golden.panel(tf).getValue("BTCUSDT")
-        val flags = Signals.candlesticks(c).entries.first { it.key.name == "bullish_hikkake_1d" }.value
+        // Synthetic signals, every ninth candle: what matters is that there are plenty to learn from.
+        val flags = BooleanArray(c.size) { it % 9 == 4 }
         val cut = c.size - 150
         val at = c.t[cut - 1]
         val early = LearnedExit.rule(tf, at, LearnedExit.outcomes(c.head(cut), flags.copyOf(cut)), emptyList())
@@ -258,8 +260,9 @@ class ExitsTest {
         val tf = Timeframe.D1
         val panel = Golden.panel(tf)
         val regimes = Golden.regimes(tf)
-        val flags = Signals.compute(panel)
-        val key = flags.keys.first { it.name == "bullish_hikkake_1d" }
+        // A pattern of a learned-exit family, firing on synthetic candles: every eleventh one on each coin.
+        val key = SignalKey("synthetic_learned_1d", "candlestick", emptyMap())
+        val flags = mapOf(key to panel.mapValues { (_, c) -> BooleanArray(c.size) { it % 11 == 5 } })
         val run = Scorecard.runVariant(key, flags.getValue(key), panel, tf, regimes, costFor = { 0.002 }, perPatternExits = true)
         assertTrue(run.trades.size > 100)
         assertTrue(run.trades.all { it.rule.mode == ExitMode.LEARNED })

@@ -1,5 +1,8 @@
 package com.ikverse.signallab.engine
 
+// Signal Lab 1 only. Deleted together with the old app screens and services in milestone 6 of the
+// Signal Lab 2 rebuild (docs/v2-plan.md). New code must not use it; LayeringTest enforces that.
+
 /**
  * The rules for running the signals live, as pure functions of candles and a clock, so a replay of
  * old candles through them can be compared trade for trade with the backtest.
