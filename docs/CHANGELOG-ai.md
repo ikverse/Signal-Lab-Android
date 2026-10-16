@@ -71,3 +71,40 @@ asking is logged here.
 - Decision: the liquidation veto is deferred. Binance has no key-free REST history of liquidations, and its stream reports
   at most one per symbol per second, so totals undercount in exactly the cascades that matter.
 - Engine 172, app 752 tests pass.
+
+### M4 + M5: ledger, importer, live runner, daily scan
+
+- `ledger.db` (Room, schema in `app/schemas/`): calls, exits, the strategy registry, custom strategies and their stops,
+  reports, pins, settings, Signal Lab 1 list names, and the import log. `calls`, `exits`, `strategies`, `custom_strategies`,
+  `custom_stops` and `import_log` refuse UPDATE and DELETE by trigger; the triggers are created on create and on every open.
+- `LegacyImporter` reads `signal_lab.db` through `ledger/legacy/SignalLabV6` (a verbatim copy of Signal Lab 1's six schema
+  steps, so it outlives Signal Lab 1's code) in one transaction, keyed so repeats add nothing. Decisions:
+  - Signal Lab 1 keeps writing to its file until M6, so the importer runs at every start and adds only what is new; a trade's
+    "unresolved" state is the absence of an exit row (a status written once could not change), and only the first import
+    keeps a copy of the file, so copies never pile up and nothing ever needs deleting.
+  - Pins come from the coins of *active* lists only; alerts are not imported (counted in the log); settings keep fees, host,
+    screen, notifications, sync and asked-permission keys, with `scan_in_background` renamed `background_enabled`.
+- Engine `eval.Live`: `signal` (a call on the newest closed candle, entering at the forming candle's open, regime gate, ATR
+  sizing: 1 ATR = 1% of the paper account, at most 20%) and `close` (the shared fill rules; an exit that fills at the forming
+  candle's open, a signal exit or a gap through the stop, is reported at once instead of a day later). `Fills.exitTime` makes
+  the backtest and the live runner time a fill at an open the same way. `LiveEqualsBacktestTest` replays three golden coins
+  day by day and requires every live call to equal its backtest trade, both ways.
+- `StrategyRunner` (app): refresh the pair list, bring every offered coin's daily history up to date (the universe and the
+  coming cross-coin strategies need them all; about one request per coin per day), choose the universe, close open calls,
+  open new ones, notify. Busy rule as the backtest's: a coin is busy while a call of that strategy is open or its exit is at
+  the very open a new call would enter at. Calls beyond 8 open are recorded with size 0 (tracked, not in the account), so the
+  evidence keeps every signal. Only Proven and Promising strategies notify.
+- Scheduling: an exact alarm 90 s after 00:00 UTC (Binance's clock) starts a unique one-time job; a 6-hour periodic job is the
+  backstop; boot and app updates re-arm both. Decision: not "expedited" work, which on Android 10 and 11 must run as a
+  foreground service; the exact alarm already gives the timing.
+- Decision: Signal Lab 1's scanner and screens keep running beside the runner until M6 (the plan had the old service removed
+  at M5). That keeps the phone usable at the M5 install and lets the v2 strategies collect live calls from day one.
+- Known optimism, as in Signal Lab 1: a call enters at the forming candle's open even if the pass runs later in that candle;
+  the exact alarm makes that seconds in practice.
+- Test stabilisation in Signal Lab 1 code (removed in M6): Robolectric starts the real application, whose background start now
+  also imports and arms the v2 alarm. `PatternLabels.labTitles` gets a synchronized setter so a background merge cannot write
+  over a value set at the same moment; the long day-by-day replay in the old `LiveEqualsBacktestTest` gets a 5-minute limit;
+  `AndroidAlarmsTest` counts only the old scanner's own alarm. A run with leftover Gradle test JVMs failed with Robolectric's
+  native SQLite not loading; a clean run (`./gradlew --stop`) does not.
+- R8 keeps Room's generated `LedgerDatabase_Impl` and `LedgerDao_Impl` (only unused members are stripped). Release APK 5.9 MB.
+- Engine 174, app 763 tests pass; release build signed from `local.properties`.

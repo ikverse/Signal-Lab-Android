@@ -88,6 +88,14 @@ class AppGraph(context: Context, scope: CoroutineScope) {
         followFast = { settings.getBoolean(SettingsStore.FOLLOW_FAST_CHARTS, true) },
     )
 
+    /**
+     * Signal Lab 2: the ledger, the importer and the daily strategy runner, on this graph's candle store, client and pair
+     * list. Built on first use, so code that never touches it opens none of its files.
+     */
+    val v2: com.ikverse.signallab.runner.V2Graph by lazy {
+        com.ikverse.signallab.runner.V2Graph(context.applicationContext, market, universe, candles, sync, futuresAvailable = { host == DataConfig.HOST_COM })
+    }
+
     /** Which exchange host the app talks to: Binance.com, or Binance.US for networks that cannot reach it. */
     suspend fun useHost(url: String) {
         settings.set(SettingsStore.DATA_HOST, url)

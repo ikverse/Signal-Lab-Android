@@ -29,8 +29,10 @@ class LabRecord(
  * title, which only the record knows. [LabStore] adds to [labTitles] whenever it reads or writes.
  */
 object PatternLabels {
+    /** Setting it takes the same lock as [remember], so a merge running at that moment cannot write over the new value. */
     @Volatile
     var labTitles: Map<Long, String> = emptyMap()
+        @Synchronized set
 
     /**
      * Adds [titles] to what is known. Lab patterns are never changed or removed, so a title once known stays true: adding, never replacing,

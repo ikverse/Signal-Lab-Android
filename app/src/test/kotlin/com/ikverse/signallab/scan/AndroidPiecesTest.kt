@@ -302,12 +302,14 @@ class AndroidAlarmsTest {
     fun armingAgainReplacesTheAlarmAndCancelRemovesIt() {
         ShadowAlarmManager.setCanScheduleExactAlarms(true)
         val alarms = AndroidAlarms(context) { it }
+        // Only this scanner's alarm counts: Signal Lab 2's daily-close alarm is armed beside it when the app starts.
+        val ours = { shadowOf(manager).scheduledAlarms.filter { shadowOf(it.operation).savedIntent.action == AndroidAlarms.ACTION } }
         alarms.armAt(1_000_000)
         alarms.armAt(2_000_000)
-        assertEquals(1, shadowOf(manager).scheduledAlarms.size)
-        assertEquals(2_000_000L, shadowOf(manager).nextScheduledAlarm!!.triggerAtMs)
+        assertEquals(1, ours().size)
+        assertEquals(2_000_000L, ours().single().triggerAtMs)
         alarms.cancel()
-        assertNull(shadowOf(manager).nextScheduledAlarm)
+        assertTrue(ours().isEmpty())
     }
 }
 
