@@ -18,19 +18,23 @@ enum class Tier(val label: String) {
  * comparison measures the entry alone.
  *
  * A trade enters at the open of the candle after its signal. It ends at the first of: a candle whose low reaches the
- * safety stop (filled at the stop, or at the open when the candle gaps through it); the strategy's own exit signal at a
- * candle's close (filled at the next candle's open, the first price anyone could act on); or the close of its
- * [maxBars]th candle.
+ * safety stop (filled at the stop, or at the open when the candle gaps through it); a candle whose high reaches the target,
+ * when the plan has one (filled at the target, or at the open when the candle gaps above it; the stop is assumed first when
+ * one candle touches both); the strategy's own exit signal at a candle's close (filled at the next candle's open, the first
+ * price anyone could act on); or the close of its [maxBars]th candle.
  */
 class ExitPlan(
     /** The most candles a trade lasts, counting the entry candle. */
     val maxBars: Int,
     /** A stop this many average true ranges below the entry; null for none. */
     val safetyStopAtr: Double? = null,
+    /** A target this many average true ranges above the entry; null for none. */
+    val targetAtr: Double? = null,
 ) {
     init {
         require(maxBars >= 1) { "a trade lasts at least one candle" }
         require(safetyStopAtr == null || safetyStopAtr > 0) { "a safety stop sits below the entry" }
+        require(targetAtr == null || targetAtr > 0) { "a target sits above the entry" }
     }
 }
 

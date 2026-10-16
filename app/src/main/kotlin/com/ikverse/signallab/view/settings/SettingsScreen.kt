@@ -84,6 +84,14 @@ fun SettingsScreen(state: SettingsUi, actions: SettingsActions, modifier: Modifi
                 @Composable { GrantRow("No battery limits, so Samsung does not put it to sleep", state.grants.batteryExempt) { actions.openPermission(Permission.BATTERY) } },
             ))
         }
+        Group("Analyst") {
+            Panel {
+                Text(
+                    "The analyst's Claude API key, model, monthly budget, daily brief and weekly review are on the Analyst tab, under Key, model and budget.",
+                    style = Type.Small,
+                )
+            }
+        }
         Group("Updates") {
             Panel {
                 Text("Version ${state.version}", style = Type.Body.copy(color = Ink.Text))

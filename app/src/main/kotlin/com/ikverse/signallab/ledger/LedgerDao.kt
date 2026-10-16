@@ -44,6 +44,10 @@ interface LedgerDao {
     @Query("SELECT value FROM settings WHERE `key` = :key")
     suspend fun setting(key: String): String?
 
+    /** Settings are the one table that forgets: a context line past its day, a choice taken back. */
+    @Query("DELETE FROM settings WHERE `key` = :key")
+    suspend fun deleteSetting(key: String)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertLegacyList(row: LegacyListRow): Long
 
@@ -114,6 +118,19 @@ interface LedgerDao {
 
     @Query("SELECT COUNT(*) FROM custom_strategies")
     fun watchCustoms(): kotlinx.coroutines.flow.Flow<Int>
+
+    /** Custom strategies written in Signal Lab 2's rule language, oldest first. */
+    @Query("SELECT * FROM custom_strategies WHERE definition_v2 IS NOT NULL ORDER BY created_at, id")
+    fun watchCustomRules(): kotlinx.coroutines.flow.Flow<List<CustomStrategyRow>>
+
+    @Query("SELECT * FROM custom_strategies WHERE definition_v2 IS NOT NULL ORDER BY created_at, id")
+    suspend fun customRules(): List<CustomStrategyRow>
+
+    @Query("SELECT * FROM reports ORDER BY received_at DESC LIMIT :limit")
+    fun watchReports(limit: Int): kotlinx.coroutines.flow.Flow<List<ReportRow>>
+
+    @Query("SELECT * FROM strategies WHERE id = :id")
+    suspend fun strategy(id: String): StrategyRow?
 
     @Query("DELETE FROM pins WHERE symbol = :symbol")
     suspend fun removePin(symbol: String)

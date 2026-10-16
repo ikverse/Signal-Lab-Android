@@ -54,7 +54,10 @@ import com.ikverse.signallab.model.SettingsModel
 import com.ikverse.signallab.model.StrategiesModel
 import com.ikverse.signallab.model.TodayModel
 import com.ikverse.signallab.ledger.Preferences
+import com.ikverse.signallab.model.AnalystModel
+import com.ikverse.signallab.view.analyst.AnalystActions
 import com.ikverse.signallab.view.analyst.AnalystScreen
+import com.ikverse.signallab.view.analyst.RunsScreen
 import com.ikverse.signallab.view.common.Icons
 import com.ikverse.signallab.view.ledger.LedgerScreen
 import com.ikverse.signallab.view.markets.CoinScreen
@@ -77,6 +80,7 @@ object Routes {
     @Serializable data object Strategies
     @Serializable data object Markets
     @Serializable data object Analyst
+    @Serializable data object AnalystRuns
     @Serializable data object Settings
     @Serializable data class Call(val id: Long)
     @Serializable data class Evidence(val id: String)
@@ -94,6 +98,8 @@ class AppModels(
     val preferences: StateFlow<Preferences>,
     val settingsActions: SettingsActions,
     val exportCsv: () -> Unit,
+    val analyst: AnalystModel? = null,
+    val analystActions: AnalystActions? = null,
 )
 
 private class Tab(val route: Any, val label: String, val icon: ImageVector, val matches: (androidx.navigation.NavDestination) -> Boolean)
@@ -103,7 +109,7 @@ private val tabs = listOf(
     Tab(Routes.Ledger, "Ledger", Icons.Ledger) { it.hasRoute(Routes.Ledger::class) },
     Tab(Routes.Strategies, "Strategies", Icons.Strategies) { it.hasRoute(Routes.Strategies::class) || it.hasRoute(Routes.Evidence::class) },
     Tab(Routes.Markets, "Markets", Icons.Markets) { it.hasRoute(Routes.Markets::class) || it.hasRoute(Routes.Coin::class) },
-    Tab(Routes.Analyst, "Analyst", Icons.Analyst) { it.hasRoute(Routes.Analyst::class) },
+    Tab(Routes.Analyst, "Analyst", Icons.Analyst) { it.hasRoute(Routes.Analyst::class) || it.hasRoute(Routes.AnalystRuns::class) },
 )
 
 /** Width from which the app shows a side rail instead of a bottom bar, and Today puts the chosen call beside the list. */
@@ -183,6 +189,15 @@ private fun BackBar(onBack: () -> Unit) {
     }
 }
 
+/** "Ask the analyst" on a call's page: the question goes into the conversation and the Analyst tab opens. */
+private fun ask(m: AppModels, nav: androidx.navigation.NavHostController): ((com.ikverse.signallab.model.CallUi) -> Unit)? {
+    val model = m.analyst ?: return null
+    return { c ->
+        model.explain(c.symbol, c.strategyName, com.ikverse.signallab.view.common.Words.day(c.entryTime))
+        nav.navigate(Routes.Analyst)
+    }
+}
+
 @Composable
 private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, twoPane: Boolean) {
     val prefs by m.preferences.collectAsStateWithLifecycle()
@@ -190,21 +205,23 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
         composable<Routes.Today> {
             val state by m.today.state.collectAsStateWithLifecycle()
             if (!twoPane) {
-                TodayScreen(state, onOpenCall = { nav.navigate(Routes.Call(it)) }, onLedger = { nav.navigate(Routes.Ledger) })
+                TodayScreen(state, onOpenCall = { nav.navigate(Routes.Call(it)) }, onLedger = { nav.navigate(Routes.Ledger) },
+                    onRecord = m.today::record, onDismiss = m.today::dismiss)
             } else {
                 var picked by rememberSaveable { mutableStateOf<Long?>(null) }
                 val first = state.newCalls.firstOrNull()?.id ?: state.open.firstOrNull()?.call?.id
                 val chosen = picked ?: first
                 Row(Modifier.fillMaxSize()) {
                     TodayScreen(state, onOpenCall = { picked = it }, onLedger = { nav.navigate(Routes.Ledger) },
-                        modifier = Modifier.width(360.dp).fillMaxHeight(), selected = chosen, compact = false)
+                        modifier = Modifier.width(360.dp).fillMaxHeight(), selected = chosen, compact = false,
+                        onRecord = m.today::record, onDismiss = m.today::dismiss)
                     VerticalDivider(color = Ink.Rule)
                     Box(Modifier.weight(1f)) {
                         if (chosen == null) {
                             Text("Calls show here.", style = Type.Small, modifier = Modifier.align(Alignment.Center))
                         } else {
                             val page by produceState<CallPageUi?>(null, chosen, prefs.accountSize, state) { value = m.calls.page(chosen, prefs.accountSize) }
-                            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) })
+                            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav))
                         }
                     }
                 }
@@ -214,7 +231,7 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
             val id = back.toRoute<Routes.Call>().id
             val today by m.today.state.collectAsStateWithLifecycle()
             val page by produceState<CallPageUi?>(null, id, prefs.accountSize, today) { value = m.calls.page(id, prefs.accountSize) }
-            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) })
+            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav))
         }
         composable<Routes.Ledger> {
             val state by m.ledger.state.collectAsStateWithLifecycle()
@@ -222,13 +239,13 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
         }
         composable<Routes.Strategies> {
             val state by m.strategies.state.collectAsStateWithLifecycle()
-            StrategiesScreen(state, onOpen = { nav.navigate(Routes.Evidence(it)) }, onSwitch = m.strategies::switch)
+            StrategiesScreen(state, onOpen = { nav.navigate(Routes.Evidence(it)) }, onSwitch = m.strategies::switch, onRun = m.strategies::run)
         }
         composable<Routes.Evidence> { back ->
             val id = back.toRoute<Routes.Evidence>().id
             val flow = androidx.compose.runtime.remember(id) { m.strategies.evidence(id) }
             val e by flow.collectAsStateWithLifecycle()
-            EvidenceScreen(e)
+            EvidenceScreen(e, onRun = { m.strategies.run(id, it) })
         }
         composable<Routes.Markets> {
             val state by m.markets.state.collectAsStateWithLifecycle()
@@ -240,7 +257,21 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
             val page by produceState<CoinPageUi?>(null, symbol, markets) { value = m.markets.page(symbol, prefs.accountSize) }
             CoinScreen(page, onCall = { nav.navigate(Routes.Call(it)) }, onPin = { m.markets.pin(symbol, it) }, onExclude = { m.markets.exclude(symbol, it) })
         }
-        composable<Routes.Analyst> { AnalystScreen() }
+        composable<Routes.Analyst> {
+            val model = m.analyst
+            val actions = m.analystActions
+            if (model == null || actions == null) {
+                Text("The analyst is not set up in this build.", style = Type.Small, modifier = Modifier.padding(16.dp))
+            } else {
+                LaunchedEffect(Unit) { model.refresh() }
+                val state by model.state.collectAsStateWithLifecycle()
+                AnalystScreen(state, actions, onRuns = { nav.navigate(Routes.AnalystRuns) })
+            }
+        }
+        composable<Routes.AnalystRuns> {
+            val runs = androidx.compose.runtime.remember { m.analyst?.runs().orEmpty() }
+            RunsScreen(runs)
+        }
         composable<Routes.Settings> {
             val state by m.settings.state.collectAsStateWithLifecycle()
             SettingsScreen(state, m.settingsActions)

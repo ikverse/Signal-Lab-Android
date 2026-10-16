@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ikverse.signallab.model.CallPageUi
+import com.ikverse.signallab.model.CallUi
 import com.ikverse.signallab.view.chart.Chart
 import com.ikverse.signallab.view.common.LongPill
 import com.ikverse.signallab.view.common.Overline
@@ -34,7 +35,7 @@ import com.ikverse.signallab.view.theme.Type
 
 /** One call: the chart with its lines, the plan, why it fired, and its strategy's evidence one tap away. */
 @Composable
-fun CallScreen(page: CallPageUi?, onEvidence: (String) -> Unit, modifier: Modifier = Modifier) {
+fun CallScreen(page: CallPageUi?, onEvidence: (String) -> Unit, modifier: Modifier = Modifier, onAsk: ((CallUi) -> Unit)? = null) {
     if (page == null) {
         Box(modifier.fillMaxSize().testTag("call-loading"))
         return
@@ -92,5 +93,6 @@ fun CallScreen(page: CallPageUi?, onEvidence: (String) -> Unit, modifier: Modifi
         }
 
         QuietButton("Does ${c.strategyName} work?", { onEvidence(c.strategyId) }, Modifier.fillMaxWidth().testTag("to-evidence"))
+        if (onAsk != null) QuietButton("Ask the analyst about this call", { onAsk(c) }, Modifier.fillMaxWidth().testTag("ask-analyst"))
     }
 }

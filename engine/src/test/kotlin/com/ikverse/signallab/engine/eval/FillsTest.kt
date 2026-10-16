@@ -107,4 +107,24 @@ class FillsTest {
         }
         assertTrue(compared > 200, "only $compared trades compared")
     }
+
+    @Test
+    fun theTargetFillsAtTheTargetOrAtTheOpenOfAGapAndTheStopComesFirst() {
+        val plan = ExitPlan(5, safetyStopAtr = 2.0, targetAtr = 3.0)
+        // Entry 100 at candle 1's open, ATR 1: stop 98, target 103.
+        val touch = daily(row(100.0, 101.0, 99.0, 100.0), row(100.0, 103.5, 99.5, 102.0), row(102.0, 103.0, 101.0, 102.0))
+        val t = assertNotNull(Fills.resolve(touch, 1, plan, 1.0, null))
+        assertEquals(Leave.TARGET, t.reason)
+        assertEquals(103.0, t.exitPrice)
+        assertEquals(1, t.exitIdx)
+        assertEquals(touch.closeTime[1], Fills.exitTime(touch, t), "a fill inside the candle is timed at its close")
+        val gap = daily(row(100.0, 101.0, 99.0, 100.0), row(100.0, 101.0, 99.5, 100.5), row(105.0, 106.0, 104.0, 105.5))
+        val g = assertNotNull(Fills.resolve(gap, 1, plan, 1.0, null))
+        assertEquals(105.0, g.exitPrice, "a gap above the target fills at the open")
+        assertEquals(gap.t[2], Fills.exitTime(gap, g))
+        val both = daily(row(100.0, 101.0, 99.0, 100.0), row(100.0, 104.0, 97.0, 101.0))
+        assertEquals(Leave.STOP, assertNotNull(Fills.resolve(both, 1, plan, 1.0, null)).reason, "the stop is assumed first")
+        assertEquals("target", Leave.TARGET.label)
+        assertEquals(Leave.TARGET, Leave.of("target"))
+    }
 }

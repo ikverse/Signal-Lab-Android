@@ -112,7 +112,7 @@ class ModelsTest {
         dao.insertExit(ExitRow(left, now - 3_600_000L, 110.0, "signal", 30, 0.1, 0.096, 0.01, 0.086, 0.2, -0.05, null, now - 60_000))
         dao.insertExit(ExitRow(gone, now - 3 * day, 95.0, "stop", 10, -0.05, -0.054, 0.0, -0.054, 0.02, -0.06, null, now - 3 * day))
         val prefs = PreferenceStore(dao)
-        val model = TodayModel(dao, prefs.preferences, candles, null, Builtins.all, backgroundScope, now = { now })
+        val model = TodayModel(dao, prefs.preferences, candles, null, { Builtins.all }, backgroundScope, now = { now })
         val state = model.state.first { it.loaded }
         assertEquals(1, state.newCalls.size)
         assertEquals(listOf(true, false), state.open.map { it.leaveNow })

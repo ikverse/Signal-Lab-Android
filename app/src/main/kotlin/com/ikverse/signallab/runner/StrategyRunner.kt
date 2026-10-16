@@ -15,6 +15,8 @@ import com.ikverse.signallab.engine.eval.Backtest
 import com.ikverse.signallab.engine.eval.Live
 import com.ikverse.signallab.engine.eval.NewCall
 import com.ikverse.signallab.engine.eval.Tiers
+import com.ikverse.signallab.catalog.StrategyCatalog
+import com.ikverse.signallab.engine.strategy.AnalystCall
 import com.ikverse.signallab.engine.strategy.Builtins
 import com.ikverse.signallab.engine.strategy.Strategy
 import com.ikverse.signallab.ledger.CallRow
@@ -25,6 +27,18 @@ import com.ikverse.signallab.ledger.SettingRow
 import com.ikverse.signallab.ledger.StrategyRow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+/** A call the owner recorded from the analyst's suggestion, waiting for the next daily open. */
+class PendingCall(val id: String, val symbol: String, val stopPct: Double?, val targetPct: Double?, val days: Int, val acceptedAt: Long)
+
+/** Where the runner finds the analyst's calls the owner has recorded, and tells what became of them. */
+interface PendingCalls {
+    suspend fun accepted(): List<PendingCall>
+
+    suspend fun opened(id: String, callId: Long, now: Long)
+
+    suspend fun expired(id: String, why: String, now: Long)
+}
 
 /** What one run did. */
 class RunReport(
@@ -62,10 +76,17 @@ class StrategyRunner(
     private val preferences: suspend () -> Preferences = { Preferences() },
     /** For the hourly pass; without it hourly strategies do not run. */
     private val hourly: CandleSync? = null,
+    /** The custom strategies the owner has set running, read at the start of each run. */
+    private val customs: suspend (Preferences) -> List<Strategy> = { emptyList() },
+    /** The analyst's calls the owner has recorded; without it none are opened. */
+    private val pending: PendingCalls? = null,
 ) {
     private val lock = Mutex()
     private val dao get() = ledger.dao()
-    private val byId = strategies.associateBy { it.id }
+
+    /** The strategies of the run in progress: the built-ins and the custom strategies running. */
+    private var active: List<Strategy> = strategies
+    private var byId: Map<String, Strategy> = strategies.associateBy { it.id }
 
     suspend fun run(): RunReport = lock.withLock { runLocked() }
 
@@ -75,7 +96,11 @@ class StrategyRunner(
         val prefs = preferences()
         market.serverTime()
         val now = market.nowMs()
+        val custom = runCatching { customs(prefs) }.getOrDefault(emptyList())
+        active = strategies + custom.filter { c -> strategies.none { it.id == c.id } }
+        byId = active.associateBy { it.id } + (AnalystCall.id to AnalystCall)
         for (s in strategies) dao.insertStrategy(StrategyRow(s.id, s.name, s.timeframe.label, "{}", now, retired = false, source = "v2"))
+        for (s in custom) dao.insertStrategy(StrategyRow(s.id, s.name, s.timeframe.label, "{}", now, retired = false, source = "custom"))
         val open = dao.openCalls()
         val tally = Tally(open = open.size)
         val lastDay = Math.floorDiv(now, DAY) * DAY - DAY
@@ -96,7 +121,8 @@ class StrategyRunner(
         pairs.refreshIfStale()
         val offered = pairs.top(OFFERED_LIMIT)
         val symbols = (listOf(DataConfig.REGIME_COIN) + offered.map { it.symbol }).distinct()
-        val synced = history.ensure((symbols + open.map { it.symbol }).distinct())
+        val waiting = runCatching { pending?.accepted().orEmpty() }.getOrDefault(emptyList())
+        val synced = history.ensure((symbols + open.map { it.symbol } + waiting.map { it.symbol }).distinct())
         if (synced.blocked) return RunReport(emptyList(), 0, 0, synced.failures, problem = "Binance refuses this network.")
         val btc = candles.window(DataConfig.REGIME_COIN, Timeframe.D1)
             ?: return RunReport(emptyList(), 0, 0, synced.failures, problem = "No Bitcoin daily history yet.")
@@ -109,8 +135,10 @@ class StrategyRunner(
         )
         val rankOf = universe.associate { it.symbol to it.rank }
         val panel = LinkedHashMap<String, Candles>()
-        for (sym in (universe.map { it.symbol } + open.map { it.symbol }).distinct()) candles.window(sym, Timeframe.D1)?.let { panel[sym] = it }
-        val daily = strategies.filter { it.timeframe == Timeframe.D1 }
+        for (sym in (universe.map { it.symbol } + open.map { it.symbol } + waiting.map { it.symbol }).distinct()) {
+            candles.window(sym, Timeframe.D1)?.let { panel[sym] = it }
+        }
+        val daily = active.filter { it.timeframe == Timeframe.D1 }
         // A ranking compares the universe's coins at the same close, once for all of them.
         val ranked = daily.filter { it.crossSectional }.associate { s -> s.id to s.entriesAcross(panel.filterKeys { it in rankOf }) }
 
@@ -118,6 +146,9 @@ class StrategyRunner(
             // The candle now forming must be the one right after the newest stored one, or its open is not the entry price.
             val formingOpen = synced.forming[symbol]?.takeIf { it.openTime == c.t.last() + Timeframe.D1.ms }?.open
             closeOpen(prefs, open.filter { it.symbol == symbol && it.tf == Timeframe.D1.label }, c, btc, formingOpen, now, tally)
+            if (formingOpen != null) {
+                for (p in waiting.filter { it.symbol == symbol }) openPending(prefs, p, c, btc, formingOpen, now, tally)
+            }
             val rank = rankOf[symbol] ?: continue
             if (formingOpen == null) continue
             for (s in daily) {
@@ -127,6 +158,7 @@ class StrategyRunner(
             }
         }
 
+        for (p in waiting.filter { it.symbol !in panel }) pending?.expired(p.id, "No daily history for ${p.symbol}.", now)
         derivatives?.let { d -> for (symbol in DERIVATIVES_COINS) runCatching { d.syncFunding(symbol); d.syncOpenInterest(symbol) } }
         dao.putSetting(SettingRow(UNIVERSE, universe.joinToString(",") { it.symbol }, now))
         runCatching { retier(prefs, panel.filterKeys { it in rankOf }, btc, now) }
@@ -135,7 +167,7 @@ class StrategyRunner(
 
     private suspend fun hourlyPass(prefs: Preferences, open: List<CallRow>, now: Long, tally: Tally) {
         val sync = hourly ?: return
-        val hourlyStrategies = strategies.filter { it.timeframe == Timeframe.H1 }
+        val hourlyStrategies = active.filter { it.timeframe == Timeframe.H1 }
         if (hourlyStrategies.isEmpty()) return
         val btc = candles.window(DataConfig.REGIME_COIN, Timeframe.D1) ?: return
         val since = now - HOURLY_DAYS * DAY
@@ -152,7 +184,7 @@ class StrategyRunner(
 
     private suspend fun closeOpen(prefs: Preferences, calls: List<CallRow>, c: Candles, btc: Candles, formingOpen: Double?, now: Long, tally: Tally) {
         for (row in calls) {
-            val s = byId[row.strategyId] ?: continue
+            val s = StrategyCatalog.forCall(row, byId) ?: continue
             val closed = Live.close(s, row.toNewCall(), c, btc, formingOpen) ?: continue
             val inserted = dao.insertExit(ExitRow(
                 callId = row.id, exitTime = closed.exitTime, exitPrice = closed.exitPrice, reason = closed.reason.label,
@@ -188,12 +220,41 @@ class StrategyRunner(
         if (prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size))
     }
 
+    /**
+     * Opens a call the owner recorded from the analyst at [formingOpen], the open of the candle now forming, if it was
+     * recorded before that candle began: a call never enters at a price that was already known when it was made.
+     */
+    private suspend fun openPending(prefs: Preferences, p: PendingCall, c: Candles, btc: Candles, formingOpen: Double, now: Long, tally: Tally) {
+        if (p.acceptedAt >= c.t.last() + Timeframe.D1.ms) return
+        val call = runCatching { AnalystCall.open(c, btc, formingOpen, p.stopPct, p.targetPct, p.days, prefs.costFor(p.symbol)) }.getOrNull()
+        if (call == null) {
+            pending?.expired(p.id, "Its average true range was not known yet.", now)
+            return
+        }
+        dao.insertStrategy(StrategyRow(AnalystCall.id, AnalystCall.name, AnalystCall.timeframe.label, "{}", now, retired = false, source = "analyst"))
+        val size = if (tally.open >= MAX_OPEN_CALLS) 0.0 else call.sizeFraction
+        var id = dao.insertCall(CallRow(
+            strategyId = AnalystCall.id, symbol = p.symbol, tf = Timeframe.D1.label, signalTime = call.signalTime,
+            entryTime = call.entryTime, entryPrice = call.entryPrice, atr = call.atr, stop = call.stop, target = call.target,
+            maxBars = call.maxBars, regime = call.regime, sizeFraction = size, cost = call.cost, scope = p.id, source = "v2",
+            archived = false, status = "live", openedAt = now,
+        ))
+        if (id == -1L) {
+            id = dao.callId(AnalystCall.id, p.symbol, call.signalTime, p.id) ?: return
+        } else {
+            tally.newCalls++
+            tally.open++
+            if (prefs.notifications && prefs.isOn(AnalystCall)) alerts.post(CallWords.newCall(id, AnalystCall.name, p.symbol, call.entryPrice, call.stop, size))
+        }
+        pending?.opened(p.id, id, now)
+    }
+
     /** Every strategy's tier, recomputed from its backtest on the universe and its live calls (docs/strategy-research.md §4). */
     private suspend fun retier(prefs: Preferences, dailyPanel: Map<String, Candles>, btc: Candles, now: Long) {
         val trials = dao.strategiesTried()
         val exits = dao.allExits().associateBy { it.callId }
         val calls = dao.allCalls().filter { it.source == "v2" }
-        for (s in strategies) {
+        for (s in active + AnalystCall) {
             val panel = if (s.timeframe == Timeframe.D1) dailyPanel
             else dailyPanel.keys.mapNotNull { sym -> candles.window(sym, s.timeframe, now - HOURLY_DAYS * DAY)?.let { sym to it } }.toMap()
             if (panel.isEmpty()) continue
@@ -207,7 +268,7 @@ class StrategyRunner(
     }
 
     private fun CallRow.toNewCall() = NewCall(
-        strategyId, symbol, signalTime, entryTime, entryPrice, atr ?: Double.NaN, stop, maxBars, regime, sizeFraction ?: 0.0, cost,
+        strategyId, symbol, signalTime, entryTime, entryPrice, atr ?: Double.NaN, stop, maxBars, regime, sizeFraction ?: 0.0, cost, target,
     )
 
     companion object {

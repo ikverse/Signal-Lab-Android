@@ -26,6 +26,20 @@ data class Preferences(
     val tiers: Map<String, Tier> = emptyMap(),
     /** Why each strategy has its tier, in a sentence. */
     val tierReasons: Map<String, String> = emptyMap(),
+    /** The Claude model the analyst runs on. */
+    val analystModel: String = MODEL_OPUS,
+    /** The most the analyst may spend in a calendar month, in US dollars. */
+    val analystCapUsd: Double = 20.0,
+    /** A short brief after each daily pass. */
+    val analystBrief: Boolean = false,
+    /** A research review every Sunday. */
+    val analystReview: Boolean = false,
+    /** Custom strategies the owner has set running, by id. */
+    val customLive: Set<String> = emptySet(),
+    /** Calls the analyst suggested, newest first. */
+    val suggestions: List<Suggestion> = emptyList(),
+    /** Dated context lines for Today. */
+    val contextLines: List<ContextLine> = emptyList(),
 ) {
     fun tierOf(s: Strategy): Tier = tiers[s.id] ?: s.launchTier
 
@@ -46,6 +60,13 @@ data class Preferences(
         const val HOST_US = "https://api.binance.us"
         const val TIER_PREFIX = "tier."
         const val TIER_REASON_PREFIX = "tier_reason."
+        const val ANALYST_MODEL = "analyst_model"
+        const val ANALYST_CAP = "analyst_cap_usd"
+        const val ANALYST_BRIEF = "analyst_brief"
+        const val ANALYST_REVIEW = "analyst_review"
+        const val CUSTOM_LIVE_PREFIX = "custom_live."
+        const val MODEL_OPUS = "claude-opus-5-5"
+        const val MODEL_SONNET = "claude-sonnet-5-5"
 
         fun from(rows: List<SettingRow>): Preferences {
             val m = rows.associate { it.key to it.value }
@@ -63,6 +84,15 @@ data class Preferences(
                     Tier.entries.firstOrNull { it.name == v }?.let { k.removePrefix(TIER_PREFIX) to it }
                 }.toMap(),
                 tierReasons = m.filterKeys { it.startsWith(TIER_REASON_PREFIX) }.mapKeys { it.key.removePrefix(TIER_REASON_PREFIX) },
+                analystModel = m[ANALYST_MODEL]?.takeIf { it == MODEL_OPUS || it == MODEL_SONNET } ?: MODEL_OPUS,
+                analystCapUsd = m[ANALYST_CAP]?.toDoubleOrNull()?.takeIf { it >= 0 } ?: 20.0,
+                analystBrief = bool(ANALYST_BRIEF, false),
+                analystReview = bool(ANALYST_REVIEW, false),
+                customLive = m.filter { (k, v) -> k.startsWith(CUSTOM_LIVE_PREFIX) && v == "1" }.keys.map { it.removePrefix(CUSTOM_LIVE_PREFIX) }.toSet(),
+                suggestions = m.filterKeys { it.startsWith(AnalystNotes.SUGGESTION_PREFIX) }.values.mapNotNull(AnalystNotes::suggestion)
+                    .sortedByDescending { it.createdAt },
+                contextLines = m.filterKeys { it.startsWith(AnalystNotes.CONTEXT_PREFIX) }.values.mapNotNull(AnalystNotes::context)
+                    .sortedBy { it.until },
             )
         }
     }
