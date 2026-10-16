@@ -11,9 +11,16 @@ import kotlin.system.exitProcess
  */
 fun main(args: Array<String>) {
     fun arg(name: String): String? = args.indexOf(name).takeIf { it >= 0 && it + 1 < args.size }?.let { args[it + 1] }
+    // The JDK's HTTPS server asks for the name of every client that connects. On Windows, a phone's address has no name, and
+    // the reverse lookup takes about five seconds per connection, long enough for the phone's checks to give up. An empty
+    // hosts file makes every lookup answer at once; the host itself needs no names (Claude Code is its own process).
+    val home = arg("--home")?.let(::File) ?: HostConfig.defaultHome()
+    home.mkdirs()
+    val hosts = File(home, "no-lookups.hosts").apply { if (!exists()) writeText("") }
+    System.setProperty("jdk.net.hosts.file", hosts.path)
     val port = arg("--port")?.toIntOrNull() ?: 8765
     val claude = InstalledClaude(arg("--claude") ?: "claude")
-    val config = HostConfig(arg("--home")?.let(::File) ?: HostConfig.defaultHome())
+    val config = HostConfig(home)
     if ("--new-code" in args) config.newPairingCode()
 
     val version = claude.version()

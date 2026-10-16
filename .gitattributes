@@ -5,3 +5,5 @@ gradlew text eol=lf
 *.jar binary
 *.png binary
 *.gz binary
+# Windows reads batch files reliably only with CRLF line endings.
+*.cmd text eol=crlf

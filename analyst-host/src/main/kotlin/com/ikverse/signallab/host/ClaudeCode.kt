@@ -100,9 +100,13 @@ class ClaudeRunner(private val launcher: ClaudeLauncher, private val workDir: Fi
             return
         }
         val watcher = Thread {
-            while (true) {
-                if (run.closed) { proc.kill(); return@Thread }
-                if (proc.waitFor(500) != null) return@Thread
+            try {
+                while (true) {
+                    if (run.closed) { proc.kill(); return@Thread }
+                    if (proc.waitFor(500) != null) return@Thread
+                }
+            } catch (_: InterruptedException) {
+                // The run ended normally and no longer needs watching.
             }
         }.apply { isDaemon = true; start() }
         val texts = ArrayList<String>()

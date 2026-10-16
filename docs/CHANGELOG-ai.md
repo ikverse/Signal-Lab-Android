@@ -251,3 +251,15 @@ asking is logged here.
   real Claude Code on the owner's login (the tool was called and its answer used); phone 5 for the PC route, fallback and
   pinning with real certificates, 3 screen tests. Engine 128, host 9, app 213 pass; release APK 13.5 MB.
 - Not verified yet: a run from the phone itself to the PC over the home network.
+- Verified on the Fold7 2026-10-17: paired with the host on the owner's PC (fingerprint checked by the owner) and answered
+  a question through it in 18 seconds, with the app's tools. Fixes found on the way:
+  - The JDK's HTTPS server looks up the name of every client; on Windows a phone's address has none, and the lookup took
+    five seconds per connection, so the phone's four-second code check failed and showed "refused the pairing code". The
+    host now points the JDK at an empty hosts file, so lookups answer at once.
+  - The start script calls Gradle's wrapper and the host by full path (this shell does not run programs from the current
+    folder by bare name), and `.cmd` files keep CRLF line endings.
+  - The host's watcher thread no longer prints an InterruptedException when a run ends normally.
+  - Port 8765 was held by another program on this PC, so the host ran on 8766 (`--port 8766`).
+- Open: when the phone's code check fails for any reason it says the code was refused; it should say why. And the
+  analyst noticed that Trend timer's tier reason says "not yet at double the fees" while its evidence shows +4.7% per call
+  at double fees: the rule likely needs confidence, not just a positive mean, and its words should say so.
