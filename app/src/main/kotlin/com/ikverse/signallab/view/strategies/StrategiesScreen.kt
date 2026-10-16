@@ -37,12 +37,20 @@ import com.ikverse.signallab.view.common.Section
 import com.ikverse.signallab.view.common.Signed
 import com.ikverse.signallab.view.common.TierPill
 import com.ikverse.signallab.view.common.Words
+import com.ikverse.signallab.model.CustomRowUi
+import com.ikverse.signallab.view.common.SwitchRow
 import com.ikverse.signallab.view.theme.Ink
 import com.ikverse.signallab.view.theme.Type
 
 /** Every strategy, its tier, and whether it puts its calls on Today. */
 @Composable
-fun StrategiesScreen(state: StrategiesUi, onOpen: (String) -> Unit, onSwitch: (String, Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun StrategiesScreen(
+    state: StrategiesUi,
+    onOpen: (String) -> Unit,
+    onSwitch: (String, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    onRun: (String, Boolean) -> Unit = { _, _ -> },
+) {
     if (!state.loaded) {
         Box(modifier.fillMaxSize().testTag("strategies-loading"))
         return
@@ -56,13 +64,19 @@ fun StrategiesScreen(state: StrategiesUi, onOpen: (String) -> Unit, onSwitch: (S
             )
         }
         item { RowsPanel(rows = state.rows.map { row -> @Composable { StrategyRow(row, onOpen, onSwitch) } }) }
-        item { Section("Your own", state.customs) }
-        item {
-            Panel {
-                Text(if (state.customs > 0) "${Words.count(state.customs, "lab pattern")} from Signal Lab 1, kept as history." else "None yet.", style = Type.Body)
-                Text("Building your own strategies, and having the analyst draft them, comes in a later update.", style = Type.Small)
+        item { Section("Your own", state.custom.size.takeIf { it > 0 }) }
+        if (state.custom.isEmpty()) {
+            item {
+                Panel {
+                    Text("None yet.", style = Type.Body)
+                    Text("Ask the analyst to look for a strategy worth testing: it writes the rule, backtests it, and proposes it here. Nothing runs until you start it.", style = Type.Small)
+                }
             }
+        } else {
+            item { RowsPanel(rows = state.custom.map { c -> @Composable { CustomRow(c, onOpen, onRun) } }) }
         }
+        val legacy = state.customs - state.custom.size
+        if (legacy > 0) item { Text("${Words.count(legacy, "lab pattern")} from Signal Lab 1, kept as history.", style = Type.Caption) }
         item {
             Text("Strategies tried so far: ${state.tried}, Signal Lab 1's included. Every new try raises the bar for the others a little.",
                 style = Type.Caption.copy(color = Ink.Faint))
@@ -88,9 +102,29 @@ private fun StrategyRow(row: StrategyRowUi, onOpen: (String) -> Unit, onSwitch: 
     }
 }
 
+@Composable
+private fun CustomRow(c: CustomRowUi, onOpen: (String) -> Unit, onRun: (String, Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("custom-${c.id}"), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).clickable(role = Role.Button) { onOpen(c.id) }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(c.name, style = Type.Subhead)
+                TierPill(c.tier)
+            }
+            Text(if (c.byAnalyst) "Proposed by the analyst" + if (c.running) " · running" else " · not started" else if (c.running) "Running" else "Not started",
+                style = Type.Caption.copy(color = if (c.running) Ink.Gain else Ink.Muted))
+            c.thesis?.let { Text(it, style = Type.Small, maxLines = 2) }
+        }
+        Switch(
+            c.running, { onRun(c.id, it) },
+            modifier = Modifier.semantics { contentDescription = "${c.name} running" }.testTag("run-${c.id}"),
+            colors = SwitchDefaults.colors(checkedThumbColor = Ink.OnAccent, checkedTrackColor = Ink.Accent, uncheckedThumbColor = Ink.Faint, uncheckedTrackColor = Ink.Raised, uncheckedBorderColor = Ink.Outline),
+        )
+    }
+}
+
 /** One strategy's evidence: the research, its history on your coins, and its live record, side by side. */
 @Composable
-fun EvidenceScreen(e: EvidenceUi?, modifier: Modifier = Modifier) {
+fun EvidenceScreen(e: EvidenceUi?, modifier: Modifier = Modifier, onRun: (Boolean) -> Unit = {}) {
     if (e == null) {
         Box(modifier.fillMaxSize().testTag("evidence-loading"))
         return
@@ -110,6 +144,9 @@ fun EvidenceScreen(e: EvidenceUi?, modifier: Modifier = Modifier) {
         Panel(Modifier.testTag("verdict")) {
             Text(e.verdict, style = Type.Body.copy(color = Ink.Text))
             e.tierReason?.let { Text("${e.tier.label}: $it", style = Type.Small, modifier = Modifier.testTag("tier-reason")) }
+            e.running?.let { running ->
+                SwitchRow("Running", if (running) "It makes calls into the ledger at each daily close." else "Start it to collect live calls. Only live calls can give it a verdict.", running, onRun)
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Research", style = Type.Caption)

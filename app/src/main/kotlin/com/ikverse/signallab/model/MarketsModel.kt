@@ -55,12 +55,13 @@ class MarketsModel(
     private val candles: CandleStore,
     private val pairs: UniverseRepository,
     private val derivatives: DerivativesStore?,
-    private val strategies: List<Strategy>,
+    /** Every strategy a call in the ledger can belong to, as it is now. */
+    private val strategies: () -> List<Strategy>,
     private val scope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val query = MutableStateFlow("")
-    private val byId = strategies.associateBy { it.id }
+    private val byId get() = strategies().associateBy { it.id }
 
     fun search(text: String) {
         query.value = text
@@ -100,14 +101,16 @@ class MarketsModel(
         val text = q.trim().uppercase()
         val watched = universe.map(::coin)
         val found = if (text.length < 2) emptyList() else symbols.filter { it.contains(text) }.map(::coin)
-        return MarketsUi(true, MarketLine.of(btc, funding, strategies), watched, found, q, pinned.size, excluded.size)
+        val rules = strategies().filter { it !is com.ikverse.signallab.engine.strategy.dsl.CustomStrategy && it.id != com.ikverse.signallab.engine.strategy.AnalystCall.id }
+        return MarketsUi(true, MarketLine.of(btc, funding, rules), watched, found, q, pinned.size, excluded.size)
     }
 
     /** One coin's page. */
     suspend fun page(symbol: String, account: Double): CoinPageUi {
         val c = candles.window(symbol, Timeframe.D1)
+        val known = byId
         val calls = dao.allCalls().filter { it.symbol == symbol && it.source == "v2" }.mapNotNull { row ->
-            byId[row.strategyId]?.let { TodayModel.callUi(row, it, c, account) }
+            com.ikverse.signallab.catalog.StrategyCatalog.forCall(row, known)?.let { TodayModel.callUi(row, it, c, account) }
         }
         val s = state.value
         val coin = (s.watched + s.found).firstOrNull { it.symbol == symbol }

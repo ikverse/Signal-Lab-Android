@@ -5,6 +5,17 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import com.ikverse.signallab.analyst.Analyst
+import com.ikverse.signallab.analyst.AnalystStore
+import com.ikverse.signallab.analyst.AnalystTools
+import com.ikverse.signallab.analyst.AnalystTransport
+import com.ikverse.signallab.analyst.AnalystWorker
+import com.ikverse.signallab.analyst.ApiKeyStore
+import com.ikverse.signallab.analyst.ClaudeApiTransport
+import com.ikverse.signallab.analyst.KeystoreCipher
+import com.ikverse.signallab.analyst.SpendMeter
+import com.ikverse.signallab.analyst.Suggestions
+import com.ikverse.signallab.catalog.StrategyCatalog
 import com.ikverse.signallab.data.CandleStore
 import com.ikverse.signallab.data.CandleSync
 import com.ikverse.signallab.data.DataConfig
@@ -19,6 +30,7 @@ import com.ikverse.signallab.ledger.LedgerDatabase
 import com.ikverse.signallab.ledger.LegacyImporter
 import com.ikverse.signallab.ledger.PreferenceStore
 import com.ikverse.signallab.ledger.Preferences
+import com.ikverse.signallab.model.AnalystModel
 import com.ikverse.signallab.model.CallModel
 import com.ikverse.signallab.model.LedgerModel
 import com.ikverse.signallab.model.MarketsModel
@@ -42,6 +54,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Everything Signal Lab 2 is made of, built once by the application: the market data, the ledger, the daily runner and
@@ -65,10 +78,26 @@ class Graph(context: Context, private val scope: CoroutineScope) {
         host == DataConfig.HOST_COM && preferences.value.futuresData
     }
     val strategies = Builtins.all
+    val catalog = StrategyCatalog(ledger.dao(), strategies, scope)
+    private val allStrategies = { catalog.all.value }
+    val suggestions = Suggestions(ledger.dao(), prefsStore)
     val runner = StrategyRunner(
         market, pairs, candles, DailyHistory(sync), ledger, AndroidCallAlerts(app), derivatives, strategies,
-        preferences = { prefsStore.current() }, hourly = sync,
+        preferences = { prefsStore.current() }, hourly = sync, customs = { catalog.running(it) }, pending = suggestions,
     )
+
+    // The analyst: the owner's key sealed on this phone, Claude through Anthropic's SDK, and the app's tools.
+    val apiKeys = ApiKeyStore(File(app.noBackupFilesDir, ApiKeyStore.FILE_NAME), KeystoreCipher())
+    val analystStore = AnalystStore(File(app.filesDir, "analyst"))
+    val spend = SpendMeter(ledger.dao())
+    private var transport: Pair<String, AnalystTransport>? = null
+    private fun transport(): AnalystTransport? {
+        val key = apiKeys.load() ?: return null
+        transport?.takeIf { it.first == key }?.let { return it.second }
+        return ClaudeApiTransport(key).also { transport = key to it }
+    }
+    val analystTools = AnalystTools(ledger.dao(), candles, derivativesStore, catalog, prefsStore)
+    val analyst = Analyst(::transport, analystTools.all, analystStore, spend, { prefsStore.current() })
     val importer = LegacyImporter(app, ledger)
     val scheduler = DailyCloseScheduler(app, offsetMs = { market.nowMs() - System.currentTimeMillis() })
 
@@ -87,12 +116,18 @@ class Graph(context: Context, private val scope: CoroutineScope) {
     private val importState = MutableStateFlow<LegacyImporter.Result?>(null)
     val lastImport: StateFlow<LegacyImporter.Result?> = importState
 
-    val today = TodayModel(ledger.dao(), prefsStore.preferences, candles, derivativesStore, strategies, scope)
-    val ledgerModel = LedgerModel(ledger.dao(), prefsStore.preferences, strategies, scope)
-    val strategiesModel = StrategiesModel(ledger.dao(), prefsStore, candles, strategies, scope)
-    val markets = MarketsModel(ledger.dao(), candles, pairs, derivativesStore, strategies, scope)
-    val calls = CallModel(ledger.dao(), candles, strategies)
+    val today = TodayModel(ledger.dao(), prefsStore.preferences, candles, derivativesStore, allStrategies, scope, suggestions = suggestions)
+    val ledgerModel = LedgerModel(ledger.dao(), prefsStore.preferences, allStrategies, scope)
+    val strategiesModel = StrategiesModel(ledger.dao(), prefsStore, candles, strategies, scope, allStrategies, catalog.saved)
+    val markets = MarketsModel(ledger.dao(), candles, pairs, derivativesStore, allStrategies, scope)
+    val calls = CallModel(ledger.dao(), candles, allStrategies) { prefsStore.current() }
+    val analystModel = AnalystModel(analyst, analystStore, apiKeys, spend, prefsStore, ledger.dao(), scope, analystTools.all)
     val settings = SettingsModel(app, prefsStore, updates, lastImport, BuildConfig.VERSION_NAME, scope)
+
+    /** After each pass: the analyst's brief and review, when the owner has asked for them and they are due. */
+    suspend fun afterPass() {
+        runCatching { AnalystWorker.queueDue(app, ledger.dao(), prefsStore.current(), System.currentTimeMillis()) }
+    }
 
     /** The ledger as a spreadsheet, for "Save as CSV". */
     suspend fun ledgerCsv(): String {

@@ -25,6 +25,8 @@ class NewCall(
     /** Share of the paper account the call holds: one average true range equals [Live.RISK_PER_ATR] of it, capped. */
     val sizeFraction: Double,
     val cost: Double,
+    /** The target price, for a plan that has one. */
+    val target: Double? = null,
 )
 
 /** How an open call ended, with what its random entries did when it closed. */
@@ -86,8 +88,9 @@ object Live {
         val atr = atrs[s]
         if (atr.isNaN() || Vetoes.blocked(c, s, atrs) != null) return null
         val stop = strategy.exit.safetyStopAtr?.let { formingOpen - it * atr }
+        val target = strategy.exit.targetAtr?.let { formingOpen + it * atr }
         return NewCall(strategy.id, c.symbol, c.t[s], c.t[s] + c.tf.ms, formingOpen, atr, stop, strategy.exit.maxBars, regime,
-            sizeFor(formingOpen, atr), cost)
+            sizeFor(formingOpen, atr), cost, target)
     }
 
     /** [c] with the candle now forming added after it, known only by its first price: enough to fill an exit at that open. */

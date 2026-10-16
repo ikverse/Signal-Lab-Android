@@ -24,6 +24,7 @@ class RuleTest {
           (exit (< close (sma close 20)))   ; leave on a close under the average
           (max_bars 30)
           (stop_atr 2.5)
+          (target_atr 5)
           (bull_only)
           (ranks 1 40))
     """.trimIndent()
@@ -34,11 +35,22 @@ class RuleTest {
         assertEquals(Timeframe.H4, d.timeframe)
         assertEquals(30, d.maxBars)
         assertEquals(2.5, d.stopAtr)
+        assertEquals(5.0, d.targetAtr)
+        assertEquals(5.0, CustomStrategy("c", "C", d).exit.targetAtr)
         assertTrue(d.bullOnly)
         assertEquals(1..40, d.ranks)
         assertEquals("(< close (sma close 20))", d.exit.toString())
         assertEquals(d, Rule.parse(d.print()))
         assertEquals(d.print(), Rule.parse(d.print()).print())
+    }
+
+    @Test
+    fun everyTimeframeSurvivesARoundTrip() {
+        for (tf in listOf("1h", "4h", "1d")) {
+            val d = Rule.parse("(strategy (timeframe $tf) (entry (> close (sma close 5))) (max_bars 5))")
+            assertEquals(tf, d.timeframe.label)
+            assertEquals(d, Rule.parse(d.print()), "$tf prints back to itself")
+        }
     }
 
     @Test
@@ -127,6 +139,7 @@ class RuleTest {
             "(strategy (entry (> sma 1)) (max_bars 5))" to "needs arguments",
             "(strategy (entry (and (> close 1))) (max_bars 5))" to "at least 2",
             "(strategy (entry (> close 1)) (max_bars 5) (stop_atr 0))" to "between 0 and 20",
+            "(strategy (entry (> close 1)) (max_bars 5) (target_atr -1))" to "between 0 and 50",
             "(strategy (entry (> close 1)) (max_bars 5) (ranks 30 10))" to "1 ≤ from ≤ to",
             "(strategy (entry (> close 1)) (max_bars 5)" to "not closed",
             "(strategy (entry (> close 1)) (max_bars 5)))" to "after the end",

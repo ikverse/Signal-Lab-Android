@@ -165,3 +165,35 @@ asking is logged here.
   Watch, Leaders is Failing, Near high, Quiet dip and Hourly trend stay Testing. Today will show few calls until the owner
   switches strategies on or live calls build a record.
 - Engine 123 and app 172 tests pass (2 skipped); release APK 4.2 MB.
+
+### M8: the analyst
+
+- Claude through Anthropic's official Java SDK (`com.anthropic:anthropic-java` 2.34.0, OkHttp client), on the owner's own
+  API key. Default model Claude Opus 5.5, Claude Sonnet 5.5 selectable; thinking is always on for Opus 5.5, so no thinking
+  setting is sent. Each request streams; the system prompt (with the rule language reference) is cached.
+- Decided without asking: a hand-written loop rather than the SDK's beta tool runner, because the screen needs text as it
+  streams, a search the server pauses (`pause_turn`) must be resumed, and the monthly budget is checked before every
+  request. Client tools use eager input streaming; the phone checks every tool input against its schema before running
+  it and answers a bad one with an error result. At most 12 requests and 4 resumes per run.
+- Tools, run on the phone: `market_state`, `ledger`, `list_strategies`, `strategy_evidence`, `candles`, `derivatives`,
+  `backtest`, `propose_strategy`, `suggest_call`, `flag_context`; plus Anthropic's `web_search` (5 per request) and
+  `web_fetch` (3). The analyst cannot trade, change settings or record a call.
+- Every rule the analyst backtests is registered in the strategies table under an id made from its canonical text, so it
+  counts once toward the number of strategies tried. A proposal is saved as a custom strategy with a report; it runs only
+  after the owner starts it in Strategies (`custom_live.<id>`), in Testing, forward-only.
+- `make_call` became `suggest_call`: a suggestion waits on Today (at most 3, 3 days); a recorded one enters at the next daily
+  open after it was recorded, as a call of the strategy "Analyst", with its own stop, target and time limit. The engine's
+  exit plan gained an optional target (filled at the target or at a gap above it; the stop is still assumed first), and the
+  analyst's random entries use the same stop and target in ATRs.
+- The key: Android Keystore AES-GCM, in the no-backup folder; never synced, logged or sent anywhere but Anthropic.
+- Spend: a monthly meter (`analyst_spend.<yyyy-MM>`) priced from each response's usage (Opus 5.5 $4/$20 per million tokens,
+  Sonnet 5.5 $2/$10, cache reads $0.20, searches $0.01); default budget $20 a month.
+- Decided without asking: the analyst's key, model, budget, brief and review live on the Analyst tab; Settings points there.
+  The conversation keeps text only (the last 16 messages go with a question); the last 50 runs are kept for the "What was
+  sent" page. The daily brief and weekly review are off by default and run as WorkManager jobs after a pass, with a
+  network.
+- Without a key, the Analyst tab shares a question with a data snapshot to the Claude app (read only).
+- Fixed: the rule language read "1d" as the number 1 (Java's number parser accepts a d suffix), so `(timeframe 1d)` failed
+  after a round trip. Numbers are now read with a strict pattern.
+- Release: R8 keeps the SDK's message models and Jackson's binding whole; the APK grows from 4.2 MB to 13.4 MB.
+- Not verified yet: a real run against the Claude API (it needs the owner's key) and the shrunk SDK on the phone.

@@ -65,7 +65,8 @@ data class LedgerUi(
 class LedgerModel(
     dao: LedgerDao,
     preferences: Flow<Preferences>,
-    private val strategies: List<Strategy>,
+    /** Every strategy a call in the ledger can belong to, as it is now. */
+    private val strategies: () -> List<Strategy>,
     scope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
@@ -114,7 +115,7 @@ class LedgerModel(
             randomCurve.add(Point(e.exitTime, random))
         }
         val exitBy = exits.associateBy { it.callId }
-        val lines = strategies.map { s ->
+        val lines = strategies().map { s ->
             val mine = calls.filter { it.strategyId == s.id }
             val fin = mine.mapNotNull { c -> exitBy[c.id]?.takeIf { it.exitTime >= from }?.let { c to it } }
             val excess = fin.mapNotNull { it.second.excess }

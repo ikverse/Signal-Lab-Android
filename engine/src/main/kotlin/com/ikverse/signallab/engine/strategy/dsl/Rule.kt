@@ -19,6 +19,7 @@ import com.ikverse.signallab.engine.strategy.firstOfRun
  *   (exit (< close (sma close 20)))
  *   (max_bars 30)
  *   (stop_atr 3)
+ *   (target_atr 6)
  *   (bull_only)
  *   (ranks 1 40))
  * ```
@@ -60,6 +61,8 @@ data class RuleDefinition(
     val stopAtr: Double?,
     val bullOnly: Boolean,
     val ranks: IntRange?,
+    /** A target this many average true ranges above the entry; null for none. */
+    val targetAtr: Double? = null,
 ) {
     /** The definition as canonical text; [Rule.parse] of it gives back an equal definition. */
     fun print(): String = buildString {
@@ -67,6 +70,7 @@ data class RuleDefinition(
         exit?.let { append(" (exit $it)") }
         append(" (max_bars $maxBars)")
         stopAtr?.let { append(" (stop_atr ${Node.Num(it)})") }
+        targetAtr?.let { append(" (target_atr ${Node.Num(it)})") }
         if (bullOnly) append(" (bull_only)")
         ranks?.let { append(" (ranks ${it.first} ${it.last})") }
         append(')')
@@ -164,19 +168,24 @@ object Rule {
             if (!(v > 0 && v <= 20)) throw RuleError("(stop_atr $v): the stop sits between 0 and 20 ATR below the entry.")
             v
         }
+        val target = parts["target_atr"]?.let { p ->
+            val v = (p.args.singleOrNull() as? Node.Num)?.value ?: throw RuleError("(target_atr x) takes one number.")
+            if (!(v > 0 && v <= 50)) throw RuleError("(target_atr $v): the target sits between 0 and 50 ATR above the entry.")
+            v
+        }
         val bull = parts["bull_only"]?.let { if (it.args.isNotEmpty()) throw RuleError("(bull_only) takes nothing.") else true } ?: false
         val ranks = parts["ranks"]?.let { p ->
             val a = p.args.map { (it as? Node.Num)?.value ?: throw RuleError("(ranks from to) takes two whole numbers.") }
             if (a.size != 2 || a.any { it != Math.rint(it) } || a[0] < 1 || a[1] < a[0]) throw RuleError("(ranks from to) takes two whole numbers, 1 ≤ from ≤ to.")
             a[0].toInt()..a[1].toInt()
         }
-        return RuleDefinition(tf, entry, exit, maxBars, stop, bull, ranks)
+        return RuleDefinition(tf, entry, exit, maxBars, stop, bull, ranks, target)
     }
 
     /** Reads one condition on its own, such as `(> close (sma close 50))`. */
     fun parseCondition(text: String): Node = Reader(text).readAll().also { check(it, Kind.COND, "the condition") }
 
-    private val PARTS = listOf("timeframe", "entry", "exit", "max_bars", "stop_atr", "bull_only", "ranks")
+    private val PARTS = listOf("timeframe", "entry", "exit", "max_bars", "stop_atr", "target_atr", "bull_only", "ranks")
 
     private fun whole(p: Node.Call, min: Int, max: Int): Int {
         val v = (p.args.singleOrNull() as? Node.Num)?.value
@@ -236,11 +245,13 @@ class CustomStrategy(
     override val id: String,
     override val name: String,
     val definition: RuleDefinition,
+    /** Why it should work, in its author's words. */
+    val note: String? = null,
 ) : Strategy {
     override val timeframe = definition.timeframe
     override val launchTier = Tier.TESTING
     override val bullOnly = definition.bullOnly
-    override val exit = ExitPlan(maxBars = definition.maxBars, safetyStopAtr = definition.stopAtr)
+    override val exit = ExitPlan(maxBars = definition.maxBars, safetyStopAtr = definition.stopAtr, targetAtr = definition.targetAtr)
     override val ranks: IntRange? = definition.ranks
 
     override fun entries(c: Candles): BooleanArray = firstOfRun(Rule.evaluate(definition.entry, c))
@@ -250,8 +261,19 @@ class CustomStrategy(
     companion object {
         /** Parses [text] into a strategy; throws [RuleError] when the definition is not valid. */
         fun of(id: String, name: String, text: String) = CustomStrategy(id, name, Rule.parse(text))
+
+        /**
+         * The id a definition is stored and registered under: the same rule always gets the same id, so testing it twice
+         * counts once toward the number of strategies tried, and any change to it is a new strategy.
+         */
+        fun idFor(definition: RuleDefinition): String {
+            val digest = java.security.MessageDigest.getInstance("SHA-256").digest(definition.print().toByteArray(Charsets.UTF_8))
+            return "custom_" + digest.take(6).joinToString("") { "%02x".format(it) }
+        }
     }
 }
+
+private val NUMBER = Regex("""[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?""")
 
 private class Reader(private val s: String) {
     private var i = 0
@@ -295,7 +317,8 @@ private class Reader(private val s: String) {
             }
         }
         val a = atom()!!
-        return a.toDoubleOrNull()?.takeIf { it.isFinite() }?.let { Node.Num(it) } ?: Node.Name(a)
+        // Only plain decimal numbers: Java would also read "1d" or "1f" as a number, and 1d is a timeframe.
+        return a.takeIf { NUMBER.matches(it) }?.toDoubleOrNull()?.takeIf { it.isFinite() }?.let { Node.Num(it) } ?: Node.Name(a)
     }
 
     private fun atom(): String? {

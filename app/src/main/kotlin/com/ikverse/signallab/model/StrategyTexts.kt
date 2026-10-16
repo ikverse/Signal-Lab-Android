@@ -2,6 +2,7 @@ package com.ikverse.signallab.model
 
 import com.ikverse.signallab.engine.Candles
 import com.ikverse.signallab.engine.Indicators
+import com.ikverse.signallab.engine.strategy.AnalystCall
 import com.ikverse.signallab.engine.strategy.Breakout
 import com.ikverse.signallab.engine.strategy.HourlyTrend
 import com.ikverse.signallab.engine.strategy.Leaders
@@ -10,6 +11,7 @@ import com.ikverse.signallab.engine.strategy.NearHigh
 import com.ikverse.signallab.engine.strategy.QuietDip
 import com.ikverse.signallab.engine.strategy.Strategy
 import com.ikverse.signallab.engine.strategy.TrendTimer
+import com.ikverse.signallab.engine.strategy.dsl.CustomStrategy
 import com.ikverse.signallab.view.common.Words
 
 /** A study a strategy rests on, with where to read it. */
@@ -44,8 +46,10 @@ object StrategyTexts {
             "Among the strongest fifth of the watched coins over ${s.weeks} weeks (${Words.pct(r)}), at this week's ranking."
         }
         is HourlyTrend -> "An hourly close back above its ${s.hours}-hour average while the daily trend is rising."
-        else -> "${s.name} fired on the close of ${Words.day(c.t[i])}."
+        else -> if (s.id == AnalystCall.id) "The analyst suggested it and you recorded it." else "${s.name} fired on the close of ${Words.day(c.t[i])}."
     }
+
+    private fun com.ikverse.signallab.engine.Timeframe.unit() = if (this == com.ikverse.signallab.engine.Timeframe.D1) "days" else "candles"
 
     /** " on volume 1.6× its usual" when the signal day traded well above its 30-day norm. */
     private fun volumeNote(c: Candles, i: Int): String {
@@ -61,7 +65,8 @@ object StrategyTexts {
         is Breakout -> "exits on a close below its ${s.exitLookback}-day low"
         is TrendTimer -> "exits on a close below its ${s.days}-day average"
         is HourlyTrend -> "exits on an hourly close below its ${s.hours}-hour average, or after two days"
-        else -> "exits after ${s.exit.maxBars} days"
+        is CustomStrategy -> if (s.definition.exit != null) "exits on its own rule, or after ${s.exit.maxBars} ${s.timeframe.unit()}" else "exits after ${s.exit.maxBars} ${s.timeframe.unit()}"
+        else -> if (s.id == AnalystCall.id) "exits at its stop, its target or its time limit" else "exits after ${s.exit.maxBars} days"
     }
 
     /**
@@ -100,7 +105,9 @@ object StrategyTexts {
             "There is no price stop, because a stop lowers what a bounce earns."
         is HourlyTrend -> "Requiring the daily trend to agree halved the trades of an hourly rule and doubled its quality. The only test " +
             "is before fees, and fees decide most hourly rules."
-        else -> ""
+        is CustomStrategy -> s.note ?: ""
+        else -> if (s.id == AnalystCall.id) "The analyst's own judgment: calls it suggested in conversation and you recorded. They are judged like " +
+            "every strategy, against random entries on the same coin with the same stop, target and time limit." else ""
     }
 
     fun summary(s: Strategy): String = when (s) {
@@ -111,7 +118,8 @@ object StrategyTexts {
         is NearHigh -> "Big coins near their weekly high · one study"
         is QuietDip -> "A drop on low volume bounces · mid-size coins"
         is HourlyTrend -> "Hourly entry when the daily trend is up · fee-fragile"
-        else -> s.name
+        is CustomStrategy -> "Custom rule · ${s.timeframe.label}"
+        else -> if (s.id == AnalystCall.id) "Calls the analyst suggested and you recorded" else s.name
     }
 
     fun research(s: Strategy): String = when (s) {
@@ -121,7 +129,8 @@ object StrategyTexts {
         is Leaders -> "Supported before 2022, fading since"
         is NearHigh, is QuietDip -> "One study"
         is HourlyTrend -> "One test, before fees"
-        else -> "Not yet reviewed"
+        is CustomStrategy -> "None: defined after seeing a backtest, so only live calls count"
+        else -> if (s.id == AnalystCall.id) "None: judged by its record alone" else "Not yet reviewed"
     }
 
     fun sources(s: Strategy): List<Source> = when (s) {
@@ -186,7 +195,9 @@ object StrategyTexts {
                 "entry: hourly close crosses above EMA(${s.hours}) while the daily SMA(${s.days}) is rising",
                 "exit: hourly close < EMA(${s.hours}), or ${s.exit.maxBars} hours", stop, size,
             )
-            else -> listOfNotNull("${s.exit.maxBars} days at most", stop)
+            is CustomStrategy -> listOf("rule: " + s.definition.print(), size)
+            else -> if (s.id == AnalystCall.id) listOf("entry: the next daily open after you record it", "exit: its own stop, target and time limit", size)
+            else listOfNotNull("${s.exit.maxBars} days at most", stop)
         }
     }
 }

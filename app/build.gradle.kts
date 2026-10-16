@@ -96,6 +96,8 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // The Claude SDK's dependencies (Jackson, Apache HTTP pieces) each carry the same license and notice files.
+        resources.excludes += "/META-INF/{DEPENDENCIES,LICENSE,LICENSE.txt,LICENSE.md,NOTICE,NOTICE.txt,NOTICE.md,INDEX.LIST}"
     }
 
     testOptions {
@@ -142,6 +144,8 @@ dependencies {
     implementation(libs.androidx.compose.material3.adaptive)
     implementation(libs.androidx.compose.material3.adaptive.layout)
     implementation(libs.androidx.compose.material3.adaptive.navigation)
+    // The in-app analyst: Anthropic's official SDK for the Claude API, on the owner's own API key.
+    implementation(libs.anthropic.java)
 
     // The engine's golden files (real candles and what the research version produced) and its test
     // helpers, shared without copying them.

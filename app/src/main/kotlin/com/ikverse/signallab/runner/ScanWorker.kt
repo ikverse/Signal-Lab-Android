@@ -34,6 +34,6 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
         /** What a pass does; tests replace it. */
         @Volatile
-        var run: suspend (RunnerHost) -> RunReport = { it.graph.runner.run() }
+        var run: suspend (RunnerHost) -> RunReport = { host -> host.graph.runner.run().also { host.graph.afterPass() } }
     }
 }

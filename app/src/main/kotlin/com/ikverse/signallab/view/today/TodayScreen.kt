@@ -38,6 +38,9 @@ import com.ikverse.signallab.view.common.Overline
 import com.ikverse.signallab.view.common.Panel
 import com.ikverse.signallab.view.common.ScreenTitle
 import com.ikverse.signallab.view.common.Section
+import com.ikverse.signallab.model.SuggestionUi
+import com.ikverse.signallab.view.common.QuietButton
+import com.ikverse.signallab.view.common.PrimaryButton
 import com.ikverse.signallab.view.common.Signed
 import com.ikverse.signallab.view.common.TierPill
 import com.ikverse.signallab.view.common.Words
@@ -56,6 +59,8 @@ fun TodayScreen(
     modifier: Modifier = Modifier,
     selected: Long? = null,
     compact: Boolean = true,
+    onRecord: (String) -> Unit = {},
+    onDismiss: (String) -> Unit = {},
 ) {
     if (!state.loaded) {
         Column(modifier.fillMaxSize().testTag("today-loading")) {}
@@ -72,7 +77,11 @@ fun TodayScreen(
                 Text(passLine(state), style = Type.Small, modifier = Modifier.testTag("pass-line"))
             }
         }
-        item(key = "market") { MarketPanel(state.market) }
+        item(key = "market") { MarketPanel(state.market, lines = state.contextLines) }
+        if (state.suggestions.isNotEmpty()) {
+            item(key = "suggested-head") { Section("From the analyst", state.suggestions.size) }
+            items(state.suggestions, key = { "suggested-${it.id}" }) { s -> SuggestionCard(s, { onRecord(s.id) }, { onDismiss(s.id) }) }
+        }
 
         if (state.newCalls.isEmpty() && state.open.isEmpty() && state.closedThisWeek.isEmpty()) {
             item(key = "empty") {
@@ -117,7 +126,7 @@ fun passLine(s: TodayUi): String {
 }
 
 @Composable
-fun MarketPanel(m: MarketLine, modifier: Modifier = Modifier) {
+fun MarketPanel(m: MarketLine, modifier: Modifier = Modifier, lines: List<String> = emptyList()) {
     Panel(modifier.testTag("market")) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Dot(if (m.above == false) Ink.Loss else Ink.GainDot)
@@ -127,6 +136,32 @@ fun MarketPanel(m: MarketLine, modifier: Modifier = Modifier) {
         }
         Text(m.sentence + " ", style = Type.Body.copy(color = Ink.Text))
         Text(m.allowedSentence, style = Type.Small)
+        for (l in lines) Text("•  $l", style = Type.Small.copy(color = Ink.Body), modifier = Modifier.testTag("context-line"))
+    }
+}
+
+/** A call the analyst suggested: the owner records it, and it enters at the next daily open, or dismisses it. */
+@Composable
+fun SuggestionCard(s: SuggestionUi, onRecord: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    Panel(modifier.testTag("suggestion-${s.id}"), outlined = true) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(s.base, style = Type.Title.copy(fontSize = 22.sp))
+            LongPill()
+            Spacer(Modifier.weight(1f))
+            s.price?.let { Num(Words.price(it), color = Ink.Body, size = 13) }
+        }
+        Text(s.thesis, style = Type.Body.copy(color = Ink.Text))
+        Text(s.plan, style = Type.Small)
+        if (s.recorded) {
+            Text("Recorded: it enters at the next daily open, under the strategy Analyst.", style = Type.Small.copy(color = Ink.Gain), modifier = Modifier.testTag("recorded"))
+            TextButton(onDismiss) { Text("Take it back", color = Ink.Muted, fontSize = 14.sp) }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrimaryButton("Record it", onRecord, Modifier.testTag("record"))
+                QuietButton("Dismiss", onDismiss, Modifier.testTag("dismiss"))
+            }
+            Text("A paper call of the analyst's own judgment, judged against random entries like every strategy.", style = Type.Caption)
+        }
     }
 }
 

@@ -17,6 +17,9 @@ import com.ikverse.signallab.engine.Candles
 import com.ikverse.signallab.engine.Golden
 import com.ikverse.signallab.engine.Timeframe
 import com.ikverse.signallab.engine.eval.Backtest
+import com.ikverse.signallab.engine.strategy.dsl.CustomStrategy
+import com.ikverse.signallab.engine.strategy.AnalystCall
+import com.ikverse.signallab.engine.eval.Fills
 import com.ikverse.signallab.engine.strategy.Builtins
 import com.ikverse.signallab.engine.strategy.Tier
 import com.ikverse.signallab.ledger.LedgerDatabase
@@ -135,6 +138,102 @@ class StrategyRunnerTest {
         assertEquals(emptyList(), calls.filter { it.strategyId in skipped }.map { "${it.strategyId} ${it.symbol}" })
         // Only strategies whose tier makes calls notify, and nothing is notified twice.
         assertTrue(alerts.posted.size <= calls.size + exits.size, "${alerts.posted.size} alerts for ${calls.size} calls and ${exits.size} exits")
+    }
+
+    @Test
+    fun aRunningCustomStrategyMakesItsBacktestsTrades() = runTest {
+        val custom = CustomStrategy.of("custom_test", "Mine",
+            "(strategy (entry (> close (highest high 20))) (exit (< close (sma close 10))) (max_bars 30) (stop_atr 3))")
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val r = StrategyRunner(market, UniverseRepository(market, store, clock = { market.now }), store, DailyHistory(CandleSync(market, store)),
+            ledger, Collected(), strategies = emptyList(), customs = { listOf(custom) })
+        val btc = panel.getValue("BTCUSDT")
+        val spans = panel.flatMap { (sym, c) -> Backtest.run(custom, mapOf(sym to c), btc) }.map { it.entryTime..it.exitTime }
+        val from = (btc.size - 400 until btc.size - 60).first { d -> spans.none { btc.t[d] in it } }
+        val until = btc.size - 2
+        for (d in from..until) {
+            marketAt(market, d)
+            r.run()
+        }
+        val calls = ledger.dao().allCalls().filter { it.strategyId == custom.id }
+        val exits = ledger.dao().allExits().associateBy { it.callId }
+        var matched = 0
+        for ((symbol, c) in panel) {
+            val bt = Backtest.run(custom, mapOf(symbol to c), btc).filter { it.signalTime in btc.t[from]..btc.t[until] }
+            val live = calls.filter { it.symbol == symbol }.associateBy { it.signalTime }
+            // The backtest counts only trades whose whole window lies in the data; the runner also opens the last ones.
+            for (extra in live.keys - bt.map { it.signalTime }.toSet()) {
+                assertTrue(c.t.indexOfFirst { it == extra } + custom.exit.maxBars >= c.size, "$symbol: live call at $extra is not a backtest trade")
+            }
+            for (t in bt) {
+                val call = live[t.signalTime] ?: error("$symbol: backtest trade at ${t.signalTime} was not made live")
+                assertEquals(t.entryPrice, call.entryPrice)
+                val exit = exits[call.id] ?: continue
+                assertEquals(t.exitPrice, exit.exitPrice, "$symbol exit price")
+                assertEquals(t.reason.label, exit.reason)
+                matched++
+            }
+        }
+        assertTrue(matched > 3, "only $matched trades matched")
+        assertEquals("custom", ledger.dao().strategy(custom.id)?.source, "it is registered as tried")
+    }
+
+    private class Waiting(var calls: MutableList<PendingCall>) : PendingCalls {
+        val opened = HashMap<String, Long>()
+        val expired = HashMap<String, String>()
+        override suspend fun accepted() = calls.toList()
+        override suspend fun opened(id: String, callId: Long, now: Long) {
+            opened[id] = callId
+            calls.removeAll { it.id == id }
+        }
+        override suspend fun expired(id: String, why: String, now: Long) {
+            expired[id] = why
+            calls.removeAll { it.id == id }
+        }
+    }
+
+    @Test
+    fun aRecordedAnalystCallOpensAtTheNextOpenAndEndsByItsOwnPlan() = runTest {
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val btc = panel.getValue("BTCUSDT")
+        val eth = panel.getValue("ETHUSDT")
+        val d = btc.size - 120
+        val formingOpen = btc.t[d + 1]
+        val pending = Waiting(mutableListOf(
+            PendingCall("early", "ETHUSDT", 0.05, 0.08, 10, acceptedAt = formingOpen - 3_600_000L),
+            // Recorded after the candle it would enter at had opened: it waits for the next open.
+            PendingCall("late", "SOLUSDT", 0.05, null, 10, acceptedAt = formingOpen + 60_000L),
+        ))
+        val alerts = Collected()
+        val r = StrategyRunner(market, UniverseRepository(market, store, clock = { market.now }), store, DailyHistory(CandleSync(market, store)),
+            ledger, alerts, strategies = emptyList(), pending = pending, preferences = { Preferences(switches = mapOf(AnalystCall.id to true)) })
+        marketAt(market, d)
+        r.run()
+        val id = assertNotNull(pending.opened["early"])
+        assertTrue("late" !in pending.opened, "a call never enters at an open that came before it was recorded")
+        val call = ledger.dao().allCalls().first { it.id == id }
+        assertEquals(AnalystCall.id, call.strategyId)
+        assertEquals(eth.t[d + 1], call.entryTime)
+        assertEquals(eth.open[d + 1], call.entryPrice)
+        assertEquals(eth.open[d + 1] * 0.95, call.stop!!, 1e-9)
+        assertEquals(eth.open[d + 1] * 1.08, call.target!!, 1e-9)
+        assertEquals(10, call.maxBars)
+        assertEquals(1, alerts.posted.size, "the owner's own call is notified")
+
+        for (k in d + 1 until btc.size - 2) {
+            marketAt(market, k)
+            r.run()
+        }
+        assertNotNull(pending.opened["late"], "the late one opened at the next open")
+        val exit = assertNotNull(ledger.dao().exitOf(id), "a 10-day call has ended")
+        val atr = assertNotNull(call.atr)
+        val plan = AnalystCall.forCall(call.entryPrice, atr, call.stop, call.target, call.maxBars).exit
+        val fill = assertNotNull(Fills.resolve(eth, d + 1, plan, atr, null))
+        assertEquals(fill.exitPrice, exit.exitPrice)
+        assertEquals(fill.reason.label, exit.reason)
+        assertNotNull(exit.excess, "it was compared with random entries")
     }
 
     @Test

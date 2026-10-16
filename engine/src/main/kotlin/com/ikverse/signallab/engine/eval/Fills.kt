@@ -5,7 +5,7 @@ import com.ikverse.signallab.engine.strategy.ExitPlan
 
 /** Why a trade ended. */
 enum class Leave(val label: String) {
-    STOP("stop"), SIGNAL("signal"), TIME("time");
+    STOP("stop"), TARGET("target"), SIGNAL("signal"), TIME("time");
 
     companion object {
         fun of(label: String): Leave = entries.first { it.label == label }
@@ -29,10 +29,12 @@ object Fills {
         if (entryIdx < 0 || entryIdx >= c.size) return null
         val entry = c.open[entryIdx]
         val stop = plan.safetyStopAtr?.let { entry - it * atr }
+        val target = plan.targetAtr?.let { entry + it * atr }
         for (q in 0 until plan.maxBars) {
             val k = entryIdx + q
             if (k >= c.size) return null
             if (stop != null && c.low[k] <= stop) return Fill(k, minOf(stop, c.open[k]), Leave.STOP)
+            if (target != null && c.high[k] >= target) return Fill(k, maxOf(target, c.open[k]), Leave.TARGET)
             // At the last candle the time limit closes the trade at its close, before any signal could act at the next open.
             if (q == plan.maxBars - 1) return Fill(k, c.close[k], Leave.TIME)
             if (exitSignals != null && exitSignals[k]) {

@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import com.ikverse.signallab.model.Permission
 import com.ikverse.signallab.runner.AndroidCallAlerts
 import com.ikverse.signallab.view.AppModels
+import com.ikverse.signallab.view.analyst.AnalystActions
 import com.ikverse.signallab.view.SignalLabRoot
 import com.ikverse.signallab.view.chart.ChartHost
 import com.ikverse.signallab.view.chart.LocalChartHost
@@ -56,6 +57,32 @@ class MainActivity : ComponentActivity() {
             graph.today, graph.ledgerModel, graph.strategiesModel, graph.markets, graph.calls, graph.settings, graph.preferences,
             SettingsActions(graph.settings::set, graph.settings::setBool, graph.settings::update, ::openPermission),
             exportCsv = { saveCsv.launch("signal-lab-ledger.csv") },
+            analyst = graph.analystModel,
+            analystActions = object : AnalystActions {
+                private val a = graph.analystModel
+                override fun send(text: String) = a.send(text)
+                override fun stop() = a.stop()
+                override fun saveKey(key: String) = a.saveKey(key)
+                override fun removeKey() = a.removeKey()
+                override fun setModel(id: String) = a.setModel(id)
+                override fun setCap(usd: Double) = a.setCap(usd)
+                override fun setBrief(on: Boolean) = a.setBrief(on)
+                override fun setReview(on: Boolean) = a.setReview(on)
+                override fun clearChat() = a.clearChat()
+                override fun shareToClaude(question: String) {
+                    lifecycleScope.launch {
+                        val text = a.handoffText(question)
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+                        val claude = Intent(send).setPackage(CLAUDE_APP)
+                        val target = if (claude.resolveActivity(packageManager) != null) claude else Intent.createChooser(send, "Ask Claude")
+                        runCatching { startActivity(target) }
+                    }
+                }
+
+                override fun openKeyPage() {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(CONSOLE_KEYS))) }
+                }
+            },
         )
         setContent {
             SignalLabTheme {
@@ -121,5 +148,7 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val ASKED_NOTIFICATIONS = "asked_notifications_v2"
+        const val CONSOLE_KEYS = "https://console.anthropic.com/settings/keys"
+        const val CLAUDE_APP = "com.anthropic.claude"
     }
 }
