@@ -12,11 +12,11 @@ if not defined JAVA_HOME (
   exit /b 1
 )
 echo Building the analyst host...
-call gradlew.bat :analyst-host:installDist -q
+call "%~dp0..\gradlew.bat" :analyst-host:installDist -q
 if errorlevel 1 (
   echo The build failed.
   pause
   exit /b 1
 )
-call "analyst-host\build\install\signal-lab-host\bin\signal-lab-host.bat" %*
+call "%~dp0..\analyst-host\build\install\signal-lab-host\bin\signal-lab-host.bat" %*
 pause
