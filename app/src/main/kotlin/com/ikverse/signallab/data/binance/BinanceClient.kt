@@ -107,13 +107,21 @@ class BinanceClient(
             List(arr.length()) {
                 val k = arr.getJSONArray(it)
                 Kline(k.getLong(0), k.getString(1).toDouble(), k.getString(2).toDouble(), k.getString(3).toDouble(),
-                    k.getString(4).toDouble(), k.getString(5).toDouble(), k.getLong(6))
+                    k.getString(4).toDouble(), k.getString(5).toDouble(), k.getLong(6),
+                    quoteVolume = if (k.length() > 7) k.getString(7).toDouble() else 0.0)
             }
         }
 
     /** One request and its decoding, both on [io]. */
     private suspend fun <T> fetch(path: String, params: Map<String, String>, block: (String) -> T): T =
         withContext(io) { parse(get(path, params), block) }
+
+    /**
+     * A request to another Binance host (the futures API), with the same pacing, retries and decoding as every other
+     * call, so the two never add up to more than one polite stream of requests.
+     */
+    suspend fun <T> fetchFrom(host: String, path: String, params: Map<String, String>, block: (String) -> T): T =
+        withContext(io) { parse(get(path, params, host), block) }
 
     private inline fun <T> parse(text: String, block: (String) -> T): T =
         try {
@@ -125,8 +133,8 @@ class BinanceClient(
         }
 
     /** One request, paced and retried. Returns the body of the first 200 answer. */
-    private suspend fun get(path: String, params: Map<String, String> = emptyMap()): String {
-        val url = host().toHttpUrl().newBuilder().encodedPath(path).apply {
+    private suspend fun get(path: String, params: Map<String, String> = emptyMap(), hostOverride: String? = null): String {
+        val url = (hostOverride ?: host()).toHttpUrl().newBuilder().encodedPath(path).apply {
             params.forEach { (k, v) -> addQueryParameter(k, v) }
         }.build()
         val request = Request.Builder().url(url).header("Accept", "application/json").build()

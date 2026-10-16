@@ -59,7 +59,7 @@ class CandleStore(
             CREATE TABLE candles (
                 symbol TEXT NOT NULL, tf TEXT NOT NULL, open_time INTEGER NOT NULL,
                 open REAL NOT NULL, high REAL NOT NULL, low REAL NOT NULL, close REAL NOT NULL,
-                volume REAL NOT NULL, close_time INTEGER NOT NULL,
+                volume REAL NOT NULL, close_time INTEGER NOT NULL, quote_volume REAL NOT NULL DEFAULT 0,
                 PRIMARY KEY (symbol, tf, open_time)
             ) WITHOUT ROWID
         """.trimIndent())
@@ -89,6 +89,8 @@ class CandleStore(
             db.execSQL("ALTER TABLE coins ADD COLUMN change24 REAL NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE coins ADD COLUMN trades24 INTEGER NOT NULL DEFAULT 0")
         }
+        // Version 4 (Signal Lab 2) adds each candle's turnover in USDT; candles stored before it read 0 and fall back to volume × close.
+        if (oldVersion < 4) db.execSQL("ALTER TABLE candles ADD COLUMN quote_volume REAL NOT NULL DEFAULT 0")
     }
 
     private suspend fun <T> access(block: (SQLiteDatabase) -> T): T =
@@ -101,7 +103,10 @@ class CandleStore(
         var added = 0
         db.beginTransaction()
         try {
-            val stmt = db.compileStatement("INSERT OR IGNORE INTO candles VALUES (?,?,?,?,?,?,?,?,?)")
+            val stmt = db.compileStatement(
+                "INSERT OR IGNORE INTO candles (symbol, tf, open_time, open, high, low, close, volume, close_time, quote_volume) " +
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            )
             for (k in klines) {
                 stmt.clearBindings()
                 stmt.bindString(1, symbol)
@@ -113,6 +118,7 @@ class CandleStore(
                 stmt.bindDouble(7, k.close)
                 stmt.bindDouble(8, k.volume)
                 stmt.bindLong(9, k.closeTime)
+                stmt.bindDouble(10, k.quoteVolume)
                 if (stmt.executeInsert() != -1L) added++
             }
             db.setTransactionSuccessful()
@@ -220,6 +226,35 @@ class CandleStore(
             "ORDER BY open_time DESC LIMIT ?) ORDER BY open_time", arrayOf(symbol, Timeframe.D1.label, n.toString())).use { c ->
             DoubleArray(c.count) { c.moveToNext(); c.getDouble(0) }
         }
+    }
+
+    /**
+     * Each coin's turnover in USDT over the daily candles that opened in the [days] days before [now], for the universe
+     * ranking. A candle stored before turnover was kept counts as volume × close. A coin with no daily candles is absent.
+     */
+    suspend fun quoteVolumeSince(symbols: Collection<String>, now: Long, days: Int): Map<String, Double> = access { db ->
+        val since = now - days * 86_400_000L
+        val out = HashMap<String, Double>()
+        for (chunk in symbols.distinct().chunked(500)) {
+            val marks = chunk.joinToString(",") { "?" }
+            db.rawQuery(
+                "SELECT symbol, SUM(CASE WHEN quote_volume > 0 THEN quote_volume ELSE volume * close END) FROM candles " +
+                    "WHERE tf=? AND open_time>=? AND symbol IN ($marks) GROUP BY symbol",
+                arrayOf(Timeframe.D1.label, since.toString(), *chunk.toTypedArray()),
+            ).use { c -> while (c.moveToNext()) out[c.getString(0)] = c.getDouble(1) }
+        }
+        out
+    }
+
+    /** The open time of each coin's first stored candle on [tf], for the coins in [symbols] that have one. */
+    suspend fun firstOpens(tf: Timeframe, symbols: Collection<String>): Map<String, Long> = access { db ->
+        val out = HashMap<String, Long>()
+        for (chunk in symbols.distinct().chunked(500)) {
+            val marks = chunk.joinToString(",") { "?" }
+            db.rawQuery("SELECT symbol, MIN(open_time) FROM candles WHERE tf=? AND symbol IN ($marks) GROUP BY symbol",
+                arrayOf(tf.label, *chunk.toTypedArray())).use { c -> while (c.moveToNext()) out[c.getString(0)] = c.getLong(1) }
+        }
+        out
     }
 
     suspend fun rowsByTimeframe(): Map<Timeframe, Long> = access { db ->
@@ -355,9 +390,17 @@ class CandleStore(
      * no list uses ([inUse]), except [keep], the one series that is always kept (BTC's daily chart, for the market regime).
      * Trades and scores live in the record database and are never touched. Returns how many candles went.
      */
-    suspend fun trim(now: Long, keepDays: (Timeframe) -> Int, inUse: Set<Timeframe>, keep: Pair<String, Timeframe>): Int = access { db ->
+    suspend fun trim(
+        now: Long,
+        keepDays: (Timeframe) -> Int,
+        inUse: Set<Timeframe>,
+        keep: Pair<String, Timeframe>,
+        /** Charts never trimmed at all (Signal Lab 2 judges its daily strategies on every daily candle). */
+        alwaysKept: Set<Timeframe> = emptySet(),
+    ): Int = access { db ->
         var removed = 0
         for (tf in Timeframe.entries) {
+            if (tf in alwaysKept) continue
             val cutoff = now - keepDays(tf) * 86_400_000L
             if (tf in inUse) {
                 removed += db.delete("candles", "tf=? AND open_time<?", arrayOf(tf.label, cutoff.toString()))
@@ -389,7 +432,7 @@ class CandleStore(
     )
 
     companion object {
-        const val VERSION = 3
+        const val VERSION = 4
         private const val COIN_COLUMNS = "symbol, base, status, offered, stable, delisted, quote_volume, high24, low24, seen_at, listed_at, change24, trades24"
     }
 }

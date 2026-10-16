@@ -48,7 +48,7 @@ class BinanceClientTest {
     fun parsesCandlesAndAsksForTheRightPage() = runTest {
         server.enqueue(ok("[$klineRow]"))
         val k = client().klines("BTCUSDT", Timeframe.H1, 1_704_067_200_000L, 500).single()
-        assertEquals(Kline(1704067200000L, 100.5, 101.25, 99.75, 100.875, 12.5, 1704070799999L), k)
+        assertEquals(Kline(1704067200000L, 100.5, 101.25, 99.75, 100.875, 12.5, 1704070799999L, quoteVolume = 1260.0), k)
         val url = server.takeRequest().url
         assertEquals("/api/v3/klines", url.encodedPath)
         assertEquals("BTCUSDT", url.queryParameter("symbol"))

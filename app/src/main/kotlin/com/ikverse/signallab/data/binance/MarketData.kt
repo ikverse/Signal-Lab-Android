@@ -11,6 +11,8 @@ data class Kline(
     val close: Double,
     val volume: Double,
     val closeTime: Long,
+    /** The candle's turnover in the quote currency (USDT); 0 when the answer did not say. */
+    val quoteVolume: Double = 0.0,
 )
 
 data class SpotSymbol(val symbol: String, val base: String, val quote: String, val status: String)

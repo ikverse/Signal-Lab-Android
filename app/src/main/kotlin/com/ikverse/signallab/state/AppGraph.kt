@@ -154,13 +154,14 @@ class AppGraph(context: Context, scope: CoroutineScope) {
 
     /**
      * Once a day, deletes candles that are no longer needed: older than each chart keeps, and every candle of a chart no
-     * list is watched on (BTC's daily chart stays, for the market regime). Trades and scores are never touched.
+     * list is watched on (BTC's daily chart stays, for the market regime). Daily candles are never deleted: Signal Lab 2
+     * judges its daily strategies on all of them. Trades and scores are never touched.
      */
     private suspend fun tidyIfDue() {
         val now = market.nowMs()
         val last = settings.get(LAST_TIDY)?.toLongOrNull() ?: 0L
         if (now - last < DAY_MS) return
-        candles.trim(now, DataConfig::historyDays, scanner.timeframesInUse(), DataConfig.REGIME_COIN to Timeframe.D1)
+        candles.trim(now, DataConfig::historyDays, scanner.timeframesInUse(), DataConfig.REGIME_COIN to Timeframe.D1, DataConfig.ALWAYS_KEPT)
         settings.set(LAST_TIDY, now.toString())
     }
 
