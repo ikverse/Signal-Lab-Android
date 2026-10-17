@@ -154,7 +154,9 @@ class AnalystPcTest {
     fun pairingPinsThePcsCertificateAndNoOther() = runTest {
         val cert = HeldCertificate.Builder().commonName("Signal Lab analyst host").build()
         server.useHttps(HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory())
-        server.start()
+        // A named port, not port 0: MockWebServer then sets SO_REUSEADDR on it and on what it accepts, which Linux needs
+        // before the same port can be bound again below (CI failed with "Address already in use" otherwise).
+        server.start(java.net.ServerSocket(0).use { it.localPort })
         val pairing = HostPairing(ledger.dao(), File(dir, HostPairing.FILE_NAME), Flip)
         val address = "127.0.0.1:${server.port}"
 
@@ -177,19 +179,9 @@ class AnalystPcTest {
         val port = server.port
         server.close()
         val other = HeldCertificate.Builder().commonName("someone else").build()
-        // The old listener can take a moment to let go of the port (it did on CI), so try again for a few seconds.
-        var attempt = 0
-        while (true) {
-            server = MockWebServer()
-            server.useHttps(HandshakeCertificates.Builder().heldCertificate(other).build().sslSocketFactory())
-            try {
-                server.start(port)
-                break
-            } catch (e: java.net.BindException) {
-                if (++attempt >= 50) throw e
-                Thread.sleep(100)
-            }
-        }
+        server = MockWebServer()
+        server.useHttps(HandshakeCertificates.Builder().heldCertificate(other).build().sslSocketFactory())
+        server.start(port)
         pairing.recheck()
         server.enqueue(MockResponse.Builder().code(200).body("{\"ok\":true}").build())
         assertNull(pairing.reachable())
