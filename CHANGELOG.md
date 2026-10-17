@@ -3,11 +3,13 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
-## 2.1.0 - not released yet
+## 2.1.0 - 2026-10-17
 
 - The analyst can run on your PC, in Claude Code signed in with your own Claude account, on your plan's usage instead of an API key. Start the analyst host on the PC (tools\start-analyst-host.cmd), then pair the phone in the Analyst tab with the address and code the PC shows, checking that both show the same fingerprint.
 - Signal Lab's tools still run on the phone, on its own data; the PC keeps no copy of your ledger.
 - The phone asks the PC first, then an API key if you have one, then offers the Claude app. A run on the PC shows how much of your plan's limits is used.
+- When pairing with the PC fails, the phone now says why: the code was refused, the PC did not answer within four seconds, it is a different PC from the one paired, or it could not be reached.
+- A strategy's tier reason now says why it did not reach Proven: either it is not ahead of random entries at double the fees, or it is still ahead there but not yet confident enough after allowing for every strategy tried.
 
 ## 2.0.0 - 2026-10-17 (pre-release)
 
