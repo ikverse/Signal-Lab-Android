@@ -106,7 +106,11 @@ android {
         unitTests.isIncludeAndroidResources = true
         // The default test heap ran out partway through a run of database tests, and 2g ran out intermittently
         // once the suite passed 500 tests (the backtest and screen tests are the heavy ones).
-        unitTests.all { it.maxHeapSize = "3g" }
+        unitTests.all {
+            it.maxHeapSize = "3g"
+            // CI printed only the exception's class for a failure it alone had; show the message and the whole trace.
+            it.testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
     }
 }
 
