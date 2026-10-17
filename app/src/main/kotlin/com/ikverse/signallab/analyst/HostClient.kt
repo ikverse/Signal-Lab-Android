@@ -12,6 +12,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.CertificateException
@@ -44,9 +45,24 @@ class HostClient(private val base: String, private val code: String, private val
     suspend fun hello(): JSONObject = call(Request.Builder().url("$base/hello").build())
 
     /** Whether the host is there and takes the code, within a few seconds. */
-    suspend fun check(): Boolean = runCatching {
-        call(request("/check").build(), http.newBuilder().callTimeout(4, TimeUnit.SECONDS).build()).optBoolean("ok")
-    }.getOrDefault(false)
+    suspend fun check(): Boolean = runCatching { verify() }.isSuccess
+
+    /** [check], but a failure says why, in a sentence. */
+    suspend fun verify() {
+        val quick = http.newBuilder().callTimeout(4, TimeUnit.SECONDS).build()
+        val answer = try {
+            withContext(Dispatchers.IO) { quick.newCall(request("/check").build()).execute().use { it.code to it.body.string() } }
+        } catch (e: InterruptedIOException) {
+            throw HostException("The PC did not answer within four seconds.")
+        } catch (e: IOException) {
+            val certificate = generateSequence<Throwable>(e) { it.cause }.any { it is CertificateException }
+            throw HostException(if (certificate) "This is not the PC this phone paired with." else "The PC could not be reached.")
+        }
+        val (status, body) = answer
+        if (status == 401) throw HostException("The PC refused the pairing code. Check it in the PC's window.")
+        if (status !in 200..299) throw HostException("The PC answered $status.")
+        if (!runCatching { JSONObject(body).optBoolean("ok") }.getOrDefault(false)) throw HostException("The PC did not accept the check.")
+    }
 
     /**
      * Asks one question ([spec]) and hands each event the host streams to [onEvent], until the run is done. Cancelling the

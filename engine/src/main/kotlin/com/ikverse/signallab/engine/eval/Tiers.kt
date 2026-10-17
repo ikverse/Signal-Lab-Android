@@ -49,7 +49,12 @@ object Tiers {
             return TierVerdict(Tier.PROVEN, "Ahead of random entries on your coins even at double the fees, allowing for the $trials strategies tried.")
         }
         if (research && b.n >= MIN_BACKTEST && b.mean > 0 && Evidence.probabilisticSharpe(b) > CONFIDENCE && !liveBehind) {
-            return TierVerdict(Tier.PROMISING, "Ahead of random entries over ${b.n} past calls on your coins; not yet at double the fees.")
+            val past = "Ahead of random entries over ${b.n} past calls on your coins"
+            return TierVerdict(
+                Tier.PROMISING,
+                if (b2.n >= MIN_BACKTEST && b2.mean > 0) "$past, and still ahead at double the fees, but not yet confident enough after allowing for the $trials strategies tried."
+                else "$past, but not ahead at double the fees.",
+            )
         }
         if (l.n >= MIN_BACKTEST && l.mean > 0 && Evidence.probabilisticSharpe(l) > CONFIDENCE) {
             return TierVerdict(Tier.PROMISING, "Ahead of random entries over ${l.n} live calls.")
