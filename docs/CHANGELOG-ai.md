@@ -274,3 +274,10 @@ asking is logged here.
   enough after allowing for the N strategies tried" when it is positive but the deflated Sharpe is not above 0.95. The tier rules
   and thresholds are unchanged: Trend timer's +4.7% at double fees is a positive mean that does not clear the deflated Sharpe bar.
 - Tests: `TiersTest` for both sentences; `AnalystPcTest` for a 500 and a slow answer during pairing.
+
+### 2026-10-17: CI failure on the first push of v2, fixed (approved)
+
+- `AnalystPcTest.pairingPinsThePcsCertificateAndNoOther` failed with a `BindException` on GitHub's runner in both the `main` CI
+  run and the `v2.1.0` release run (213 tests, 1 failed), and passed locally. The test restarts a stand-in PC with another
+  certificate on the same port; the runner had not released the port yet. It now tries again every 100 ms for up to five
+  seconds, with a fresh stand-in each time. Nothing else changed; no 2.1.0 release had been published.

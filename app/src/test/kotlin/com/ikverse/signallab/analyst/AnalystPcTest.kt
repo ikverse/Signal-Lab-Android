@@ -177,9 +177,19 @@ class AnalystPcTest {
         val port = server.port
         server.close()
         val other = HeldCertificate.Builder().commonName("someone else").build()
-        server = MockWebServer()
-        server.useHttps(HandshakeCertificates.Builder().heldCertificate(other).build().sslSocketFactory())
-        server.start(port)
+        // The old listener can take a moment to let go of the port (it did on CI), so try again for a few seconds.
+        var attempt = 0
+        while (true) {
+            server = MockWebServer()
+            server.useHttps(HandshakeCertificates.Builder().heldCertificate(other).build().sslSocketFactory())
+            try {
+                server.start(port)
+                break
+            } catch (e: java.net.BindException) {
+                if (++attempt >= 50) throw e
+                Thread.sleep(100)
+            }
+        }
         pairing.recheck()
         server.enqueue(MockResponse.Builder().code(200).body("{\"ok\":true}").build())
         assertNull(pairing.reachable())
