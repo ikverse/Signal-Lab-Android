@@ -263,3 +263,14 @@ asking is logged here.
 - Open: when the phone's code check fails for any reason it says the code was refused; it should say why. And the
   analyst noticed that Trend timer's tier reason says "not yet at double the fees" while its evidence shows +4.7% per call
   at double fees: the rule likely needs confidence, not just a positive mean, and its words should say so.
+
+### 2026-10-17: two open items from the host pairing, fixed (approved)
+
+- Pairing check says why: `HostClient.verify()` does the `/check` call and throws a sentence for each failure (code refused,
+  no answer in four seconds, a different PC's certificate, another status, not reachable). `check()` is now
+  `runCatching { verify() }.isSuccess`, and `HostPairing.probe` calls `verify()`, so "refused the pairing code" appears only for a 401.
+- Tier reason: the Promising sentence no longer says "not yet at double the fees" whenever Proven is missed. It says "not ahead
+  at double the fees" when the mean at double cost is not positive, and "still ahead at double the fees, but not yet confident
+  enough after allowing for the N strategies tried" when it is positive but the deflated Sharpe is not above 0.95. The tier rules
+  and thresholds are unchanged: Trend timer's +4.7% at double fees is a positive mean that does not clear the deflated Sharpe bar.
+- Tests: `TiersTest` for both sentences; `AnalystPcTest` for a 500 and a slow answer during pairing.

@@ -83,7 +83,7 @@ class HostPairing(
         if (hello.optString("app") != "Signal Lab analyst host") throw HostException("Something else answered at $address.")
         val fp = seen ?: if (scheme == "http") "PLAIN-HTTP-TEST" else throw HostException("The PC sent no certificate.")
         // Same certificate as the first contact, and the code must be right.
-        if (!HostClient(base, code.trim(), clientFor(fp) {}).check()) throw HostException("The PC refused the pairing code. Check it in the PC's window.")
+        HostClient(base, code.trim(), clientFor(fp) {}).verify()
         return HostProbe(address.trim(), code.trim(), fp, hello.optString("claude").ifBlank { null })
     }
 

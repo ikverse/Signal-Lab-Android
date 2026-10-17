@@ -199,6 +199,14 @@ class AnalystPcTest {
         server.enqueue(MockResponse.Builder().code(401).body("{\"error\":\"Wrong pairing code.\"}").build())
         val wrong = assertFailsWith<HostException> { pairing.probe("127.0.0.1:${server.port}", "WRONG") }
         assertTrue(wrong.message!!.contains("refused the pairing code"), wrong.message)
+        server.enqueue(MockResponse.Builder().code(200).body("{\"app\":\"Signal Lab analyst host\"}").build())
+        server.enqueue(MockResponse.Builder().code(500).body("{}").build())
+        val broken = assertFailsWith<HostException> { pairing.probe("127.0.0.1:${server.port}", "A") }
+        assertEquals("The PC answered 500.", broken.message)
+        server.enqueue(MockResponse.Builder().code(200).body("{\"app\":\"Signal Lab analyst host\"}").build())
+        server.enqueue(MockResponse.Builder().code(200).body("{\"ok\":true}").headersDelay(6, java.util.concurrent.TimeUnit.SECONDS).build())
+        val slow = assertFailsWith<HostException> { pairing.probe("127.0.0.1:${server.port}", "A") }
+        assertTrue(slow.message!!.contains("did not answer"), slow.message)
         assertTrue(assertFailsWith<HostException> { pairing.probe("not an address/x", "A") }.message!!.contains("not an address"))
         assertEquals("https://192.168.1.20:8765", HostClient.baseUrl("192.168.1.20"))
         assertEquals("https://my-pc.local:9000", HostClient.baseUrl(" https://my-pc.local:9000/ "))
