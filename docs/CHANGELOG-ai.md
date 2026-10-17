@@ -279,5 +279,10 @@ asking is logged here.
 
 - `AnalystPcTest.pairingPinsThePcsCertificateAndNoOther` failed with a `BindException` on GitHub's runner in both the `main` CI
   run and the `v2.1.0` release run (213 tests, 1 failed), and passed locally. The test restarts a stand-in PC with another
-  certificate on the same port; the runner had not released the port yet. It now tries again every 100 ms for up to five
-  seconds, with a fresh stand-in each time. Nothing else changed; no 2.1.0 release had been published.
+  certificate on the same port. First guess (wrong): the runner had not released the port yet, so the rebind got a retry for
+  five seconds; CI failed again the same way. `app` unit tests now print full failure traces, and the trace said
+  `java.net.BindException: Address already in use` from `MockWebServer.start(port)`, still after 50 tries.
+- Cause (inferred from the trace, not run on Linux here): the first stand-in started on port 0, where MockWebServer does not set
+  SO_REUSEADDR, and on Linux a port its sockets (including closing and TIME_WAIT ones) held cannot be bound again for a minute. Windows
+  allows it, so the test passed locally. The test now starts the first stand-in on a named free port, which makes MockWebServer set
+  SO_REUSEADDR, and the retry is gone. No 2.1.0 release had been published.
