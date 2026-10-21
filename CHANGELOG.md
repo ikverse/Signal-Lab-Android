@@ -3,6 +3,12 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 2.1.2 - 2026-10-22
+
+- Closed this week on Today is one line per strategy, with how many calls closed, how many won and the net in dollars. Tap a line to see its calls.
+- Open calls show the first eight, calls to exit now first, with "Show N more" for the rest.
+- An hourly call says "Exit now" only for the hour after it left, not for a whole day.
+
 ## 2.1.1 - 2026-10-22
 
 - Calls tracked with no size no longer fill the paper account. Once the hourly strategy fired on eight coins, every later call, daily ones included, was tracked with no size ("account full"); now only calls that hold part of the account count toward the limit of eight. Calls already tracked with no size stay that way.
