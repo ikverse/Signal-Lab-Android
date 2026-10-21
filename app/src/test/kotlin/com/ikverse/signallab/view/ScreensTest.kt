@@ -76,6 +76,22 @@ class ScreensTest {
     }
 
     @Test
+    fun longListsFoldIntoAFewRows() {
+        val open = List(12) { OpenUi(call(10L + it, "C$it"), 1.0, 0.01, 2.0, "Hold.", leaveNow = false, daysHeld = 1) }
+        val closed = List(30) { ClosedUi(call(100L + it, "X$it"), 1_760_000_000_000L, 1.0, "signal", if (it < 10) 0.02 else -0.01, 0.0) }
+        rule.setContent { SignalLabTheme { TodayScreen(TodayUi(loaded = true, market = market, open = open, closedThisWeek = closed), onOpenCall = {}, onLedger = {}) } }
+        rule.onNodeWithTag("open-18").assertDoesNotExist()
+        rule.onNodeWithTag("today").performScrollToNode(hasTestTag("open-more"))
+        rule.onNodeWithText("Show 4 more").performClick()
+        rule.onNodeWithTag("today").performScrollToNode(hasTestTag("open-21"))
+        rule.onNodeWithTag("today").performScrollToNode(hasTestTag("closed-breakout50_1d"))
+        rule.onNodeWithText("30 calls closed · 10 won").assertIsDisplayed()
+        rule.onNodeWithText("X5").assertDoesNotExist()
+        rule.onNodeWithTag("closed-breakout50_1d").performClick()
+        rule.onNodeWithTag("today").performScrollToNode(hasText("X5"))
+    }
+
+    @Test
     fun aQuietDayExplainsThatThereIsNothingToDo() {
         rule.setContent { SignalLabTheme { TodayScreen(TodayUi(loaded = true, market = market), onOpenCall = {}, onLedger = {}) } }
         rule.onNodeWithText("No calls right now").assertIsDisplayed()
