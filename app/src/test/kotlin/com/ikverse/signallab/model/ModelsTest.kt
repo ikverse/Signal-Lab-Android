@@ -100,8 +100,8 @@ class ModelsTest {
         val last = sol.t.last()
         val now = last + day + 3_600_000L
         val dao = ledger.dao()
-        fun row(signal: Long, opened: Long) = CallRow(
-            strategyId = "breakout50_1d", symbol = "SOLUSDT", tf = "1d", signalTime = signal, entryTime = signal + day, entryPrice = 100.0,
+        fun row(signal: Long, opened: Long, strategy: String = "breakout50_1d") = CallRow(
+            strategyId = strategy, symbol = "SOLUSDT", tf = if (strategy.endsWith("_1h")) "1h" else "1d", signalTime = signal, entryTime = signal + day, entryPrice = 100.0,
             atr = 5.0, stop = 85.0, target = null, maxBars = 60, regime = 1, sizeFraction = 0.1, cost = 0.004, source = "v2",
             archived = false, status = "live", openedAt = opened,
         )
@@ -111,14 +111,20 @@ class ModelsTest {
         val gone = dao.insertCall(row(last - 40 * day, last - 39 * day))  // left three days ago: closed this week
         dao.insertExit(ExitRow(left, now - 3_600_000L, 110.0, "signal", 30, 0.1, 0.096, 0.01, 0.086, 0.2, -0.05, null, now - 60_000))
         dao.insertExit(ExitRow(gone, now - 3 * day, 95.0, "stop", 10, -0.05, -0.054, 0.0, -0.054, 0.02, -0.06, null, now - 3 * day))
+        // Hourly calls say "leave now" only for the hour after they left; one that left two hours ago is closed.
+        val hourlyGone = dao.insertCall(row(last - 2 * day, last - 2 * day, "hourlytrend_1h"))
+        dao.insertExit(ExitRow(hourlyGone, now - 2 * 3_600_000L, 104.0, "signal", 5, 0.04, 0.036, 0.0, 0.036, 0.0, 0.0, null, now - 2 * 3_600_000L))
         val prefs = PreferenceStore(dao)
+        prefs.switch("hourlytrend_1h", true)
         val model = TodayModel(dao, prefs.preferences, candles, null, { Builtins.all }, backgroundScope, now = { now })
         val state = model.state.first { it.loaded }
         assertEquals(1, state.newCalls.size)
         assertEquals(listOf(true, false), state.open.map { it.leaveNow })
         assertEquals(older, state.open.last().call.id)
         assertTrue(state.open.first().instruction.startsWith("Leave now: exit signal."))
-        assertEquals(listOf(gone), state.closedThisWeek.map { it.call.id })
+        assertEquals(listOf(hourlyGone, gone), state.closedThisWeek.map { it.call.id })
+        assertEquals(listOf("hourlytrend_1h", "breakout50_1d"), state.closedByStrategy.map { it.strategyId })
+        assertEquals(1, state.closedByStrategy.first().won)
         assertEquals(1_000.0, state.newCalls.single().sizeUsd, 1e-9)
     }
 

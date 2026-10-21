@@ -17,6 +17,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -25,7 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ikverse.signallab.model.CallUi
-import com.ikverse.signallab.model.ClosedUi
+import com.ikverse.signallab.model.ClosedGroup
 import com.ikverse.signallab.model.MarketLine
 import com.ikverse.signallab.model.OpenUi
 import com.ikverse.signallab.model.TodayUi
@@ -111,7 +115,7 @@ fun TodayScreen(
                     TextButton(onLedger) { Text("Ledger", color = Ink.Accent, fontSize = 14.sp) }
                 }
             }
-            item(key = "closed") { ClosedList(state.closedThisWeek, onOpenCall) }
+            item(key = "closed") { ClosedList(state.closedByStrategy, onOpenCall) }
         }
         item(key = "note") {
             Text("Paper trades only. Calls are research, not financial advice.", style = Type.Caption.copy(color = Ink.Faint), modifier = Modifier.padding(top = 6.dp))
@@ -200,10 +204,15 @@ fun CallRow(c: CallUi, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** How many open calls show before "Show N more". */
+const val OPEN_SHOWN = 8
+
 @Composable
 private fun OpenList(open: List<OpenUi>, selected: Long?, onOpenCall: (Long) -> Unit) {
+    var all by rememberSaveable { mutableStateOf(false) }
+    val shown = if (all) open else open.take(OPEN_SHOWN)
     Column(Modifier.fillMaxWidth().background(Ink.Surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp))) {
-        open.forEachIndexed { i, o ->
+        shown.forEachIndexed { i, o ->
             if (i > 0) HorizontalDivider(color = Ink.Rule)
             val ground = when {
                 o.leaveNow -> Ink.UrgentGround
@@ -225,24 +234,54 @@ private fun OpenList(open: List<OpenUi>, selected: Long?, onOpenCall: (Long) -> 
                 Text(o.instruction, style = Type.Small.copy(color = if (o.leaveNow) Ink.UrgentText else Ink.Body, fontSize = 14.sp))
             }
         }
+        if (open.size > OPEN_SHOWN) {
+            HorizontalDivider(color = Ink.Rule)
+            MoreRow(if (all) "Show fewer" else "Show ${open.size - OPEN_SHOWN} more", Modifier.testTag("open-more")) { all = !all }
+        }
     }
 }
 
 @Composable
-private fun ClosedList(closed: List<ClosedUi>, onOpenCall: (Long) -> Unit) {
+private fun MoreRow(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Text(
+        text, color = Ink.Accent, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+        modifier = modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 13.dp),
+    )
+}
+
+/** What ended this week as one line per strategy; a line opens to its calls. */
+@Composable
+private fun ClosedList(groups: List<ClosedGroup>, onOpenCall: (Long) -> Unit) {
+    var opened by rememberSaveable { mutableStateOf(emptyList<String>()) }
     Column(Modifier.fillMaxWidth().background(Ink.Surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp))) {
-        closed.forEachIndexed { i, c ->
+        groups.forEachIndexed { i, g ->
             if (i > 0) HorizontalDivider(color = Ink.Rule)
+            val open = g.strategyId in opened
             Row(
-                Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpenCall(c.call.id) }.padding(horizontal = 16.dp, vertical = 13.dp),
+                Modifier.fillMaxWidth().clickable(role = Role.Button) { opened = if (open) opened - g.strategyId else opened + g.strategyId }
+                    .padding(horizontal = 16.dp, vertical = 13.dp).testTag("closed-${g.strategyId}"),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(c.call.base, style = Type.Subhead)
-                Text("${c.call.strategyName} · ${c.reasonWords}", style = Type.Caption)
-                Spacer(Modifier.weight(1f))
-                Signed(c.net, size = 14)
-                Spacer(Modifier.width(2.dp))
-                Num("· " + Words.usd(c.netUsd, signed = true), color = if (c.net >= 0) Ink.Gain else Ink.Loss, size = 14)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(g.strategyName, style = Type.Subhead.copy(fontWeight = FontWeight.Bold))
+                    Text("${Words.count(g.calls.size, "call")} closed · ${g.won} won", style = Type.Caption)
+                }
+                Num(Words.usd(g.netUsd, signed = true), color = if (g.netUsd >= 0) Ink.Gain else Ink.Loss, size = 14)
+                Text(if (open) "▴" else "▾", color = Ink.Muted, fontSize = 14.sp)
+            }
+            if (open) for (c in g.calls) {
+                Row(
+                    Modifier.fillMaxWidth().background(Ink.Raised).clickable(role = Role.Button) { onOpenCall(c.call.id) }
+                        .padding(start = 28.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(c.call.base, style = Type.Subhead)
+                    Text("${Words.day(c.exitTime)} · ${c.reasonWords}", style = Type.Caption)
+                    Spacer(Modifier.weight(1f))
+                    Signed(c.net, size = 14)
+                    Spacer(Modifier.width(2.dp))
+                    Num("· " + Words.usd(c.netUsd, signed = true), color = if (c.net >= 0) Ink.Gain else Ink.Loss, size = 14)
+                }
             }
         }
     }

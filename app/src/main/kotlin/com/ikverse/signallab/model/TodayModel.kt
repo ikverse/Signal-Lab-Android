@@ -118,7 +118,19 @@ data class TodayUi(
     val suggestions: List<SuggestionUi> = emptyList(),
     /** Dated lines of context from the analyst, such as "Wed 21 Oct · US inflation figures". */
     val contextLines: List<String> = emptyList(),
-)
+) {
+    /** What ended this week, one group per strategy, the one that ended a call most recently first. */
+    val closedByStrategy: List<ClosedGroup>
+        get() = closedThisWeek.groupBy { it.call.strategyId }.values.map { ClosedGroup(it) }
+}
+
+/** The calls of one strategy that ended this week, newest first. */
+data class ClosedGroup(val calls: List<ClosedUi>) {
+    val strategyId get() = calls.first().call.strategyId
+    val strategyName get() = calls.first().call.strategyName
+    val won get() = calls.count { it.net > 0 }
+    val netUsd get() = calls.sumOf { it.netUsd }
+}
 
 /** Builds what Today shows from the ledger, the candles and the person's choices. */
 class TodayModel(
@@ -179,7 +191,8 @@ class TodayModel(
             val exit = exitBy[row.id]
             if (exit != null) {
                 val item = ClosedUi(ui, exit.exitTime, exit.exitPrice, exit.reason, exit.net, exit.net * ui.sizeUsd)
-                if (i.t - exit.closedAt < DAY) {
+                // An hourly call is long gone a day later, so it says "leave now" only for the hour after it left.
+                if (i.t - exit.closedAt < if (s.timeframe == Timeframe.H1) HOUR else DAY) {
                     open.add(OpenUi(ui, exit.exitPrice, exit.net, exit.net * ui.sizeUsd,
                         "Leave now: ${item.reasonWords}. Paper exit at ${Words.price(exit.exitPrice)}, ${Words.pct(exit.net)} after fees.",
                         leaveNow = true, daysHeld = exit.barsHeld))
@@ -223,6 +236,7 @@ class TodayModel(
 
     companion object {
         const val DAY = 86_400_000L
+        const val HOUR = 3_600_000L
 
         /** A ledger row as a card, with the words its strategy gives it. */
         /** What to do with an open call of the analyst's: the levels it leaves at. */
