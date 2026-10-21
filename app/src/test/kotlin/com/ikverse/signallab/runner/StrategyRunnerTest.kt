@@ -22,6 +22,7 @@ import com.ikverse.signallab.engine.strategy.AnalystCall
 import com.ikverse.signallab.engine.eval.Fills
 import com.ikverse.signallab.engine.strategy.Builtins
 import com.ikverse.signallab.engine.strategy.Tier
+import com.ikverse.signallab.ledger.CallRow
 import com.ikverse.signallab.ledger.LedgerDatabase
 import com.ikverse.signallab.ledger.Preferences
 import kotlinx.coroutines.Dispatchers
@@ -234,6 +235,26 @@ class StrategyRunnerTest {
         assertEquals(fill.exitPrice, exit.exitPrice)
         assertEquals(fill.reason.label, exit.reason)
         assertNotNull(exit.excess, "it was compared with random entries")
+    }
+
+    @Test
+    fun callsTrackedWithNoSizeLeaveTheAccountRoom() = runTest {
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val btc = panel.getValue("BTCUSDT")
+        // More unsized open calls than the account has room for, from a strategy that no longer runs.
+        repeat(StrategyRunner.MAX_OPEN_CALLS + 2) { k ->
+            ledger.dao().insertCall(CallRow(
+                strategyId = "parked", symbol = "BTCUSDT", tf = "1d", signalTime = k.toLong(), entryTime = k.toLong(), entryPrice = 1.0,
+                atr = null, stop = null, target = null, maxBars = 1, regime = -1, sizeFraction = 0.0, cost = 0.0, source = "v2",
+                archived = false, status = "live", openedAt = 0,
+            ))
+        }
+        val r = runner(market, Collected(), store)
+        for (d in btc.size - 300 until btc.size - 2) marketAt(market, d).also { r.run() }
+        val made = ledger.dao().allCalls().filter { it.strategyId != "parked" }
+        assertTrue(made.isNotEmpty(), "no calls in the replay")
+        assertTrue(made.any { (it.sizeFraction ?: 0.0) > 0 }, "unsized calls filled the account: every call got no size")
     }
 
     @Test
