@@ -182,7 +182,7 @@ fun NewCallCard(c: CallUi, onClick: () -> Unit, modifier: Modifier = Modifier) {
             Figure("Size", if (c.sizeFraction > 0) Words.usd(c.sizeUsd) else "tracked", Modifier.weight(1f),
                 note = if (c.sizeFraction > 0) "${Words.share(c.sizeFraction)} of account" else "account full")
         }
-        Text("${c.strategyName} · daily · ${c.exitShort}", style = Type.Small)
+        Text("${c.strategyName} · ${if (c.hourly) "hourly" else "daily"} · ${c.exitShort}", style = Type.Small)
     }
 }
 

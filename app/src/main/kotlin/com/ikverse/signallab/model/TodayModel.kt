@@ -51,6 +51,8 @@ data class CallUi(
     val exitShort: String,
     /** The last day it may be held. */
     val lastDay: Long,
+    /** Its strategy reads hourly candles rather than daily ones. */
+    val hourly: Boolean = false,
 ) {
     val base get() = Words.base(symbol)
     val stopFraction: Double? get() = stop?.let { it / entry - 1 }
@@ -236,7 +238,8 @@ class TodayModel(
                 signalTime = row.signalTime, entryTime = row.entryTime, entry = row.entryPrice, stop = row.stop,
                 sizeFraction = size, sizeUsd = size * account,
                 why = note ?: if (c != null && i >= 0) StrategyTexts.why(s, c, i) else "${s.name} fired on ${Words.day(row.signalTime)}.",
-                exitShort = StrategyTexts.exitShort(s), lastDay = row.entryTime + (row.maxBars - 1) * DAY,
+                exitShort = StrategyTexts.exitShort(s), lastDay = row.entryTime + (row.maxBars - 1) * s.timeframe.ms,
+                hourly = s.timeframe == Timeframe.H1,
             )
         }
     }

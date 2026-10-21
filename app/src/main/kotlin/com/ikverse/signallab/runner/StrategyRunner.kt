@@ -90,7 +90,8 @@ class StrategyRunner(
 
     suspend fun run(): RunReport = lock.withLock { runLocked() }
 
-    private class Tally(var newCalls: Int = 0, var exits: Int = 0, var open: Int = 0)
+    /** [sized]: open calls that hold part of the account; a call tracked with no size takes no room. */
+    private class Tally(var newCalls: Int = 0, var exits: Int = 0, var sized: Int = 0)
 
     private suspend fun runLocked(): RunReport {
         val prefs = preferences()
@@ -102,7 +103,7 @@ class StrategyRunner(
         for (s in strategies) dao.insertStrategy(StrategyRow(s.id, s.name, s.timeframe.label, "{}", now, retired = false, source = "v2"))
         for (s in custom) dao.insertStrategy(StrategyRow(s.id, s.name, s.timeframe.label, "{}", now, retired = false, source = "custom"))
         val open = dao.openCalls()
-        val tally = Tally(open = open.size)
+        val tally = Tally(sized = open.count { it.holdsRoom() })
         val lastDay = Math.floorDiv(now, DAY) * DAY - DAY
         var report = RunReport(storedUniverse(), 0, 0, emptyMap())
         if (dao.setting(DAILY_DONE)?.toLongOrNull() != lastDay) {
@@ -194,7 +195,7 @@ class StrategyRunner(
             ))
             if (inserted == -1L) continue
             tally.exits++
-            tally.open--
+            if (row.holdsRoom()) tally.sized--
             if (prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.exit(row.id, s.name, row.symbol, closed.reason.label, closed.exitPrice, closed.net))
         }
     }
@@ -207,7 +208,7 @@ class StrategyRunner(
         // Busy while a call is open, or when the last one leaves at the very open a new one would enter at.
         val busy = latest != null && (dao.exitOf(latest.id)?.let { it.exitTime >= entryTime } ?: true)
         val call = Live.signal(s, c, btc, formingOpen, busy, prefs.costFor(symbol), fired) ?: return
-        val size = if (tally.open >= MAX_OPEN_CALLS) 0.0 else call.sizeFraction
+        val size = if (tally.sized >= MAX_OPEN_CALLS) 0.0 else call.sizeFraction
         val id = dao.insertCall(CallRow(
             strategyId = call.strategyId, symbol = symbol, tf = s.timeframe.label, signalTime = call.signalTime,
             entryTime = call.entryTime, entryPrice = call.entryPrice, atr = call.atr, stop = call.stop, target = null,
@@ -216,7 +217,7 @@ class StrategyRunner(
         ))
         if (id == -1L) return
         tally.newCalls++
-        tally.open++
+        if (size > 0) tally.sized++
         if (prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size))
     }
 
@@ -232,7 +233,7 @@ class StrategyRunner(
             return
         }
         dao.insertStrategy(StrategyRow(AnalystCall.id, AnalystCall.name, AnalystCall.timeframe.label, "{}", now, retired = false, source = "analyst"))
-        val size = if (tally.open >= MAX_OPEN_CALLS) 0.0 else call.sizeFraction
+        val size = if (tally.sized >= MAX_OPEN_CALLS) 0.0 else call.sizeFraction
         var id = dao.insertCall(CallRow(
             strategyId = AnalystCall.id, symbol = p.symbol, tf = Timeframe.D1.label, signalTime = call.signalTime,
             entryTime = call.entryTime, entryPrice = call.entryPrice, atr = call.atr, stop = call.stop, target = call.target,
@@ -243,7 +244,7 @@ class StrategyRunner(
             id = dao.callId(AnalystCall.id, p.symbol, call.signalTime, p.id) ?: return
         } else {
             tally.newCalls++
-            tally.open++
+            if (size > 0) tally.sized++
             if (prefs.notifications && prefs.isOn(AnalystCall)) alerts.post(CallWords.newCall(id, AnalystCall.name, p.symbol, call.entryPrice, call.stop, size))
         }
         pending?.opened(p.id, id, now)
@@ -277,8 +278,10 @@ class StrategyRunner(
         /** The pair list is a few hundred coins; this only bounds a read. */
         const val OFFERED_LIMIT = 2000
 
-        /** The paper account holds at most this many calls at once; later calls are tracked with no size. */
+        /** The paper account holds at most this many sized calls at once; later calls are tracked with no size. */
         const val MAX_OPEN_CALLS = 8
+
+        private fun CallRow.holdsRoom() = (sizeFraction ?: 0.0) > 0
 
         /** Hourly candles are kept and read this many days back (as Signal Lab 1 kept them). */
         const val HOURLY_DAYS = 100
