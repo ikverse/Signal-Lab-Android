@@ -3,6 +3,11 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 2.1.1 - 2026-10-22
+
+- Calls tracked with no size no longer fill the paper account. Once the hourly strategy fired on eight coins, every later call, daily ones included, was tracked with no size ("account full"); now only calls that hold part of the account count toward the limit of eight. Calls already tracked with no size stay that way.
+- An hourly call's time limit on Today is two days after it opens, not weeks away, and its card says "hourly" instead of "daily".
+
 ## 2.1.0 - 2026-10-17
 
 - The analyst can run on your PC, in Claude Code signed in with your own Claude account, on your plan's usage instead of an API key. Start the analyst host on the PC (tools\start-analyst-host.cmd), then pair the phone in the Analyst tab with the address and code the PC shows, checking that both show the same fingerprint.
