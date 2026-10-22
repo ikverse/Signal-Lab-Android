@@ -323,3 +323,34 @@ decided the same day that the app keeps paper money and never places orders: cal
 - Tests: feed parsing and accumulation (basis, positioning, DVOL paging and refresh, notices with one source failing, Binance
   headline parsing, version 1 → 2 upgrade), the futures sentence and its numbers from stored data, a retired strategy in a
   replay, the 180-day rule, and the futures series through sync.
+
+### Milestone 2 (2.3.0): sizing engine, vetoes, what to buy
+
+- `engine/eval/Risk.kt`: a new call starts at its plain ATR size, then (1) trend strategies (Breakout, Trend timer, Momentum,
+  Leaders, Near high: `Strategy.trend`) are scaled by the close's distance above its 50-day average in ATRs, 0.5 at the
+  average, 1 at two ATRs, 1.5 at six or more; (2) heat halves or blocks; (3) the book is held at 25% a year of volatility by a
+  one-factor model (Bitcoin): beta over 90 days, own variance over 20; the new call shrinks until the book with it is at the
+  target, or to nothing; (4) beta-weighted exposure stays under 150% of the account; (5) with 100 or more finished sized live
+  calls of strategies still running and a positive mean, total exposure stays under half the Kelly fraction. A losing record
+  sets no Kelly cap: stopping a losing strategy is the tiers' job, and a cap of zero would hide every call.
+- Decided without asking:
+  - Only daily calls go through the engine; an hourly call keeps its plain size (no hourly strategy runs now).
+  - Heat: BLOCK when 7-day BTC funding is above 20% a year and the quarterly premium above 15% (the plan's "both hot"); HALF
+    when DVOL rose more than 15 points in a week.
+  - A delisting notice counts for 30 days after it was published. It blocks new calls on the coin (veto recorded, size 0)
+    and closes open daily calls on it at the next open with reason `notice`. Their random entries are held as long as the
+    call was and keep its safety stop. Upbit "caution" notices are stored but do not block: the research found them
+    reasonable but unmeasured.
+  - Vetoed calls are recorded with size 0 and `veto` set, and are not notified.
+  - The daily pass now closes every exit before opening any call. Before, a call leaving at this open still counted in the
+    book while coins earlier in the list were sized (found by the runner test: Bitcoin's call was sized at zero because
+    yesterday's ETH and SOL calls, leaving at the same open, were still counted).
+  - The futures feeds and notices are now synced before the calls of the pass, not after, so the calls of a close are sized
+    and vetoed by the context of that close.
+  - "Money I trade with" (`trade_money`, synced between devices) sizes the buy line: the call's share times the money, rounded
+    down to a whole USDT, then to the coin's LOT_SIZE step at the entry price. Each pair's step and minimum order are read from
+    `exchangeInfo` with the pair list into a new `lot_rules` table (candle store version 5).
+- Ledger (Room version 2, auto-migration): `calls.plain_size` and `calls.veto`, also in device sync. A new test builds a
+  version 1 file from Room's exported schema and checks that its calls survive and the record stays append-only.
+- Tests: engine `RiskTest` (7); runner tests for a delisting notice and for overheated leverage; buy-line wording; order rules
+  from `exchangeInfo`; the ledger migration.

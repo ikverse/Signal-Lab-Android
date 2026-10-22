@@ -47,6 +47,13 @@ data class CallRow(
     val status: String,
     @ColumnInfo(name = "legacy_id") val legacyId: Long? = null,
     @ColumnInfo(name = "opened_at") val openedAt: Long,
+    /**
+     * The share the call would have held with plain ATR sizing, before Signal Lab 3's sizing engine; null for calls made
+     * before 2.3. Kept beside [sizeFraction] so the ledger can say whether the engine helps.
+     */
+    @ColumnInfo(name = "plain_size") val plainSize: Double? = null,
+    /** Why the call was skipped (recorded with no size), such as "leverage is overheated"; null when it was not. */
+    val veto: String? = null,
 )
 
 /** How a call ended. One per call, written once. */

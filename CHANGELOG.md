@@ -3,6 +3,13 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 2.3.0 - 2026-10-22 (pre-release)
+
+- New in Settings: "Money I trade with". Set it to your Binance balance and every call says what to buy, such as "Buy 360 USDT of SOL (2.529 SOL)", rounded the way Binance accepts and flagged when it is below Binance's smallest order.
+- Calls are sized by a new engine. A call is smaller when the market is wild, when you already hold several coins that move with Bitcoin, or when its trend is weak, and a little bigger when its trend is strong. The page of each call shows the plain size it would have had before, so the ledger can tell whether the engine helps.
+- When leverage is overheated (funding and the quarterly futures premium both high, as before the crash of 10 October 2025), new calls are skipped. When implied volatility jumps, they are halved. Skipped calls are still recorded, with no size, so the ledger can say whether skipping helped.
+- A coin named in a Binance or Upbit delisting notice gets no new calls, and an open call on it says "sell now" at the next open.
+
 ## 2.2.0 - 2026-10-22 (pre-release)
 
 - Today's market panel has a second line from the futures and options markets: what funding has averaged over 30 days, the quarterly futures premium, and implied volatility with its change over a week. When shorts have been paying longs for a month it says so, and when leverage looks overheated it says that too.

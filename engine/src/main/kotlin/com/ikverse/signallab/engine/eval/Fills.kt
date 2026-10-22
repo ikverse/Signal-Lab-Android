@@ -5,7 +5,10 @@ import com.ikverse.signallab.engine.strategy.ExitPlan
 
 /** Why a trade ended. */
 enum class Leave(val label: String) {
-    STOP("stop"), TARGET("target"), SIGNAL("signal"), TIME("time");
+    STOP("stop"), TARGET("target"), SIGNAL("signal"), TIME("time"),
+
+    /** Live only: the exchange announced it will stop trading the coin, so the call leaves at the next open. */
+    NOTICE("notice");
 
     companion object {
         fun of(label: String): Leave = entries.first { it.label == label }

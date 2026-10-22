@@ -82,6 +82,9 @@ interface Strategy {
      */
     val retired: Boolean get() = false
 
+    /** True for a trend-following rule, whose calls the sizing engine scales by the trend's strength. */
+    val trend: Boolean get() = false
+
     /**
      * Entries for every coin of [panel] at once. A strategy that looks at one coin at a time gives [entries] for each; a
      * ranking compares them. Each coin's flags line up with its own candles.

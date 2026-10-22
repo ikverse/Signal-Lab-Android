@@ -12,6 +12,12 @@ import com.ikverse.signallab.data.binance.BinanceException
 import com.ikverse.signallab.data.binance.Kline
 import com.ikverse.signallab.data.binance.SpotSymbol
 import com.ikverse.signallab.data.binance.Ticker24h
+import com.ikverse.signallab.data.futures.BasisPoint
+import com.ikverse.signallab.data.futures.DerivativesStore
+import com.ikverse.signallab.data.futures.FundingPoint
+import com.ikverse.signallab.data.futures.Notice
+import com.ikverse.signallab.data.futures.NoticeKind
+import com.ikverse.signallab.engine.strategy.ExitPlan
 import com.ikverse.signallab.data.history.DailyHistory
 import com.ikverse.signallab.engine.Candles
 import com.ikverse.signallab.engine.Golden
@@ -285,6 +291,78 @@ class StrategyRunnerTest {
         assertTrue(calls.any { it.strategyId == live.id }, "the strategy still running made no calls")
         assertEquals(listOf(parked), calls.filter { it.strategyId == retired.id }.map { it.id }, "the retired strategy opened a new call")
         assertNotNull(ledger.dao().exitOf(parked), "the retired strategy's open call was not followed to its exit")
+    }
+
+    /** Fires on every candle and holds one day, so every coin has a new call at every close. */
+    private val everyDay = object : Strategy by Breakout() {
+        override val id = "every_day"
+        override val exit = ExitPlan(maxBars = 1)
+        override fun entries(c: Candles) = BooleanArray(c.size) { true }
+        override fun exitSignals(c: Candles): BooleanArray? = null
+    }
+
+    /** Never fires; only holds a call long, to see how it is closed. */
+    private val holder = object : Strategy by Breakout() {
+        override val id = "holder"
+        override val exit = ExitPlan(maxBars = 400)
+        override fun entries(c: Candles) = BooleanArray(c.size)
+        override fun exitSignals(c: Candles): BooleanArray? = null
+    }
+
+    @Test
+    fun aDelistingNoticeSkipsTheCoinAndClosesWhatIsOpenOnIt() = runTest {
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val futures = DerivativesStore(context, name = null, io = Dispatchers.Unconfined)
+        val btc = panel.getValue("BTCUSDT")
+        val sol = panel.getValue("SOLUSDT")
+        val r = StrategyRunner(
+            market, UniverseRepository(market, store, clock = { market.now }), store, DailyHistory(CandleSync(market, store)), ledger, Collected(),
+            strategies = listOf(everyDay, holder), futures = futures,
+        )
+        val end = btc.size - 3
+        for (d in end - 40 until end) marketAt(market, d).also { r.run() }
+        val before = ledger.dao().allCalls()
+        assertTrue(before.any { it.symbol == "SOLUSDT" && (it.sizeFraction ?: 0.0) > 0 && it.veto == null }, "SOL had sized calls before the notice")
+        assertTrue(before.all { it.plainSize != null }, "every new call keeps its plain size")
+        val entry = sol.t.indexOfFirst { it == btc.t[end - 10] }
+        val held = ledger.dao().insertCall(CallRow(
+            strategyId = holder.id, symbol = "SOLUSDT", tf = "1d", signalTime = sol.t[entry - 1], entryTime = sol.t[entry],
+            entryPrice = sol.open[entry], atr = 1.0, stop = null, target = null, maxBars = 400, regime = 1, sizeFraction = 0.05,
+            cost = 0.004, source = "v2", archived = false, status = "live", openedAt = 0,
+        ))
+        futures.insertNotices(listOf(Notice("binance", "1", market.now, NoticeKind.DELISTING, "SOL", "Binance Will Delist SOL on 2026-11-01")))
+        marketAt(market, end)
+        r.run()
+        val after = ledger.dao().allCalls().filter { it.id !in before.map { b -> b.id } && it.id != held }
+        val solNew = after.single { it.symbol == "SOLUSDT" }
+        assertEquals(StrategyRunner.VETO_DELISTING, solNew.veto)
+        assertEquals(0.0, solNew.sizeFraction)
+        assertTrue(after.filter { it.symbol != "SOLUSDT" }.all { it.veto == null && (it.sizeFraction ?: 0.0) > 0 }, "other coins are not touched: " + after.map { "${it.symbol} ${it.sizeFraction} ${it.plainSize} ${it.veto}" })
+        val exit = assertNotNull(ledger.dao().exitOf(held))
+        assertEquals("notice", exit.reason)
+        assertEquals(sol.open[sol.t.indexOfFirst { it == btc.t[end + 1] }], exit.exitPrice, "it leaves at the next open")
+    }
+
+    @Test
+    fun overheatedLeverageSkipsEveryNewCall() = runTest {
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val futures = DerivativesStore(context, name = null, io = Dispatchers.Unconfined)
+        val btc = panel.getValue("BTCUSDT")
+        val r = StrategyRunner(
+            market, UniverseRepository(market, store, clock = { market.now }), store, DailyHistory(CandleSync(market, store)), ledger, Collected(),
+            strategies = listOf(everyDay), futures = futures,
+        )
+        val end = btc.size - 3
+        marketAt(market, end)
+        // A week of funding at 0.03% per 8 hours (about 33% a year) and a quarterly premium of 18% a year.
+        futures.insertFunding("BTCUSDT", List(21) { FundingPoint(market.now - 6 * day + it * 8 * 3_600_000L, 0.0003, Double.NaN) })
+        futures.insertBasis("BTCUSDT", "CURRENT_QUARTER", listOf(BasisPoint(market.now - day, 101.0, 100.0, 0.01, 0.18)))
+        r.run()
+        val calls = ledger.dao().allCalls()
+        assertTrue(calls.isNotEmpty())
+        assertTrue(calls.all { it.veto == "leverage is overheated" && it.sizeFraction == 0.0 && (it.plainSize ?: 0.0) > 0 }, calls.toString())
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.ikverse.signallab.ledger
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -19,8 +20,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CallRow::class, ExitRow::class, StrategyRow::class, CustomStrategyRow::class, CustomStopRow::class,
         ReportRow::class, PinRow::class, SettingRow::class, LegacyListRow::class, ImportLogRow::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
+    // 1 → 2 (Signal Lab 2.3): calls gain plain_size and veto. Adding columns never rebuilds the table, so the triggers stay.
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class LedgerDatabase : RoomDatabase() {
     abstract fun dao(): LedgerDao

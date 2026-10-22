@@ -82,6 +82,7 @@ class UniverseRepository(
             )
         }
         store.replaceCoins(rows)
+        store.saveLotRules(pairs.associate { it.symbol to LotRule(it.stepSize, it.minNotional) })
         tickersAt = now
         synchronized(rolling) { rolling.clear() }
         return true
