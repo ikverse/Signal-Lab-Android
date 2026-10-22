@@ -5,23 +5,19 @@ release notes.
 
 ## 2.4.0 - 2026-10-22 (pre-release)
 
+Signal Lab still trades on paper only. These changes make its calls easier to copy on Binance by hand.
+
+- New in Settings: "Money I trade with". Set it to your Binance balance and every call says what to buy, such as "Buy 360 USDT of SOL (2.529 SOL)", rounded the way Binance accepts and flagged when it is below Binance's smallest order. Notifications say it too.
+- Calls are sized by a new engine. A call is smaller when the market is wild, when you already hold several coins that move with Bitcoin, or when its trend is weak, and a little bigger when its trend is strong. Each call's page shows the plain size it would have had before, so the ledger can tell whether the engine helps.
+- When leverage is overheated (funding and the quarterly futures premium both high, as before the crash of 10 October 2025), new calls are skipped. When implied volatility jumps, they are halved. Skipped calls are still recorded with no size, so the ledger can say whether skipping helped.
+- A coin named in a Binance or Upbit delisting notice gets no new calls, and an open call on it says "Sell now" at the next open. Exit notifications now read "Sell now".
 - Two new strategies, judged against random entries like the others. Hated rally buys Bitcoin, Ether and the ten busiest coins after shorts have paid longs for a month; it starts in Testing, so it makes no calls on Today until its record earns them. Trend leaders ranks the watched coins every Monday on 28 trend indicators from a 2025 study and buys the top fifth for a week; it starts in Watch, beside Leaders, so the two can be compared on the same coins.
-- Each call's page has "I took it": say what you paid on Binance, then "I sold" and what you sold at. The Ledger shows "My copies": your real results beside the paper ones on the same calls, and how far your buys sat from the paper entry.
-- Notifications say how many USDT to buy when "Money I trade with" is set, and an exit now reads "Sell now".
-
-## 2.3.0 - 2026-10-22 (pre-release)
-
-- New in Settings: "Money I trade with". Set it to your Binance balance and every call says what to buy, such as "Buy 360 USDT of SOL (2.529 SOL)", rounded the way Binance accepts and flagged when it is below Binance's smallest order.
-- Calls are sized by a new engine. A call is smaller when the market is wild, when you already hold several coins that move with Bitcoin, or when its trend is weak, and a little bigger when its trend is strong. The page of each call shows the plain size it would have had before, so the ledger can tell whether the engine helps.
-- When leverage is overheated (funding and the quarterly futures premium both high, as before the crash of 10 October 2025), new calls are skipped. When implied volatility jumps, they are halved. Skipped calls are still recorded, with no size, so the ledger can say whether skipping helped.
-- A coin named in a Binance or Upbit delisting notice gets no new calls, and an open call on it says "sell now" at the next open.
-
-## 2.2.0 - 2026-10-22 (pre-release)
-
-- Today's market panel has a second line from the futures and options markets: what funding has averaged over 30 days, the quarterly futures premium, and implied volatility with its change over a week. When shorts have been paying longs for a month it says so, and when leverage looks overheated it says that too.
-- Coins join the watched list after six months on Binance instead of three. New coins kept falling for months in the research.
 - Hourly trend makes no new calls. Over its first 121 calls it won 10% of the time and lost 0.7% per call after fees, behind random entries. Its record stays in the ledger.
-- Signal Lab now collects, once a day: funding for every watched coin, the futures premium and positioning of Bitcoin and Ether, Deribit's volatility index, and Binance's and Upbit's delisting notices. Nothing needs an account or a key. The 30-day futures series travel with device sync, because Binance keeps only 30 days of them.
+- Each call's page has "I took it": say what you paid on Binance, then "I sold" and what you sold at. The Ledger shows "My copies": your real results beside the paper ones on the same calls, and how far your buys sat from the paper entry.
+- Today's market panel has a second line from the futures and options markets: funding over 30 days, the quarterly futures premium, and implied volatility with its change over a week.
+- Coins join the watched list after six months on Binance instead of three. New coins kept falling for months in the research.
+- Signal Lab now collects, once a day and with no account or key: funding for every watched coin, the futures premium and positioning of Bitcoin and Ether, Deribit's volatility index, and Binance's and Upbit's delisting notices. The 30-day futures series travel with device sync, because Binance keeps only 30 days of them.
+- The settings button has its own row at the top of each tab, so the screen scrolls beneath it instead of under it, and a clearer gear icon.
 
 ## 2.1.2 - 2026-10-22
 
