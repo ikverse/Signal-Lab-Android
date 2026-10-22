@@ -15,8 +15,29 @@ data class OpenInterestPoint(val time: Long, val contracts: Double, val value: D
 data class PremiumNow(val symbol: String, val markPrice: Double, val indexPrice: Double, val lastFundingRate: Double, val nextFundingTime: Long)
 
 /**
- * Binance's USDⓈ-M futures market data, which needs no key. Used only for warnings and the market line, never to enter a
- * call (docs/strategy-research.md §1.10). Requests go through [binance], so they share its pacing and retries.
+ * The gap between a futures contract and the index at [time]: [basisRate] as a fraction of the index, [annualized] the same
+ * over a year for a dated contract (NaN where Binance gives none).
+ */
+data class BasisPoint(val time: Long, val futuresPrice: Double, val indexPrice: Double, val basisRate: Double, val annualized: Double)
+
+/** Which positioning ratio Binance publishes. */
+enum class Positioning(val path: String, val label: String) {
+    /** Long against short positions of the biggest accounts, by position size. */
+    TOP_POSITIONS("/futures/data/topLongShortPositionRatio", "top_positions"),
+
+    /** Accounts long against accounts short, every account counted once. */
+    ALL_ACCOUNTS("/futures/data/globalLongShortAccountRatio", "all_accounts"),
+
+    /** Taker buy volume against taker sell volume. */
+    TAKER_VOLUME("/futures/data/takerlongshortRatio", "taker_volume"),
+}
+
+/** A positioning ratio at [time]: [longSide] over [shortSide] (shares of accounts, or volumes), and their [ratio]. */
+data class PositioningPoint(val time: Long, val longSide: Double, val shortSide: Double, val ratio: Double)
+
+/**
+ * Binance's USDⓈ-M futures market data, which needs no key. Used for the market line, context and vetoes, never to enter a
+ * call on its own (docs/strategy-research.md §1.10 and §7). Requests go through [binance], so they share its pacing and retries.
  */
 class FuturesClient(private val binance: BinanceClient, private val host: String = DataConfig.FUTURES_HOST) {
     /** Up to [limit] funding settlements from [startTime], oldest first. A symbol with no perpetual gives an empty list. */
@@ -38,6 +59,34 @@ class FuturesClient(private val binance: BinanceClient, private val host: String
             List(arr.length()) {
                 val o = arr.getJSONObject(it)
                 OpenInterestPoint(o.getLong("timestamp"), o.getString("sumOpenInterest").toDouble(), o.getString("sumOpenInterestValue").toDouble())
+            }
+        }
+    }
+
+    /** The basis of [pair]'s [contractType] (PERPETUAL, CURRENT_QUARTER or NEXT_QUARTER) every [period] from [startTime]; Binance keeps 30 days. */
+    suspend fun basisHistory(pair: String, contractType: String, period: String, startTime: Long, limit: Int = 500): List<BasisPoint> = orEmptyIfNoPerpetual {
+        binance.fetchFrom(host, "/futures/data/basis",
+            mapOf("pair" to pair, "contractType" to contractType, "period" to period, "startTime" to startTime.toString(), "limit" to limit.toString())) { text ->
+            val arr = JSONArray(text)
+            List(arr.length()) {
+                val o = arr.getJSONObject(it)
+                BasisPoint(o.getLong("timestamp"), o.getString("futuresPrice").toDouble(), o.getString("indexPrice").toDouble(),
+                    o.getString("basisRate").toDouble(), o.optString("annualizedBasisRate").toDoubleOrNull() ?: Double.NaN)
+            }
+        }
+    }
+
+    /** One positioning ratio of [symbol] every [period] from [startTime], oldest first; Binance keeps 30 days. */
+    suspend fun positioningHistory(kind: Positioning, symbol: String, period: String, startTime: Long, limit: Int = 500): List<PositioningPoint> = orEmptyIfNoPerpetual {
+        binance.fetchFrom(host, kind.path, mapOf("symbol" to symbol, "period" to period, "startTime" to startTime.toString(), "limit" to limit.toString())) { text ->
+            val arr = JSONArray(text)
+            List(arr.length()) {
+                val o = arr.getJSONObject(it)
+                if (kind == Positioning.TAKER_VOLUME) {
+                    PositioningPoint(o.getLong("timestamp"), o.getString("buyVol").toDouble(), o.getString("sellVol").toDouble(), o.getString("buySellRatio").toDouble())
+                } else {
+                    PositioningPoint(o.getLong("timestamp"), o.getString("longAccount").toDouble(), o.getString("shortAccount").toDouble(), o.getString("longShortRatio").toDouble())
+                }
             }
         }
     }

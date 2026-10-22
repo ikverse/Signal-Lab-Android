@@ -42,8 +42,12 @@ object DataConfig {
     /** The coins Signal Lab 2 watches: the busiest this many by 30-day turnover, plus pins, minus excludes. */
     const val UNIVERSE_SIZE = 40
 
-    /** A coin listed more recently than this is left out of the universe: new listings behave differently. */
-    const val UNIVERSE_MIN_AGE_DAYS = 90
+    /**
+     * A coin listed more recently than this is left out of the universe. New listings keep falling for months: the coins
+     * Binance listed in 2024 were down 22.7% three months after listing and 37.6% after six
+     * (docs/strategy-research.md §7).
+     */
+    const val UNIVERSE_MIN_AGE_DAYS = 180
 
     /** Binance's USDⓈ-M futures API, for funding and open interest. Binance.US has none. */
     const val FUTURES_HOST = "https://fapi.binance.com"
@@ -53,6 +57,21 @@ object DataConfig {
 
     /** Binance serves open interest for the last 30 days only, so it is accumulated locally from the first run. */
     const val OPEN_INTEREST_DAYS = 30
+
+    /** The futures basis and the positioning ratios are served for the same 30 days and accumulated the same way. */
+    const val FUTURES_DATA_PERIOD = "1d"
+
+    /** Deribit's public API, for its implied-volatility index (DVOL); no key. */
+    const val DERIBIT_HOST = "https://www.deribit.com"
+
+    /** DVOL history starts here (24 Mar 2021 00:00 UTC). */
+    const val DVOL_FROM = 1_616_544_000_000L
+
+    /** Binance's announcement pages (listings and delistings), served by its website rather than its API; no key. */
+    const val BINANCE_WWW_HOST = "https://www.binance.com"
+
+    /** Upbit's notices, where a Korean delisting is announced days before the halt; no key. */
+    const val UPBIT_HOST = "https://api-manager.upbit.com"
 
     /** Binance serves at most this many candles per request. */
     const val KLINE_PAGE = 1000

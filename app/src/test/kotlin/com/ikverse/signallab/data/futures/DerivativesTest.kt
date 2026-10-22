@@ -103,6 +103,105 @@ class DerivativesTest {
     }
 
     @Test
+    fun basisAndPositioningAreReadAndAccumulatedFromThirtyDays() = runTest {
+        val s = store()
+        val sync = DerivativesSync(client(), s, now = { now }, available = { true })
+        server.enqueue(ok("""[{"indexPrice":"81489.1","contractType":"CURRENT_QUARTER","basisRate":"0.0097","futuresPrice":"82275.7","annualizedBasisRate":"0.0518","basis":"786.5","pair":"BTCUSDT","timestamp":${now - day}}]"""))
+        assertEquals(1, sync.syncBasis("BTCUSDT", "CURRENT_QUARTER"))
+        val req = server.takeRequest().url
+        assertEquals("/futures/data/basis", req.encodedPath)
+        assertEquals("CURRENT_QUARTER", req.queryParameter("contractType"))
+        assertTrue(req.queryParameter("startTime")!!.toLong() >= now - 30 * day)
+        val b = s.basis("BTCUSDT", "CURRENT_QUARTER").single()
+        assertEquals(0.0518, b.annualized)
+        assertEquals(82275.7, b.futuresPrice)
+
+        server.enqueue(ok("""[{"symbol":"BTCUSDT","longAccount":"0.6461","longShortRatio":"1.8258","shortAccount":"0.3539","timestamp":${now - day}}]"""))
+        server.enqueue(ok("""[{"symbol":"BTCUSDT","longAccount":"0.55","longShortRatio":"1.2222","shortAccount":"0.45","timestamp":${now - day}}]"""))
+        server.enqueue(ok("""[{"buySellRatio":"0.95","sellVol":"2000.0","buyVol":"1900.0","timestamp":${now - day}}]"""))
+        assertEquals(3, sync.syncPositioning("BTCUSDT"))
+        assertEquals(listOf("/futures/data/topLongShortPositionRatio", "/futures/data/globalLongShortAccountRatio", "/futures/data/takerlongshortRatio"),
+            List(3) { server.takeRequest().url.encodedPath })
+        assertEquals(PositioningPoint(now - day, 1900.0, 2000.0, 0.95), s.positioning("BTCUSDT", Positioning.TAKER_VOLUME).single())
+        assertEquals(1.8258, s.positioning("BTCUSDT", Positioning.TOP_POSITIONS).single().ratio)
+
+        server.enqueue(ok("[]"))
+        sync.syncBasis("BTCUSDT", "CURRENT_QUARTER")
+        assertEquals((now - day + 1).toString(), server.takeRequest().url.queryParameter("startTime"), "the next run starts after what is stored")
+    }
+
+    @Test
+    fun deribitVolatilityIsPagedFromItsStartAndTheLastDayIsRefreshed() = runTest {
+        val s = store()
+        val deribit = DeribitClient(BinanceClient(host = { "https://unused.invalid" }, sleep = {}), host = hostUrl)
+        val start = now - 400 * day
+        val sync = DerivativesSync(client(), s, now = { now }, available = { false }, deribit = deribit)
+        s.insertDvol("BTC", listOf(DvolPoint(start, 40.0, 41.0, 39.0, 40.5)))
+        server.enqueue(ok("""{"jsonrpc":"2.0","result":{"data":[[${start},40.0,42.0,39.0,41.0],[${start + day},41.0,43.0,40.0,42.5]],"continuation":null}}"""))
+        server.enqueue(ok("""{"jsonrpc":"2.0","result":{"data":[[${now - day},50.0,52.0,49.0,51.0]],"continuation":null}}"""))
+        sync.syncDvol("BTC")
+        val first = server.takeRequest().url
+        assertEquals("/api/v2/public/get_volatility_index_data", first.encodedPath)
+        assertEquals(start.toString(), first.queryParameter("start_timestamp"), "the last stored day is asked again")
+        assertEquals("1D", first.queryParameter("resolution"))
+        server.takeRequest()
+        val got = s.dvol("BTC")
+        assertEquals(listOf(start, start + day, now - day), got.map { it.time })
+        assertEquals(41.0, got.first().close, "a day still forming is replaced by its final value")
+    }
+
+    @Test
+    fun aNoticeSourceThatFailsLeavesTheOtherRead() = runTest {
+        val s = store()
+        val notices = NoticesClient(BinanceClient(host = { "https://unused.invalid" }, sleep = {}), binanceHost = hostUrl, upbitHost = hostUrl)
+        val sync = DerivativesSync(client(), s, now = { now }, available = { true }, notices = notices)
+        server.enqueue(MockResponse.Builder().code(403).body("Forbidden").build())
+        server.enqueue(ok("""{"success":true,"data":{"total_count":3,"notices":[
+            {"listed_at":"2026-10-21T21:50:00+09:00","id":6687,"title":"질리카(ZIL) 거래지원 종료 안내 (11/16 15:00)","category":"거래"},
+            {"listed_at":"2026-10-20T18:00:00+09:00","id":6680,"title":"블러(BLUR) 거래 유의 종목 지정 안내","category":"거래"},
+            {"listed_at":"2026-10-19T18:00:00+09:00","id":6670,"title":"액시스로보틱스(AXIS) 신규 거래지원 안내 (KRW, BTC, USDT 마켓)","category":"거래"}]}}"""))
+        assertEquals(2, sync.syncNotices())
+        assertEquals(listOf("ZIL" to NoticeKind.DELISTING, "BLUR" to NoticeKind.CAUTION), s.notices().map { it.coin to it.kind })
+        assertEquals(java.time.Instant.parse("2026-10-21T12:50:00Z").toEpochMilli(), s.notices().first().time, "read with its +09:00 offset")
+    }
+
+    @Test
+    fun binanceDelistingHeadlinesNameOnlySpotCoins() = runTest {
+        server.enqueue(ok("""{"code":"000000","data":{"catalogs":[{"catalogId":161,"catalogName":"Delisting","articles":[
+            {"id":1,"code":"a","title":"Binance Will Delist EPIC, QUICK on 2026-10-28","type":1,"releaseDate":1792000000000},
+            {"id":2,"code":"b","title":"Notice of Removal of Spot Trading Pairs - 2026-10-23","type":1,"releaseDate":1792000000001},
+            {"id":3,"code":"c","title":"Binance Futures Will Delist USDⓈ-M FOOUSDT Perpetual Contract","type":1,"releaseDate":1792000000002},
+            {"id":4,"code":"d","title":"Binance Will Delist BAR and BAZ on 2026-11-02","type":1,"releaseDate":1792000000003}]}]}}"""))
+        val got = NoticesClient(BinanceClient(host = { "https://unused.invalid" }, sleep = {}), binanceHost = hostUrl).binanceDelistings()
+        assertEquals(listOf("EPIC", "QUICK", "BAR", "BAZ"), got.map { it.coin })
+        assertTrue(got.all { it.kind == NoticeKind.DELISTING && it.source == "binance" })
+        assertEquals("161", server.takeRequest().url.queryParameter("catalogId"))
+    }
+
+    @Test
+    fun aVersionOneFileGainsTheNewTablesAndKeepsItsFunding() = runTest {
+        val name = "derivatives-upgrade-test.db"
+        context.deleteDatabase(name)
+        val v1 = object : android.database.sqlite.SQLiteOpenHelper(context, name, null, 1) {
+            override fun onCreate(db: android.database.sqlite.SQLiteDatabase) {
+                db.execSQL("CREATE TABLE funding (symbol TEXT NOT NULL, time INTEGER NOT NULL, rate REAL NOT NULL, mark_price REAL, PRIMARY KEY (symbol, time)) WITHOUT ROWID")
+                db.execSQL("CREATE TABLE open_interest (symbol TEXT NOT NULL, period TEXT NOT NULL, time INTEGER NOT NULL, contracts REAL NOT NULL, value REAL NOT NULL, PRIMARY KEY (symbol, period, time)) WITHOUT ROWID")
+                db.execSQL("INSERT INTO funding VALUES ('BTCUSDT', 5, 0.0001, NULL)")
+            }
+
+            override fun onUpgrade(db: android.database.sqlite.SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }
+        v1.writableDatabase.close()
+        v1.close()
+        val s = DerivativesStore(context, name = name, io = Dispatchers.Unconfined)
+        assertEquals(listOf(5L), s.funding("BTCUSDT").map { it.time })
+        assertEquals(1, s.insertDvol("BTC", listOf(DvolPoint(1, 1.0, 1.0, 1.0, 1.0))))
+        assertEquals(1, s.insertNotices(listOf(Notice("binance", "1", 1, NoticeKind.DELISTING, "EPIC", "x"))))
+        s.close()
+        context.deleteDatabase(name)
+    }
+
+    @Test
     fun storedPointsReadBackInOrderAndAreNotDuplicated() = runTest {
         val s = store()
         val pts = listOf(FundingPoint(20, 0.1, 1.0), FundingPoint(10, 0.2, Double.NaN))

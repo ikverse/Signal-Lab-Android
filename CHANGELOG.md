@@ -3,6 +3,13 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 2.2.0 - 2026-10-22 (pre-release)
+
+- Today's market panel has a second line from the futures and options markets: what funding has averaged over 30 days, the quarterly futures premium, and implied volatility with its change over a week. When shorts have been paying longs for a month it says so, and when leverage looks overheated it says that too.
+- Coins join the watched list after six months on Binance instead of three. New coins kept falling for months in the research.
+- Hourly trend makes no new calls. Over its first 121 calls it won 10% of the time and lost 0.7% per call after fees, behind random entries. Its record stays in the ledger.
+- Signal Lab now collects, once a day: funding for every watched coin, the futures premium and positioning of Bitcoin and Ether, Deribit's volatility index, and Binance's and Upbit's delisting notices. Nothing needs an account or a key. The 30-day futures series travel with device sync, because Binance keeps only 30 days of them.
+
 ## 2.1.2 - 2026-10-22
 
 - Closed this week on Today is one line per strategy, with how many calls closed, how many won and the net in dollars. Tap a line to see its calls.

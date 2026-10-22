@@ -2,6 +2,10 @@ package com.ikverse.signallab.sync
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.ikverse.signallab.data.futures.BasisPoint
+import com.ikverse.signallab.data.futures.DerivativesStore
+import com.ikverse.signallab.data.futures.Positioning
+import com.ikverse.signallab.data.futures.PositioningPoint
 import com.ikverse.signallab.ledger.CallRow
 import com.ikverse.signallab.ledger.CustomStrategyRow
 import com.ikverse.signallab.ledger.ExitRow
@@ -11,6 +15,7 @@ import com.ikverse.signallab.ledger.Preferences
 import com.ikverse.signallab.ledger.ReportRow
 import com.ikverse.signallab.ledger.SettingRow
 import com.ikverse.signallab.ledger.StrategyRow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -104,6 +109,23 @@ class SyncTest {
         assertFalse(sa.merge(sb.export("device-b", 2000)).any)
         assertEquals(4, a.dao().allCalls().size)
         assertEquals(sa.fingerprint(sa.export("device-a", 1)), sa.fingerprint(sa.export("device-a", 2)), "the time of export is not content")
+    }
+
+    @Test
+    fun theThirtyDayFuturesSeriesTravelWithTheLedger() = runTest {
+        val ma = DerivativesStore(context, name = null, io = Dispatchers.Unconfined)
+        val mb = DerivativesStore(context, name = null, io = Dispatchers.Unconfined)
+        ma.insertBasis("BTCUSDT", "CURRENT_QUARTER", listOf(BasisPoint(10, 101.0, 100.0, 0.01, 0.05), BasisPoint(20, 102.0, 100.0, 0.02, Double.NaN)))
+        ma.insertPositioning("BTCUSDT", Positioning.TOP_POSITIONS, listOf(PositioningPoint(10, 0.6, 0.4, 1.5)))
+        mb.insertBasis("BTCUSDT", "CURRENT_QUARTER", listOf(BasisPoint(30, 103.0, 100.0, 0.03, 0.07)))
+        val r = LedgerSync(b, mb).merge(JSONObject(LedgerSync(a, ma).export("a", 1).toString()))
+        assertEquals(3, r.market)
+        assertFalse(r.any, "market data alone is not a change to the ledger")
+        assertEquals(listOf(10L, 20L, 30L), mb.basis("BTCUSDT", "CURRENT_QUARTER").map { it.time })
+        assertTrue(mb.basis("BTCUSDT", "CURRENT_QUARTER")[1].annualized.isNaN())
+        assertEquals(listOf(PositioningPoint(10, 0.6, 0.4, 1.5)), mb.positioning("BTCUSDT", Positioning.TOP_POSITIONS))
+        assertEquals(0, LedgerSync(b, mb).merge(JSONObject(LedgerSync(a, ma).export("a", 2).toString())).market, "merging twice adds nothing")
+        assertEquals(0, LedgerSync(b).merge(LedgerSync(a, ma).export("a", 3)).market, "a device without the store skips it")
     }
 
     @Test

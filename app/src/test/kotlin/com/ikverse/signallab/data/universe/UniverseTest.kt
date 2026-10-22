@@ -42,6 +42,12 @@ class UniverseTest {
     }
 
     @Test
+    fun aCoinJoinsOnlyAfterHalfAYearOnTheExchange() {
+        val coins = listOf(coin("HALFUSDT", listedAt = now - 179 * day), coin("SIXUSDT", listedAt = now - 181 * day))
+        assertEquals(listOf("SIXUSDT"), Universe.select(coins, mapOf("HALFUSDT" to 9.0, "SIXUSDT" to 1.0), emptyMap(), now).map { it.symbol })
+    }
+
+    @Test
     fun aCoinWithNoListingDayIsAgedByItsFirstStoredDailyCandle() {
         val coins = listOf(coin("AUSDT", listedAt = null), coin("BUSDT", listedAt = null))
         val first = mapOf("AUSDT" to now - 200 * day, "BUSDT" to now - 10 * day)

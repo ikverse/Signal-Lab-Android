@@ -77,6 +77,12 @@ interface Strategy {
     val crossSectional: Boolean get() = false
 
     /**
+     * True for a strategy that makes no new calls any more because its live record settled the question. Its open calls
+     * still close by its rules, its past calls stay in the ledger, and it still counts among the strategies ever tried.
+     */
+    val retired: Boolean get() = false
+
+    /**
      * Entries for every coin of [panel] at once. A strategy that looks at one coin at a time gives [entries] for each; a
      * ranking compares them. Each coin's flags line up with its own candles.
      */

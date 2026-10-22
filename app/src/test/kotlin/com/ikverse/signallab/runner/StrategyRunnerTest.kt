@@ -20,7 +20,9 @@ import com.ikverse.signallab.engine.eval.Backtest
 import com.ikverse.signallab.engine.strategy.dsl.CustomStrategy
 import com.ikverse.signallab.engine.strategy.AnalystCall
 import com.ikverse.signallab.engine.eval.Fills
+import com.ikverse.signallab.engine.strategy.Breakout
 import com.ikverse.signallab.engine.strategy.Builtins
+import com.ikverse.signallab.engine.strategy.Strategy
 import com.ikverse.signallab.engine.strategy.Tier
 import com.ikverse.signallab.ledger.CallRow
 import com.ikverse.signallab.ledger.LedgerDatabase
@@ -255,6 +257,34 @@ class StrategyRunnerTest {
         val made = ledger.dao().allCalls().filter { it.strategyId != "parked" }
         assertTrue(made.isNotEmpty(), "no calls in the replay")
         assertTrue(made.any { (it.sizeFraction ?: 0.0) > 0 }, "unsized calls filled the account: every call got no size")
+    }
+
+    @Test
+    fun aRetiredStrategyOpensNothingNewButItsOpenCallStillCloses() = runTest {
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val btc = panel.getValue("BTCUSDT")
+        val live = Breakout()
+        val retired = object : Strategy by Breakout() {
+            override val id = "retired_breakout"
+            override val retired = true
+        }
+        val start = btc.size - 300
+        // A call the retired strategy opened before it was retired, entering at the open of the replay's first day.
+        val parked = ledger.dao().insertCall(CallRow(
+            strategyId = retired.id, symbol = "BTCUSDT", tf = "1d", signalTime = btc.t[start], entryTime = btc.t[start + 1],
+            entryPrice = btc.open[start + 1], atr = 1.0, stop = null, target = null, maxBars = 3, regime = 1, sizeFraction = 0.05,
+            cost = 0.0025, source = "v2", archived = false, status = "live", openedAt = 0,
+        ))
+        val r = StrategyRunner(
+            market, UniverseRepository(market, store, clock = { market.now }), store, DailyHistory(CandleSync(market, store)), ledger, Collected(),
+            strategies = listOf(live, retired),
+        )
+        for (d in start until btc.size - 2) marketAt(market, d).also { r.run() }
+        val calls = ledger.dao().allCalls()
+        assertTrue(calls.any { it.strategyId == live.id }, "the strategy still running made no calls")
+        assertEquals(listOf(parked), calls.filter { it.strategyId == retired.id }.map { it.id }, "the retired strategy opened a new call")
+        assertNotNull(ledger.dao().exitOf(parked), "the retired strategy's open call was not followed to its exit")
     }
 
     @Test

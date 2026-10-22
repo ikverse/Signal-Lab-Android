@@ -286,3 +286,40 @@ asking is logged here.
   SO_REUSEADDR, and on Linux a port its sockets (including closing and TIME_WAIT ones) held cannot be bound again for a minute. Windows
   allows it, so the test passed locally. The test now starts the first stand-in on a named free port, which makes MockWebServer set
   SO_REUSEADDR, and the retry is gone. No 2.1.0 release had been published.
+
+## Signal Lab 3 (branch `v3`)
+
+Plan in `docs/v3-plan.md`, approved by the owner on 2026-10-22 with the literal "approve" on its fifteen-item list. The owner
+decided the same day that the app keeps paper money and never places orders: calls are copied on Binance by hand. Research in
+`docs/research-2026-10/` and `docs/strategy-research.md` §7.
+
+### Milestone 1 (2.2.0): data, settings, market line
+
+- New keyless feeds, all in `derivatives.db` (version 2, tables `basis`, `positioning`, `dvol`, `notices`; a version 1 file
+  gains them on upgrade): Binance `/futures/data/basis` (perpetual and current quarter) and the three positioning ratios for
+  BTC and ETH, accumulated from Binance's 30 days; Deribit DVOL daily for BTC and ETH back to 24 March 2021; Binance CMS
+  delisting catalog 161 and Upbit trade notices; funding for every watched coin, not only BTC and ETH.
+- Decided without asking:
+  - Every feed runs once per daily pass, each in its own `runCatching`: a refused feed never stops the pass. A notices source
+    that fails leaves the other one read.
+  - Binance's website (`www.binance.com`, which serves the CMS) refused connections from the owner's PC on 2026-10-22 while
+    its API answered. Not tested from the phone yet; if it fails there, Upbit notices still arrive and a Binance delisting is
+    still caught at the halt by the symbol's status.
+  - Only spot delistings are stored from Binance: headlines matching "Binance Will Delist X, Y on DATE", skipping futures,
+    margin, Alpha, Earn and pair-removal notices. Upbit: "거래지원 종료" is a delisting, "거래 유의" a caution (not its lifting).
+  - The app has no Android backup (`allowBackup="false"`), so "backup and sync" for the new tables means device sync. Only
+    basis and positioning travel (as `market` in the format-2 record; older versions ignore the key): funding, DVOL and
+    notices can be downloaded again. Open interest, already stored since 2.0, still does not travel; left as it was.
+  - The DVOL row of the newest day is replaced on the next run, because Deribit's daily candle changes until the day closes.
+  - Market line: `FuturesContext` reads 30-day and 7-day mean BTC funding (annualised at three settlements a day), the
+    current quarter's annualised premium and DVOL with its 7-day change. "Overheated" is 7-day funding above 20% a year with
+    the quarterly premium above 15%, or DVOL up more than 15 points in a week (the plan's numbers). The analyst's
+    `market_state` tool returns the same figures.
+- `Strategy.retired`: a retired strategy opens no new calls; its open calls still close by its rules and it stays in the
+  registry. Hourly trend is retired (121 live calls, mean excess −0.76%, t = −2.16). The hourly pass now follows only coins
+  with an open hourly call, so it stops downloading hourly candles for the whole universe once those close. Retired
+  strategies are left out of the market line's "N strategies may fire".
+- `UNIVERSE_MIN_AGE_DAYS` 90 → 180.
+- Tests: feed parsing and accumulation (basis, positioning, DVOL paging and refresh, notices with one source failing, Binance
+  headline parsing, version 1 → 2 upgrade), the futures sentence and its numbers from stored data, a retired strategy in a
+  replay, the 180-day rule, and the futures series through sync.

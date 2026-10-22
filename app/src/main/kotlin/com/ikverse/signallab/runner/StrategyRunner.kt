@@ -139,7 +139,7 @@ class StrategyRunner(
         for (sym in (universe.map { it.symbol } + open.map { it.symbol } + waiting.map { it.symbol }).distinct()) {
             candles.window(sym, Timeframe.D1)?.let { panel[sym] = it }
         }
-        val daily = active.filter { it.timeframe == Timeframe.D1 }
+        val daily = active.filter { it.timeframe == Timeframe.D1 && !it.retired }
         // A ranking compares the universe's coins at the same close, once for all of them.
         val ranked = daily.filter { it.crossSectional }.associate { s -> s.id to s.entriesAcross(panel.filterKeys { it in rankOf }) }
 
@@ -160,19 +160,37 @@ class StrategyRunner(
         }
 
         for (p in waiting.filter { it.symbol !in panel }) pending?.expired(p.id, "No daily history for ${p.symbol}.", now)
-        derivatives?.let { d -> for (symbol in DERIVATIVES_COINS) runCatching { d.syncFunding(symbol); d.syncOpenInterest(symbol) } }
+        derivatives?.let { d -> syncDerivatives(d, universe.map { it.symbol }) }
         dao.putSetting(SettingRow(UNIVERSE, universe.joinToString(",") { it.symbol }, now))
         runCatching { retier(prefs, panel.filterKeys { it in rankOf }, btc, now) }
         return RunReport(universe.map { it.symbol }, 0, 0, synced.failures)
     }
 
+    /**
+     * Futures and market context, once a day: funding for every watched coin (the funding-regime strategy and the market
+     * line read it); open interest, basis, positioning and implied volatility for Bitcoin and Ether; and exchange notices.
+     * Each piece fails alone: a refused feed never stops the pass.
+     */
+    private suspend fun syncDerivatives(d: DerivativesSync, watched: List<String>) {
+        for (symbol in (DERIVATIVES_COINS + watched).distinct()) runCatching { d.syncFunding(symbol) }
+        for (symbol in DERIVATIVES_COINS) {
+            runCatching { d.syncOpenInterest(symbol) }
+            runCatching { d.syncPositioning(symbol) }
+            for (contract in BASIS_CONTRACTS) runCatching { d.syncBasis(symbol, contract) }
+            runCatching { d.syncDvol(symbol.removeSuffix("USDT")) }
+        }
+        runCatching { d.syncNotices() }
+    }
+
     private suspend fun hourlyPass(prefs: Preferences, open: List<CallRow>, now: Long, tally: Tally) {
         val sync = hourly ?: return
-        val hourlyStrategies = active.filter { it.timeframe == Timeframe.H1 }
-        if (hourlyStrategies.isEmpty()) return
+        // A retired strategy opens nothing new, but its open calls are still followed to their exit.
+        val hourlyStrategies = active.filter { it.timeframe == Timeframe.H1 && !it.retired }
+        if (hourlyStrategies.isEmpty() && open.none { it.tf == Timeframe.H1.label }) return
         val btc = candles.window(DataConfig.REGIME_COIN, Timeframe.D1) ?: return
         val since = now - HOURLY_DAYS * DAY
-        val universe = storedUniverse()
+        // With no hourly strategy making calls, only coins with an open hourly call are followed.
+        val universe = if (hourlyStrategies.isEmpty()) emptyList() else storedUniverse()
         for (symbol in (universe + open.filter { it.tf == Timeframe.H1.label }.map { it.symbol }).distinct()) {
             val forming = runCatching { sync.syncCoin(symbol, Timeframe.H1, since).forming }.getOrNull()
             val c = candles.window(symbol, Timeframe.H1, since) ?: continue
@@ -287,6 +305,9 @@ class StrategyRunner(
         const val HOURLY_DAYS = 100
 
         val DERIVATIVES_COINS = listOf("BTCUSDT", "ETHUSDT")
+
+        /** The perpetual's basis and the nearest quarterly contract's, whose annualised premium is the leverage gauge. */
+        val BASIS_CONTRACTS = listOf("PERPETUAL", "CURRENT_QUARTER")
 
         /** Settings the runner leaves for the screens: when it last ran, and the coins it watched. */
         const val LAST_PASS = "last_pass_at"

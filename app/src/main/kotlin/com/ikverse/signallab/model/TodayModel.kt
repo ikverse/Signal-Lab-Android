@@ -222,7 +222,7 @@ class TodayModel(
         val lines = i.prefs.contextLines.filter { it.until >= Math.floorDiv(i.t, DAY) * DAY }.map { "${Words.day(it.until)} · ${it.text}" }
         return TodayUi(
             loaded = true,
-            market = MarketLine.of(btc, funding, all.filter { it !is CustomStrategy && it.id != AnalystCall.id }),
+            market = MarketLine.of(btc, funding, all.filter { it !is CustomStrategy && it.id != AnalystCall.id && !it.retired }, FuturesContext.read(derivatives, i.t)),
             newCalls = newCalls.sortedByDescending { it.sizeFraction },
             open = open.sortedWith(compareByDescending<OpenUi> { it.leaveNow }.thenBy { it.call.entryTime }),
             closedThisWeek = closed.sortedByDescending { it.exitTime },
