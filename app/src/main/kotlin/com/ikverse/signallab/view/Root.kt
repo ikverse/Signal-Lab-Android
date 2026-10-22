@@ -1,6 +1,7 @@
 package com.ikverse.signallab.view
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -160,14 +161,8 @@ fun SignalLabRoot(models: AppModels, openCall: Long? = null) {
             }
         } else {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                Box(Modifier.weight(1f)) {
-                    content()
-                    if (!top) {
-                        IconButton({ go(Routes.Settings) }, Modifier.align(Alignment.TopEnd).padding(8.dp).testTag("to-settings")) {
-                            Icon(Icons.Settings, "Settings", tint = Ink.Body)
-                        }
-                    }
-                }
+                if (!top) SettingsBar { go(Routes.Settings) }
+                Box(Modifier.weight(1f)) { content() }
                 HorizontalDivider(color = Ink.Rule)
                 NavigationBar(containerColor = Ink.Bar, modifier = Modifier.testTag("bar")) {
                     for (t in tabs) {
@@ -187,6 +182,14 @@ fun SignalLabRoot(models: AppModels, openCall: Long? = null) {
 private fun BackBar(onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onBack, Modifier.testTag("back")) { Icon(Icons.Back, "Back", tint = Ink.Body) }
+    }
+}
+
+/** The phone's top row on a tab: the settings button in its own space, so the screen scrolls beneath it, not under it. */
+@Composable
+private fun SettingsBar(onSettings: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onSettings, Modifier.testTag("to-settings")) { Icon(Icons.Settings, "Settings", tint = Ink.Body) }
     }
 }
 
