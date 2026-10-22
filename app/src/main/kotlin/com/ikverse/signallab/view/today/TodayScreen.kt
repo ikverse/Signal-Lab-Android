@@ -65,6 +65,7 @@ fun TodayScreen(
     compact: Boolean = true,
     onRecord: (String) -> Unit = {},
     onDismiss: (String) -> Unit = {},
+    onSettings: (() -> Unit)? = null,
 ) {
     if (!state.loaded) {
         Column(modifier.fillMaxSize().testTag("today-loading")) {}
@@ -77,7 +78,7 @@ fun TodayScreen(
     ) {
         item(key = "title") {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                ScreenTitle("Today")
+                ScreenTitle("Today", onSettings = onSettings)
                 Text(passLine(state), style = Type.Small, modifier = Modifier.testTag("pass-line"))
             }
         }

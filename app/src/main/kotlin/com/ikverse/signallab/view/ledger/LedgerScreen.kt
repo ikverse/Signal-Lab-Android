@@ -60,6 +60,7 @@ fun LedgerScreen(
     onExport: () -> Unit,
     modifier: Modifier = Modifier,
     wide: Boolean = false,
+    onSettings: (() -> Unit)? = null,
 ) {
     if (!state.loaded) {
         Box(modifier.fillMaxSize().testTag("ledger-loading"))
@@ -70,7 +71,7 @@ fun LedgerScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { ScreenTitle("Ledger") }
+        item { ScreenTitle("Ledger", onSettings = onSettings) }
         item { AccountPanel(state, onPeriod, wide) }
         if (state.strategies.isEmpty()) {
             item { Empty("No live calls yet", "Each strategy's live record builds up here from its first call. Until then its evidence is the research and its history on your coins, under Strategies.") }

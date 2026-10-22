@@ -95,7 +95,7 @@ private val starters = listOf(
  * them the key, the model, the monthly budget and the scheduled runs.
  */
 @Composable
-fun AnalystScreen(state: AnalystUi, actions: AnalystActions, onRuns: () -> Unit, modifier: Modifier = Modifier) {
+fun AnalystScreen(state: AnalystUi, actions: AnalystActions, onRuns: () -> Unit, modifier: Modifier = Modifier, onSettings: (() -> Unit)? = null) {
     if (!state.loaded) {
         Box(modifier.fillMaxSize().testTag("analyst-loading"))
         return
@@ -114,7 +114,7 @@ fun AnalystScreen(state: AnalystUi, actions: AnalystActions, onRuns: () -> Unit,
         ) {
             item(key = "title") {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    ScreenTitle("Analyst")
+                    ScreenTitle("Analyst", onSettings = onSettings)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(state.spendLine, style = Type.Small, modifier = Modifier.weight(1f).testTag("spend"))
                         TextButton(onRuns, Modifier.testTag("to-runs")) { Text("What was sent", color = Ink.Accent, fontSize = 13.sp) }

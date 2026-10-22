@@ -1,7 +1,6 @@
 package com.ikverse.signallab.view
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -140,7 +139,7 @@ fun SignalLabRoot(models: AppModels, openCall: Long? = null) {
         val content = @Composable {
             Column(Modifier.fillMaxSize()) {
                 if (top) BackBar { nav.popBackStack() }
-                Box(Modifier.weight(1f)) { Screens(models, nav, twoPane) }
+                Box(Modifier.weight(1f)) { Screens(models, nav, twoPane, onSettings = if (rail) null else ({ go(Routes.Settings) })) }
             }
         }
         if (rail) {
@@ -161,7 +160,6 @@ fun SignalLabRoot(models: AppModels, openCall: Long? = null) {
             }
         } else {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                if (!top) SettingsBar { go(Routes.Settings) }
                 Box(Modifier.weight(1f)) { content() }
                 HorizontalDivider(color = Ink.Rule)
                 NavigationBar(containerColor = Ink.Bar, modifier = Modifier.testTag("bar")) {
@@ -182,14 +180,6 @@ fun SignalLabRoot(models: AppModels, openCall: Long? = null) {
 private fun BackBar(onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onBack, Modifier.testTag("back")) { Icon(Icons.Back, "Back", tint = Ink.Body) }
-    }
-}
-
-/** The phone's top row on a tab: the settings button in its own space, so the screen scrolls beneath it, not under it. */
-@Composable
-private fun SettingsBar(onSettings: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onSettings, Modifier.testTag("to-settings")) { Icon(Icons.Settings, "Settings", tint = Ink.Body) }
     }
 }
 
@@ -216,14 +206,14 @@ private fun ask(m: AppModels, nav: androidx.navigation.NavHostController): ((com
 }
 
 @Composable
-private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, twoPane: Boolean) {
+private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, twoPane: Boolean, onSettings: (() -> Unit)?) {
     val prefs by m.preferences.collectAsStateWithLifecycle()
     NavHost(nav, startDestination = Routes.Today, modifier = Modifier.fillMaxSize()) {
         composable<Routes.Today> {
             val state by m.today.state.collectAsStateWithLifecycle()
             if (!twoPane) {
                 TodayScreen(state, onOpenCall = { nav.navigate(Routes.Call(it)) }, onLedger = { nav.navigate(Routes.Ledger) },
-                    onRecord = m.today::record, onDismiss = m.today::dismiss)
+                    onRecord = m.today::record, onDismiss = m.today::dismiss, onSettings = onSettings)
             } else {
                 var picked by rememberSaveable { mutableStateOf<Long?>(null) }
                 val first = state.newCalls.firstOrNull()?.id ?: state.open.firstOrNull()?.call?.id
@@ -231,7 +221,7 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
                 Row(Modifier.fillMaxSize()) {
                     TodayScreen(state, onOpenCall = { picked = it }, onLedger = { nav.navigate(Routes.Ledger) },
                         modifier = Modifier.width(360.dp).fillMaxHeight(), selected = chosen, compact = false,
-                        onRecord = m.today::record, onDismiss = m.today::dismiss)
+                        onRecord = m.today::record, onDismiss = m.today::dismiss, onSettings = onSettings)
                     VerticalDivider(color = Ink.Rule)
                     Box(Modifier.weight(1f)) {
                         if (chosen == null) {
@@ -254,11 +244,11 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
         }
         composable<Routes.Ledger> {
             val state by m.ledger.state.collectAsStateWithLifecycle()
-            LedgerScreen(state, m.ledger::choose, onStrategy = { nav.navigate(Routes.Evidence(it)) }, onExport = m.exportCsv, wide = twoPane)
+            LedgerScreen(state, m.ledger::choose, onStrategy = { nav.navigate(Routes.Evidence(it)) }, onExport = m.exportCsv, wide = twoPane, onSettings = onSettings)
         }
         composable<Routes.Strategies> {
             val state by m.strategies.state.collectAsStateWithLifecycle()
-            StrategiesScreen(state, onOpen = { nav.navigate(Routes.Evidence(it)) }, onSwitch = m.strategies::switch, onRun = m.strategies::run)
+            StrategiesScreen(state, onOpen = { nav.navigate(Routes.Evidence(it)) }, onSwitch = m.strategies::switch, onRun = m.strategies::run, onSettings = onSettings)
         }
         composable<Routes.Evidence> { back ->
             val id = back.toRoute<Routes.Evidence>().id
@@ -268,7 +258,7 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
         }
         composable<Routes.Markets> {
             val state by m.markets.state.collectAsStateWithLifecycle()
-            MarketsScreen(state, m.markets::search, onCoin = { nav.navigate(Routes.Coin(it)) })
+            MarketsScreen(state, m.markets::search, onCoin = { nav.navigate(Routes.Coin(it)) }, onSettings = onSettings)
         }
         composable<Routes.Coin> { back ->
             val symbol = back.toRoute<Routes.Coin>().symbol
@@ -284,7 +274,7 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
             } else {
                 LaunchedEffect(Unit) { model.refresh() }
                 val state by model.state.collectAsStateWithLifecycle()
-                AnalystScreen(state, actions, onRuns = { nav.navigate(Routes.AnalystRuns) })
+                AnalystScreen(state, actions, onRuns = { nav.navigate(Routes.AnalystRuns) }, onSettings = onSettings)
             }
         }
         composable<Routes.AnalystRuns> {

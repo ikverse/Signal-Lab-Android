@@ -43,13 +43,13 @@ import com.ikverse.signallab.view.theme.Ink
 import com.ikverse.signallab.view.theme.Type
 
 @Composable
-fun MarketsScreen(state: MarketsUi, onSearch: (String) -> Unit, onCoin: (String) -> Unit, modifier: Modifier = Modifier) {
+fun MarketsScreen(state: MarketsUi, onSearch: (String) -> Unit, onCoin: (String) -> Unit, modifier: Modifier = Modifier, onSettings: (() -> Unit)? = null) {
     if (!state.loaded) {
         Box(modifier.fillMaxSize().testTag("markets-loading"))
         return
     }
     LazyColumn(modifier.fillMaxSize().testTag("markets"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { ScreenTitle("Markets") }
+        item { ScreenTitle("Markets", onSettings = onSettings) }
         item { StateCards(state.market) }
         item {
             OutlinedTextField(
