@@ -265,3 +265,89 @@ The user can change these in Settings; the stress test at 2× always runs.
 - Does Breakout's edge on altcoins survive after 2022, when the published samples end?
 - Does Leaders keep decaying? If its live excess turns negative, it is switched off.
 - Do the vetoes help? Vetoed signals are still recorded, silently, so the answer can be measured.
+
+## 7. The October 2026 pass: what crypto traders use, and what survives
+
+On 2026-10-22 six more research passes looked at what active crypto traders use beyond price rules: derivatives and
+positioning, on-chain and flows, event-driven plays, systematic quant work from 2023 to 2026, yield and carry, and real-money
+execution. The synthesis is `docs/research-2026-10/report.md`; the six briefs beside it carry every source. Signal Lab 3
+(`docs/v3-plan.md`) builds on this section. The owner decided the same day that the app keeps paper money and never places
+orders; calls are copied by hand.
+
+### 7.1 Sizing matters more than any new entry
+
+- **Volatility scaling.** Out of sample on 150+ Binance perpetuals, January 2022 to December 2024, net of fees, slippage and
+  funding: one-month time-series momentum at Sharpe 0.65 and a −34.8% maximum drawdown became Sharpe 1.83 and −16.1% when
+  scaled to a 10% volatility target ([arXiv 2602.11708](https://arxiv.org/html/2602.11708v1)). On daily BTC, ETH and SOL
+  spot from 2017 to mid-2025: Sharpe 0.71 and −80% became 0.79 and −15%; "the trend signal added about 0.05 Sharpe"
+  ([Summitward](https://summitward.com/learn/crypto-trend-following)). The gain is mostly drawdown, not return
+  (Cederburg and others, [NBER w22208](https://www.nber.org/papers/22208)).
+- **Binary in/out is the worst way to use a trend signal**; linear or nonlinear scaling beats it (Moskowitz and others, 2025,
+  via [Marrazzo](https://antoniomarrazzo.substack.com/p/trend-following-mostly-a-volatility)).
+
+**Used by:** the sizing engine (Signal Lab 2.3), which records both its size and the plain ATR size on every call, so the
+ledger can say whether it helps on the owner's coins.
+
+### 7.2 Funding as a regime, basis and heat as vetoes
+
+- **Negative 30-day funding.** K33, May 2026: buying while the 30-day average BTC funding rate was negative, since October
+  2018, won 83 to 96% of the time over 30 to 360 days against 55 to 70% for random dates
+  ([The Block](https://www.theblock.co/post/400182/bitcoin-longest-negative-funding-streak-this-decade-k33-flags-short-squeeze-risk)).
+  VanEck, April 2026, since 2020: 30-day return +11.5% against +4.5% unconditionally; funding below −5% a year was followed by
+  +19.4% ([Bitcoin Magazine](https://bitcoinmagazine.com/news/vaneck-flags-dual-bullish-for-bitcoin)). **Gross, seven to nine
+  episodes, method unpublished.** The one direct test of funding as a cross-sectional signal found no alpha
+  ([SSRN 6701738](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6701738)).
+- **Basis.** Crypto carry averages above 10% a year and "high carry predicts future price crashes" (Schmeling, Schrimpf and
+  Todorov, [BIS WP 1087](https://www.bis.org/publ/work1087.pdf)); basis is the strongest cross-sectional predictor of futures
+  returns at daily horizon (Chi, Hao, Hu and Ran, *Journal of Futures Markets* 2023,
+  [link](https://ideas.repec.org/a/wly/jfutmk/v43y2023i8p1161-1180.html)). Funding ran from about 10% to 30% a year in the
+  week before the 10 October 2025 crash, when $19B of positions were liquidated.
+- **Implied volatility** (Deribit DVOL) is a regime variable, not a directional one
+  ([arXiv 2410.15195](https://arxiv.org/abs/2410.15195)).
+
+**Used by:** the market line on Today (2.2), the leverage-heat veto (2.3) and Hated rally (2.4, Testing).
+
+### 7.3 A research-grade trend ranking
+
+- **CTREND.** Fieberg, Liedtke, Poddig, Walker and Zaremba, *JFQA* 60(7), November 2025: a composite of 28 trend indicators,
+  weekly. The top fifth of the 100 largest coins earned 3.78% a week gross and 3.11 to 3.38% net at 30 to 50 basis points per
+  trade, 2015 to 2022. **Its second half (2018 to 2022) earned 1.56% a week with t = 1.93; nothing after the ETFs.**
+
+**Used by:** Trend leaders (2.4, Watch), to be compared with Leaders on the same coins.
+
+### 7.4 Events: stand aside
+
+- **New listings.** Binance's 2024 cohort from its first-day close: +2.78% next day, +0.40% at one week, −22.66% at three
+  months and −37.64% at six, with 5.5% above the first close at six months
+  ([Empirica](https://empirica.io/blog/the-binance-effect-a-7-year-analysis-for-token-founders/)). Of 2025's token launches,
+  85% were below their launch price at year end. **Used by:** the universe's minimum age, raised from 90 to 180 days (2.2).
+- **Delisting notices** come 3 to 14 days before the halt; WAVES fell about 30%, OMG 27% and XEM over 30% on Binance's
+  notice ([The Block](https://www.theblock.co/post/298063/binance-to-delist-waves-omg-and-xem-on-june-17-sparking-price-plunges)),
+  TORN 57% in a day. **Used by:** the notices feed (2.2) and the delisting veto (2.3).
+- **Token unlocks**: about 90% of 16,000 events were followed by weakness, worst above 5% of supply (Keyrock, via
+  [CryptoSlate](https://cryptoslate.com/90-of-token-unlocks-drive-prices-down-declines-begin-a-month-ahead/)). No free unlock
+  calendar remains, so this veto waits.
+
+### 7.5 Hourly trend, retired
+
+Over its first 121 live calls (16 to 21 October 2026) Hourly trend won 10% of the time, lost 0.74% per call after fees and
+sat 0.76% behind random entries, t = −2.16: past the Failing rule of §4 within five days, as §1.6 warned ("fee-fragile").
+It makes no new calls from 2.2.0; its record stays in the ledger and it still counts among the strategies tried.
+
+### 7.6 Tested and rejected
+
+| Idea | Finding | Source |
+|---|---|---|
+| Buying listings or the Upbit pump | Gains come before and in the first minutes; after the first close, flat to negative | Ante 2019; [The Tie 2026](https://www.thetie.io/insights/what-does-an-exchange-listing-actually-deliver-in-2026) |
+| Liquidation-flush dip buying | No forward-return evidence; capitulation cohorts underperformed | [arXiv 2607.27070](https://arxiv.org/abs/2607.27070); VanEck 2026 |
+| CME weekend gaps | 80% fill against 83% for a made-up level; CME trades 24/7 since 29 May 2026 | [Tradewize](https://tradewize.io/blog/how-to-read-the-cme-gap) |
+| Copy trading, whale alerts | Followers lose on average; whale alerts move volatility, not direction | Philadelphia Fed WP 26-42 |
+| Exchange flows, stablecoin mints | Adjusted R² 0.001 to 0.002; issuance follows prices | Chi, Chu and Hao 2025; Kristoufek 2021 |
+| Cycle-top indicators | 210 to 240 days early in 2021, silent at the October 2025 top | [arXiv 2607.26188](https://arxiv.org/abs/2607.26188) |
+| Grid bots | Zero expected profit before fees | [arXiv 2506.11921](https://arxiv.org/abs/2506.11921) |
+| Triangular arbitrage | 96.9% of opportunities unprofitable even at VIP 9 | Muck, Schmidl and Wolf, *FRL* 2025 |
+| Machine learning on OHLCV | No robust edge over naive baselines in 23 studies | [arXiv 2606.00071](https://arxiv.org/html/2606.00071v1) |
+| Fear and Greed, Google Trends, LLM headline reads | No out-of-sample return prediction | Two 2026 studies; CFRI 2025 |
+| Prediction markets as a lead | No Granger-predictive content for next-hour BTC | Aalborg thesis 2026 |
+| Standing funding carry | 2.0 to 3.0% a year net on BTC and ETH in 2026, below stablecoin yields | Binance funding, own pull |
+| Covered calls on BTC | −0.5% net over October 2021 to April 2026 | Anchorage, 37,000 backtests |

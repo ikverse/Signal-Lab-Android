@@ -118,7 +118,8 @@ class AnalystTools(
         val p = prefs.current()
         val btc = candles.window(DataConfig.REGIME_COIN, Timeframe.D1)
         val funding = derivatives?.funding(DataConfig.REGIME_COIN, now() - 2 * DAY)?.lastOrNull()?.rate
-        val line = MarketLine.of(btc, funding, catalog.builtins)
+        val futures = com.ikverse.signallab.model.FuturesContext.read(derivatives, now())
+        val line = MarketLine.of(btc, funding, catalog.builtins.filter { !it.retired }, futures)
         val coins = universe()
         val windows = coins.mapNotNull { sym -> candles.latest(sym, Timeframe.D1, 31)?.let { sym to it } }
         val openCalls = dao.openCalls().count { it.source == "v2" }
@@ -129,6 +130,12 @@ class AnalystTools(
             putNum("btc_vs_200d_average", line.vsAverage)
             put("swings_30d", line.swings ?: "unknown")
             putNum("btc_funding_8h", funding)
+            putNum("btc_funding_30d_per_year", futures?.funding30d)
+            putNum("btc_funding_7d_per_year", futures?.funding7d)
+            putNum("btc_quarterly_premium_per_year", futures?.quarterlyPremium)
+            putNum("btc_implied_vol", futures?.impliedVol)
+            putNum("btc_implied_vol_change_7d", futures?.impliedVolChange7d)
+            futures?.sentence?.let { put("futures_summary", it) }
             put("open_calls", openCalls)
             putJsonArray("context_on_today") { p.contextLines.filter { it.until >= now() - DAY }.forEach { add("${day(it.until)}: ${it.text}") } }
             putJsonArray("watched_coins") {

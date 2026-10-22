@@ -139,6 +139,7 @@ fun MarketPanel(m: MarketLine, modifier: Modifier = Modifier, lines: List<String
             m.btcPrice?.let { Num("BTC ${Words.price(it)}", color = Ink.Body, size = 13) }
         }
         Text(m.sentence + " ", style = Type.Body.copy(color = Ink.Text))
+        m.futuresSentence?.let { Text(it, style = Type.Small.copy(color = Ink.Body), modifier = Modifier.testTag("market-futures")) }
         Text(m.allowedSentence, style = Type.Small)
         for (l in lines) Text("•  $l", style = Type.Small.copy(color = Ink.Body), modifier = Modifier.testTag("context-line"))
     }

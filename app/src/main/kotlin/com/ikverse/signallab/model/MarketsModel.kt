@@ -102,7 +102,7 @@ class MarketsModel(
         val watched = universe.map(::coin)
         val found = if (text.length < 2) emptyList() else symbols.filter { it.contains(text) }.map(::coin)
         val rules = strategies().filter { it !is com.ikverse.signallab.engine.strategy.dsl.CustomStrategy && it.id != com.ikverse.signallab.engine.strategy.AnalystCall.id }
-        return MarketsUi(true, MarketLine.of(btc, funding, rules), watched, found, q, pinned.size, excluded.size)
+        return MarketsUi(true, MarketLine.of(btc, funding, rules.filter { !it.retired }, FuturesContext.read(derivatives, now())), watched, found, q, pinned.size, excluded.size)
     }
 
     /** One coin's page. */

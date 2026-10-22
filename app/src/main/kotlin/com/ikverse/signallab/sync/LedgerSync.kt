@@ -1,6 +1,10 @@
 package com.ikverse.signallab.sync
 
 import androidx.room.withTransaction
+import com.ikverse.signallab.data.futures.BasisPoint
+import com.ikverse.signallab.data.futures.DerivativesStore
+import com.ikverse.signallab.data.futures.Positioning
+import com.ikverse.signallab.data.futures.PositioningPoint
 import com.ikverse.signallab.engine.EngineConfig
 import com.ikverse.signallab.ledger.AnalystNotes
 import com.ikverse.signallab.ledger.CallRow
@@ -25,11 +29,13 @@ data class MergeResult(
     val reports: Int = 0,
     val pins: Int = 0,
     val settingsChanged: Set<String> = emptySet(),
+    /** Futures basis and positioning points brought in; not part of [any], which is about the ledger. */
+    val market: Int = 0,
 ) {
     val any: Boolean get() = calls + exits + strategies + customs + reports + pins > 0 || settingsChanged.isNotEmpty()
 
     operator fun plus(o: MergeResult) = MergeResult(calls + o.calls, exits + o.exits, strategies + o.strategies, customs + o.customs,
-        reports + o.reports, pins + o.pins, settingsChanged + o.settingsChanged)
+        reports + o.reports, pins + o.pins, settingsChanged + o.settingsChanged, market + o.market)
 }
 
 /**
@@ -44,7 +50,11 @@ data class MergeResult(
  * A Signal Lab 1 lab pattern's strategy id carries the row id it had on its own phone (`v1:lab3_1h`); on the wire it becomes
  * `v1:lab@<sync id>_1h`, and back here it takes this phone's id for that pattern when there is one.
  */
-class LedgerSync(private val ledger: LedgerDatabase) {
+class LedgerSync(
+    private val ledger: LedgerDatabase,
+    /** The futures series that cannot be downloaded again after 30 days (basis, positioning) travel too; null leaves them out. */
+    private val market: DerivativesStore? = null,
+) {
     private val dao get() = ledger.dao()
 
     // --- export ---------------------------------------------------------------------------------------------------------
@@ -92,6 +102,47 @@ class LedgerSync(private val ledger: LedgerDatabase) {
 
         return JSONObject().put("format", FORMAT).put("device", deviceId).put("exported_at", now).put("strategies", strategies)
             .put("calls", calls).put("customs", customArray).put("reports", reports).put("pins", pins).put("settings", settings)
+            .putOpt("market", exportMarket())
+    }
+
+    /** Basis and positioning, the futures series Binance keeps for 30 days only, so no device loses what another collected. */
+    private suspend fun exportMarket(): JSONObject? {
+        val m = market ?: return null
+        val basis = JSONArray()
+        for ((pair, contract) in m.basisSeries()) for (p in m.basis(pair, contract)) {
+            basis.put(JSONArray().put(pair).put(contract).put(p.time).put(p.futuresPrice).put(p.indexPrice).put(p.basisRate)
+                .put(if (p.annualized.isNaN()) JSONObject.NULL else p.annualized))
+        }
+        val positioning = JSONArray()
+        for ((symbol, kind) in m.positioningSeries()) for (p in m.positioning(symbol, kind)) {
+            positioning.put(JSONArray().put(symbol).put(kind.label).put(p.time).put(p.longSide).put(p.shortSide).put(p.ratio))
+        }
+        return JSONObject().put("basis", basis).put("positioning", positioning)
+    }
+
+    /** Stores the other device's basis and positioning points this one lacks; returns how many were new. */
+    private suspend fun mergeMarket(o: JSONObject?): Int {
+        val m = market ?: return 0
+        if (o == null) return 0
+        var added = 0
+        val basis = o.optJSONArray("basis")
+        if (basis != null) {
+            val rows = (0 until basis.length()).map { basis.getJSONArray(it) }
+            for ((key, group) in rows.groupBy { it.getString(0) to it.getString(1) }) {
+                added += m.insertBasis(key.first, key.second, group.map { r ->
+                    BasisPoint(r.getLong(2), r.getDouble(3), r.getDouble(4), r.getDouble(5), if (r.isNull(6)) Double.NaN else r.getDouble(6))
+                })
+            }
+        }
+        val positioning = o.optJSONArray("positioning")
+        if (positioning != null) {
+            val rows = (0 until positioning.length()).map { positioning.getJSONArray(it) }
+            for ((key, group) in rows.groupBy { it.getString(0) to it.getString(1) }) {
+                val kind = Positioning.entries.firstOrNull { it.label == key.second } ?: continue
+                added += m.insertPositioning(key.first, kind, group.map { r -> PositioningPoint(r.getLong(2), r.getDouble(3), r.getDouble(4), r.getDouble(5)) })
+            }
+        }
+        return added
     }
 
     /** The record's content without when it was exported, so an unchanged record is not sent again. */
@@ -106,7 +157,8 @@ class LedgerSync(private val ledger: LedgerDatabase) {
 
     /** Merges another device's record, format 1 or 2, in one transaction; a format this version does not know is refused. */
     suspend fun merge(remote: JSONObject): MergeResult = when (val format = remote.optInt("format")) {
-        FORMAT -> ledger.withTransaction { mergeV2(remote) }
+        // The futures series live in their own file, so they are merged after the ledger's transaction, and only add rows.
+        FORMAT -> ledger.withTransaction { mergeV2(remote) }.let { it.copy(market = mergeMarket(remote.optJSONObject("market"))) }
         1 -> ledger.withTransaction { mergeV1(remote) }
         else -> throw IllegalArgumentException("Sync data is format $format; this version reads formats 1 and $FORMAT.")
     }

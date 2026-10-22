@@ -185,8 +185,9 @@ class Leaders(
 
 /**
  * Hourly trend (docs/strategy-research.md §1.6): an hourly close crossing above its 50-hour exponential average, taken only
- * while the daily 50-day average is rising; leave on an hourly close back below it, or after two days. The only test is
- * gross of fees, and fees decide most hourly rules: Testing.
+ * while the daily 50-day average is rising; leave on an hourly close back below it, or after two days. The only test was
+ * gross of fees, and fees decided it: over its first 121 live calls (16 to 21 October 2026) it won 10%, lost 0.74% per call
+ * after fees and sat 0.76% behind random entries (t = -2.16), past the Failing rule. Retired (docs/strategy-research.md §7).
  */
 class HourlyTrend(
     val hours: Int = 50,
@@ -198,6 +199,7 @@ class HourlyTrend(
     override val launchTier = Tier.TESTING
     override val bullOnly = false
     override val exit = ExitPlan(maxBars = 48)
+    override val retired = true
 
     override fun entries(c: Candles): BooleanArray {
         val cross = Indicators.crossedAbove(c.close, Indicators.ema(c.close, hours))

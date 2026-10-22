@@ -55,6 +55,34 @@ class ModelsTest {
     }
 
     @Test
+    fun theFuturesLineSaysWhenShortsPayAndWhenLeverageIsOverheated() = runTest {
+        val hated = FuturesContext(-0.021, -0.01, 0.054, 48.0, 3.0)
+        assertTrue(hated.hated && !hated.hot)
+        assertEquals("Over 30 days shorts have paid longs (−2.1% a year), a sign that has come before strong months; " +
+            "the quarterly futures premium is 5.4% a year; implied volatility is 48, up 3 in a week.", hated.sentence)
+        val hot = FuturesContext(0.18, 0.31, 0.17, 55.0, null)
+        assertTrue(hot.hot && !hot.hated)
+        assertTrue(hot.sentence!!.startsWith("Longs are paying a lot to stay long (18.0% a year over 30 days)"))
+        assertTrue(hot.sentence!!.endsWith("Leverage looks overheated."))
+        assertTrue(FuturesContext(0.05, 0.05, 0.05, 40.0, 16.0).hot, "a jump in implied volatility alone is overheated")
+        assertEquals(null, FuturesContext(null, null, null, null, null).sentence)
+
+        val day = 86_400_000L
+        val now = 1_792_000_000_000L
+        val store = com.ikverse.signallab.data.futures.DerivativesStore(context, name = null, io = Dispatchers.Unconfined)
+        assertEquals(null, FuturesContext.read(store, now), "nothing stored, nothing said")
+        // 30 days of settlements at -0.0001 per 8 hours: -0.0001 * 3 * 365 = -10.95% a year.
+        store.insertFunding("BTCUSDT", List(90) { com.ikverse.signallab.data.futures.FundingPoint(now - 30 * day + 1 + it * 8 * 3_600_000L, -0.0001, Double.NaN) })
+        store.insertDvol("BTC", listOf(com.ikverse.signallab.data.futures.DvolPoint(now - 8 * day, 1.0, 1.0, 1.0, 40.0),
+            com.ikverse.signallab.data.futures.DvolPoint(now - day, 1.0, 1.0, 1.0, 46.0)))
+        val read = FuturesContext.read(store, now)!!
+        assertEquals(-0.1095, read.funding30d!!, 1e-9)
+        assertEquals(46.0, read.impliedVol)
+        assertEquals(6.0, read.impliedVolChange7d)
+        assertTrue(read.hated)
+    }
+
+    @Test
     fun aBreakoutSaysWhatItBrokeAndWhatEndsIt() {
         val c = Golden.panel(Timeframe.D1).getValue("SOLUSDT")
         val s = Breakout()

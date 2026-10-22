@@ -82,9 +82,12 @@ class Graph(context: Context, private val scope: CoroutineScope) {
     val prefsStore = PreferenceStore(ledger.dao())
     val preferences: StateFlow<Preferences> = prefsStore.preferences.stateIn(scope, SharingStarted.Eagerly, Preferences())
     val derivativesStore = DerivativesStore(app)
-    val derivatives = DerivativesSync(FuturesClient(market), derivativesStore, market::nowMs) {
-        host == DataConfig.HOST_COM && preferences.value.futuresData
-    }
+    val derivatives = DerivativesSync(
+        FuturesClient(market), derivativesStore, market::nowMs,
+        available = { host == DataConfig.HOST_COM && preferences.value.futuresData },
+        deribit = com.ikverse.signallab.data.futures.DeribitClient(market),
+        notices = com.ikverse.signallab.data.futures.NoticesClient(market),
+    )
     val strategies = Builtins.all
     val catalog = StrategyCatalog(ledger.dao(), strategies, scope)
     private val allStrategies = { catalog.all.value }
@@ -135,7 +138,7 @@ class Graph(context: Context, private val scope: CoroutineScope) {
     val analystModel = AnalystModel(analyst, analystStore, apiKeys, spend, prefsStore, ledger.dao(), scope, analystTools.all, pcHost)
     // Sync between the owner's devices, through the app's hidden folder in their Google Drive.
     val deviceSync = DeviceSync(
-        SyncSettings(ledger.dao()), GoogleAuthorizer(app), { token -> DriveFolder(BinanceClient.defaultHttp(), token) }, LedgerSync(ledger),
+        SyncSettings(ledger.dao()), GoogleAuthorizer(app), { token -> DriveFolder(BinanceClient.defaultHttp(), token) }, LedgerSync(ledger, derivativesStore),
         SettingsSyncMemory(ledger.dao()), afterMerge = {},
     )
     val settings = SettingsModel(app, prefsStore, updates, lastImport, BuildConfig.VERSION_NAME, scope, deviceSync.status)
