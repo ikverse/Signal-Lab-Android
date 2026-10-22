@@ -50,13 +50,14 @@ fun StrategiesScreen(
     onSwitch: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
     onRun: (String, Boolean) -> Unit = { _, _ -> },
+    onSettings: (() -> Unit)? = null,
 ) {
     if (!state.loaded) {
         Box(modifier.fillMaxSize().testTag("strategies-loading"))
         return
     }
     LazyColumn(modifier.fillMaxSize().testTag("strategies"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { ScreenTitle("Strategies") }
+        item { ScreenTitle("Strategies", onSettings = onSettings) }
         item {
             Text(
                 "Each one is a fixed rule with its evidence. Switched on, it puts its calls on Today and notifies you; switched off, it still runs quietly into the ledger, so its record keeps growing.",

@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -30,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -77,9 +80,17 @@ fun TapRow(onClick: (() -> Unit)?, modifier: Modifier = Modifier, content: @Comp
     Row(m.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), content = content)
 }
 
+/** A screen's title. [onSettings] puts the settings button on its right, so it scrolls away with the title. */
 @Composable
-fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = Type.Title, modifier = modifier.semantics { heading() })
+fun ScreenTitle(text: String, modifier: Modifier = Modifier, onSettings: (() -> Unit)? = null) {
+    if (onSettings == null) {
+        Text(text, style = Type.Title, modifier = modifier.semantics { heading() })
+        return
+    }
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = Type.Title, modifier = Modifier.weight(1f).semantics { heading() })
+        IconButton(onSettings, Modifier.testTag("to-settings")) { Icon(Icons.Settings, "Settings", tint = Ink.Body) }
+    }
 }
 
 /** A section's heading, with an optional count and an optional thing on the right. */
