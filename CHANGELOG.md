@@ -3,7 +3,7 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
-## 2.4.1 - 2026-10-22 (pre-release)
+## 2.4.1 - 2026-10-22
 
 - The settings gear sits at the right of each tab's title instead of in an empty row of its own, and scrolls away with the title. On a wide screen it stays in the side rail.
 
