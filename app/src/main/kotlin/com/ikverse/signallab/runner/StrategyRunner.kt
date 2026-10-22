@@ -25,6 +25,7 @@ import com.ikverse.signallab.engine.eval.Tiers
 import com.ikverse.signallab.catalog.StrategyCatalog
 import com.ikverse.signallab.engine.strategy.AnalystCall
 import com.ikverse.signallab.engine.strategy.Builtins
+import com.ikverse.signallab.engine.strategy.FundingSeries
 import com.ikverse.signallab.engine.strategy.Strategy
 import com.ikverse.signallab.ledger.CallRow
 import com.ikverse.signallab.ledger.ExitRow
@@ -167,6 +168,7 @@ class StrategyRunner(
         }
         // The futures context and notices first, so the calls of this close are sized and vetoed by them.
         derivatives?.let { d -> syncDerivatives(d, universe.map { it.symbol }) }
+        loadFunding(panel.keys)
         tally.risk = riskDay(open, panel, btc, now)
         val daily = active.filter { it.timeframe == Timeframe.D1 && !it.retired }
         // A ranking compares the universe's coins at the same close, once for all of them.
@@ -212,6 +214,21 @@ class StrategyRunner(
             runCatching { d.syncDvol(symbol.removeSuffix("USDT")) }
         }
         runCatching { d.syncNotices() }
+    }
+
+    /**
+     * Hands the stored funding of [symbols] (default: the coins watched at the last pass) to the strategies that read it.
+     * Without a store this does nothing, and they keep what they had.
+     */
+    suspend fun loadFunding(symbols: Collection<String>? = null) {
+        val store = futures ?: return
+        val coins = symbols ?: (storedUniverse() + DERIVATIVES_COINS).distinct()
+        runCatching {
+            Builtins.funding.update(coins.associateWith { sym ->
+                val points = store.funding(sym)
+                FundingSeries(LongArray(points.size) { points[it].time }, DoubleArray(points.size) { points[it].rate })
+            }.filterValues { it.time.isNotEmpty() })
+        }
     }
 
     /** The sizing engine's inputs for this daily pass (docs/strategy-research.md §7.1). */
@@ -305,7 +322,7 @@ class StrategyRunner(
             if (risk != null && exposure != null) risk.book[id] = Holding(size, exposure)
         }
         // A skipped call is recorded quietly, so the ledger can say whether skipping helped.
-        if (veto == null && prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size))
+        if (veto == null && prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size, prefs.tradeMoney))
     }
 
     /**
@@ -332,7 +349,7 @@ class StrategyRunner(
         } else {
             tally.newCalls++
             if (size > 0) tally.sized++
-            if (prefs.notifications && prefs.isOn(AnalystCall)) alerts.post(CallWords.newCall(id, AnalystCall.name, p.symbol, call.entryPrice, call.stop, size))
+            if (prefs.notifications && prefs.isOn(AnalystCall)) alerts.post(CallWords.newCall(id, AnalystCall.name, p.symbol, call.entryPrice, call.stop, size, prefs.tradeMoney))
         }
         pending?.opened(p.id, id, now)
     }

@@ -154,4 +154,20 @@ interface LedgerDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putPin(row: PinRow)
+
+    /** Records or corrects the owner's own copy of a call. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putCopy(row: CopyRow)
+
+    @Query("SELECT * FROM copies WHERE call_id = :callId")
+    suspend fun copyOf(callId: Long): CopyRow?
+
+    @Query("SELECT * FROM copies ORDER BY bought_at")
+    suspend fun allCopies(): List<CopyRow>
+
+    @Query("SELECT * FROM copies ORDER BY bought_at")
+    fun watchCopies(): kotlinx.coroutines.flow.Flow<List<CopyRow>>
+
+    @Query("DELETE FROM copies WHERE call_id = :callId")
+    suspend fun removeCopy(callId: Long)
 }

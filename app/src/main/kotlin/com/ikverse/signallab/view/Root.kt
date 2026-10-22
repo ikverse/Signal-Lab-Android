@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -189,6 +190,19 @@ private fun BackBar(onBack: () -> Unit) {
     }
 }
 
+/** "I took it", "I sold" and "I did not take it" on a call's page, saved to the ledger. */
+@Composable
+private fun rememberCopyActions(m: AppModels): com.ikverse.signallab.view.today.CopyActions {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    return androidx.compose.runtime.remember(m, scope) {
+        com.ikverse.signallab.view.today.CopyActions(
+            took = { id, price -> scope.launch { m.calls.took(id, price) } },
+            sold = { id, price -> scope.launch { m.calls.sold(id, price) } },
+            forget = { id -> scope.launch { m.calls.forget(id) } },
+        )
+    }
+}
+
 /** "Ask the analyst" on a call's page: the question goes into the conversation and the Analyst tab opens. */
 private fun ask(m: AppModels, nav: androidx.navigation.NavHostController): ((com.ikverse.signallab.model.CallUi) -> Unit)? {
     val model = m.analyst ?: return null
@@ -220,8 +234,9 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
                         if (chosen == null) {
                             Text("Calls show here.", style = Type.Small, modifier = Modifier.align(Alignment.Center))
                         } else {
-                            val page by produceState<CallPageUi?>(null, chosen, prefs.accountSize, state) { value = m.calls.page(chosen, prefs.accountSize) }
-                            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav))
+                            val copies by m.calls.copies.collectAsStateWithLifecycle(emptyList())
+                            val page by produceState<CallPageUi?>(null, chosen, prefs.accountSize, state, copies) { value = m.calls.page(chosen, prefs.accountSize) }
+                            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav), copyActions = rememberCopyActions(m))
                         }
                     }
                 }
@@ -230,8 +245,9 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
         composable<Routes.Call> { back ->
             val id = back.toRoute<Routes.Call>().id
             val today by m.today.state.collectAsStateWithLifecycle()
-            val page by produceState<CallPageUi?>(null, id, prefs.accountSize, today) { value = m.calls.page(id, prefs.accountSize) }
-            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav))
+            val copies by m.calls.copies.collectAsStateWithLifecycle(emptyList())
+            val page by produceState<CallPageUi?>(null, id, prefs.accountSize, today, copies) { value = m.calls.page(id, prefs.accountSize) }
+            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav), copyActions = rememberCopyActions(m))
         }
         composable<Routes.Ledger> {
             val state by m.ledger.state.collectAsStateWithLifecycle()

@@ -13,6 +13,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -35,7 +39,14 @@ import com.ikverse.signallab.view.theme.Type
 
 /** One call: the chart with its lines, the plan, why it fired, and its strategy's evidence one tap away. */
 @Composable
-fun CallScreen(page: CallPageUi?, onEvidence: (String) -> Unit, modifier: Modifier = Modifier, onAsk: ((CallUi) -> Unit)? = null) {
+fun CallScreen(
+    page: CallPageUi?,
+    onEvidence: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    onAsk: ((CallUi) -> Unit)? = null,
+    /** The owner's copy on Binance: bought at a price, sold at a price, or not taken after all; null hides the section. */
+    copyActions: CopyActions? = null,
+) {
     if (page == null) {
         Box(modifier.fillMaxSize().testTag("call-loading"))
         return
@@ -86,6 +97,10 @@ fun CallScreen(page: CallPageUi?, onEvidence: (String) -> Unit, modifier: Modifi
             })
         }
 
+        if (copyActions != null && c.veto == null) {
+            CopyPanel(page, { copyActions.took(c.id, it) }, { copyActions.sold(c.id, it) }, { copyActions.forget(c.id) })
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Why now", style = Type.Heading)
             Text(c.why, style = Type.Body)
@@ -96,3 +111,50 @@ fun CallScreen(page: CallPageUi?, onEvidence: (String) -> Unit, modifier: Modifi
         if (onAsk != null) QuietButton("Ask the analyst about this call", { onAsk(c) }, Modifier.fillMaxWidth().testTag("ask-analyst"))
     }
 }
+
+/** What the owner did with the call on Binance: "I took it" with the price paid, then "I sold" with the price sold at. */
+@Composable
+fun CopyPanel(page: CallPageUi, onTook: (Double) -> Unit, onSold: (Double) -> Unit, onForget: () -> Unit) {
+    val copy = page.copy
+    var editing by rememberSaveable(page.call.id, copy) { mutableStateOf<String?>(null) }
+    Panel(Modifier.testTag("copy-panel")) {
+        Overline("Your copy on Binance")
+        if (copy == null) {
+            Text("Took this call on Binance? Say at what price, and the ledger tracks your real result beside the paper one.", style = Type.Small)
+        } else {
+            Text(copy.boughtLine, style = Type.Body.copy(color = Ink.Text), modifier = Modifier.testTag("copy-bought"))
+            copy.soldLine?.let { Text(it, style = Type.Body.copy(color = Ink.Text), modifier = Modifier.testTag("copy-sold")) }
+        }
+        val asking = editing
+        if (asking != null) {
+            PriceField(asking, { editing = it }, Modifier.testTag("copy-price"))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                com.ikverse.signallab.view.common.PrimaryButton("Save", {
+                    asking.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }?.let { p -> if (copy == null) onTook(p) else onSold(p) }
+                    editing = null
+                }, Modifier.testTag("copy-save"))
+                QuietButton("Cancel", { editing = null })
+            }
+        } else if (copy == null) {
+            com.ikverse.signallab.view.common.PrimaryButton("I took it", { editing = Words.plain(page.call.entry) }, Modifier.testTag("copy-took"))
+        } else if (copy.soldPrice == null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                com.ikverse.signallab.view.common.PrimaryButton("I sold", { editing = page.sellPrice?.let(Words::plain) ?: "" }, Modifier.testTag("copy-sold-button"))
+                QuietButton("I did not take it", onForget, Modifier.testTag("copy-forget"))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PriceField(text: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    androidx.compose.material3.OutlinedTextField(
+        text, onChange, singleLine = true, modifier = modifier.fillMaxWidth(), label = { Text("Price on Binance") },
+        textStyle = Type.Number,
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = Ink.Accent, unfocusedBorderColor = Ink.Outline),
+    )
+}
+
+/** What the call page can record about the owner's own copy of a call. */
+class CopyActions(val took: (Long, Double) -> Unit, val sold: (Long, Double) -> Unit, val forget: (Long) -> Unit)

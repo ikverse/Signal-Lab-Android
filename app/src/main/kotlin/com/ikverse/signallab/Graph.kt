@@ -171,9 +171,11 @@ class Graph(context: Context, private val scope: CoroutineScope) {
                 // Left for the next start: the import is all-or-nothing, so a failure leaves nothing half done.
             }
             runCatching { forgetSignalLab1() }
+            // Hated rally reads funding; give it what is stored now, so its evidence can be shown before the next pass.
+            runner.loadFunding()
             val dao = ledger.dao()
             val synced = dao.watchSettings().map { rows -> rows.filter { LedgerSync.isSynced(it.key) }.map { it.key to it.value } }.distinctUntilChanged()
-            deviceSync.start(scope, listOf(dao.watchLiveCalls(), dao.watchLiveExits(), dao.watchCustomRules(), dao.watchPins(), synced))
+            deviceSync.start(scope, listOf(dao.watchLiveCalls(), dao.watchLiveExits(), dao.watchCustomRules(), dao.watchPins(), dao.watchCopies(), synced))
             runCatching {
                 scheduler.arm()
                 scheduler.ensureBackstop()

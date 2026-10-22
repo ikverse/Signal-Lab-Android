@@ -3,6 +3,12 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 2.4.0 - 2026-10-22 (pre-release)
+
+- Two new strategies, judged against random entries like the others. Hated rally buys Bitcoin, Ether and the ten busiest coins after shorts have paid longs for a month; it starts in Testing, so it makes no calls on Today until its record earns them. Trend leaders ranks the watched coins every Monday on 28 trend indicators from a 2025 study and buys the top fifth for a week; it starts in Watch, beside Leaders, so the two can be compared on the same coins.
+- Each call's page has "I took it": say what you paid on Binance, then "I sold" and what you sold at. The Ledger shows "My copies": your real results beside the paper ones on the same calls, and how far your buys sat from the paper entry.
+- Notifications say how many USDT to buy when "Money I trade with" is set, and an exit now reads "Sell now".
+
 ## 2.3.0 - 2026-10-22 (pre-release)
 
 - New in Settings: "Money I trade with". Set it to your Binance balance and every call says what to buy, such as "Buy 360 USDT of SOL (2.529 SOL)", rounded the way Binance accepts and flagged when it is below Binance's smallest order.

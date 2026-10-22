@@ -8,6 +8,7 @@ import com.ikverse.signallab.data.futures.PositioningPoint
 import com.ikverse.signallab.engine.EngineConfig
 import com.ikverse.signallab.ledger.AnalystNotes
 import com.ikverse.signallab.ledger.CallRow
+import com.ikverse.signallab.ledger.CopyRow
 import com.ikverse.signallab.ledger.CustomStopRow
 import com.ikverse.signallab.ledger.CustomStrategyRow
 import com.ikverse.signallab.ledger.ExitRow
@@ -31,11 +32,13 @@ data class MergeResult(
     val settingsChanged: Set<String> = emptySet(),
     /** Futures basis and positioning points brought in; not part of [any], which is about the ledger. */
     val market: Int = 0,
+    /** The owner's copies of calls brought in or updated. */
+    val copies: Int = 0,
 ) {
-    val any: Boolean get() = calls + exits + strategies + customs + reports + pins > 0 || settingsChanged.isNotEmpty()
+    val any: Boolean get() = calls + exits + strategies + customs + reports + pins + copies > 0 || settingsChanged.isNotEmpty()
 
     operator fun plus(o: MergeResult) = MergeResult(calls + o.calls, exits + o.exits, strategies + o.strategies, customs + o.customs,
-        reports + o.reports, pins + o.pins, settingsChanged + o.settingsChanged, market + o.market)
+        reports + o.reports, pins + o.pins, settingsChanged + o.settingsChanged, market + o.market, copies + o.copies)
 }
 
 /**
@@ -71,7 +74,8 @@ class LedgerSync(
                 .put("first_seen", s.firstSeenAt).put("retired", s.retired).put("source", s.source))
         }
         val calls = JSONArray()
-        for (c in dao.allCalls()) {
+        val allById = dao.allCalls().associateBy { it.id }
+        for (c in allById.values) {
             val o = JSONObject().put("strategy", wire(c.strategyId, labSync)).put("symbol", c.symbol).put("tf", c.tf)
                 .put("signal_time", c.signalTime).put("entry_time", c.entryTime).put("entry_price", c.entryPrice).putOpt("atr", c.atr)
                 .putOpt("stop", c.stop).putOpt("target", c.target).put("max_bars", c.maxBars).put("regime", c.regime)
@@ -104,6 +108,14 @@ class LedgerSync(
         return JSONObject().put("format", FORMAT).put("device", deviceId).put("exported_at", now).put("strategies", strategies)
             .put("calls", calls).put("customs", customArray).put("reports", reports).put("pins", pins).put("settings", settings)
             .putOpt("market", exportMarket())
+            .put("copies", JSONArray().apply {
+                for (c in dao.allCopies()) {
+                    val call = allById[c.callId] ?: continue
+                    put(JSONObject().put("strategy", wire(call.strategyId, labSync)).put("symbol", call.symbol).put("signal_time", call.signalTime)
+                        .put("scope", call.scope).put("bought_price", c.boughtPrice).put("bought_at", c.boughtAt)
+                        .putOpt("sold_price", c.soldPrice).putOpt("sold_at", c.soldAt).put("updated", c.updatedAt))
+                }
+            })
     }
 
     /** Basis and positioning, the futures series Binance keeps for 30 days only, so no device loses what another collected. */
@@ -203,6 +215,15 @@ class LedgerSync(
                     excess = e.dbl("excess"), maxUp = e.dbl("max_up"), maxDown = e.dbl("max_down"), barsToPeak = e.lng("bars_to_peak")?.toInt(),
                     closedAt = e.getLong("closed_at"))
             })
+        }
+        for (c in o.optJSONArray("copies").objects()) {
+            val id = dao.callId(local(c.getString("strategy"), labs), c.getString("symbol"), c.getLong("signal_time"), c.optString("scope")) ?: continue
+            val remote = CopyRow(id, c.getDouble("bought_price"), c.getLong("bought_at"), c.dbl("sold_price"), c.lng("sold_at"), c.getLong("updated"))
+            val here = dao.copyOf(id)
+            if (here == null || here.updatedAt < remote.updatedAt) {
+                dao.putCopy(remote)
+                r = r.copy(copies = r.copies + 1)
+            }
         }
         for (p in o.optJSONArray("pins").objects()) {
             if (dao.insertPin(PinRow(p.getString("symbol"), p.getString("kind"), p.getLong("added"), p.str("tag"))) != -1L) r = r.copy(pins = r.pins + 1)

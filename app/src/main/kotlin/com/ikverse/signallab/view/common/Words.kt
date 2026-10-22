@@ -45,6 +45,10 @@ object Words {
         }
     }
 
+    /** A price to edit: eight significant digits, no grouping, no trailing zeros: "142.3", "0.00004521". */
+    fun plain(p: Double): String =
+        java.math.BigDecimal(p).round(java.math.MathContext(8)).stripTrailingZeros().toPlainString()
+
     /** An amount to type into Binance's order screen: "412 USDT". */
     fun usdt(v: Double): String = String.format(Locale.US, "%,.0f USDT", v)
 

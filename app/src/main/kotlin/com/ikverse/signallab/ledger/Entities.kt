@@ -172,3 +172,17 @@ data class ImportLogRow(
     val settings: Int,
     @ColumnInfo(name = "alerts_dropped") val alertsDropped: Int,
 )
+
+/**
+ * A call the owner copied on Binance by hand: the price they really bought at and, once sold, the price they really sold at.
+ * Unlike the record of calls, the owner may correct it, so it is not append-only; [updatedAt] decides between two devices.
+ */
+@Entity(tableName = "copies")
+data class CopyRow(
+    @PrimaryKey @ColumnInfo(name = "call_id") val callId: Long,
+    @ColumnInfo(name = "bought_price") val boughtPrice: Double,
+    @ColumnInfo(name = "bought_at") val boughtAt: Long,
+    @ColumnInfo(name = "sold_price") val soldPrice: Double? = null,
+    @ColumnInfo(name = "sold_at") val soldAt: Long? = null,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
