@@ -93,6 +93,34 @@ object Live {
             sizeFor(formingOpen, atr), cost, target)
     }
 
+    /**
+     * Ends [call] at [formingOpen], the open of the candle now forming, because its coin is to be delisted ([Leave.NOTICE]).
+     * Its random entries are held as long as it was and keep its safety stop, so the comparison still measures the entry.
+     * Null when the call has not entered yet, or has no closed candle since it did.
+     */
+    fun closeOnNotice(strategy: Strategy, call: NewCall, c: Candles, btcDaily: Candles, formingOpen: Double): ClosedCall? {
+        val e = c.t.indexOfFirst { it == call.entryTime }
+        if (e < 1 || !(formingOpen > 0) || c.size <= e) return null
+        val held = c.size - e
+        val gross = formingOpen / call.entryPrice - 1
+        val net = gross - call.cost
+        val atr = Indicators.atr(c.high, c.low, c.close, EngineConfig.ATR_WINDOW)
+        val regime = PaperTrading.regimeSeries(btcDaily, c.closeTime)
+        val plan = com.ikverse.signallab.engine.strategy.ExitPlan(maxBars = held, safetyStopAtr = strategy.exit.safetyStopAtr)
+        val random = Baseline.meanNet(strategy.id, call.symbol, c, atr, regime, intArrayOf(e - 1), plan, null, call.cost)[0]
+        var high = Double.NEGATIVE_INFINITY
+        var low = Double.POSITIVE_INFINITY
+        for (k in e until c.size) {
+            high = maxOf(high, c.high[k])
+            low = minOf(low, c.low[k])
+        }
+        return ClosedCall(
+            exitIdx = c.size, exitTime = c.t[c.size - 1] + c.tf.ms, exitPrice = formingOpen, reason = Leave.NOTICE, barsHeld = held + 1,
+            gross = gross, net = net, randomMean = random, excess = if (random.isNaN()) Double.NaN else net - random,
+            maxUp = high / call.entryPrice - 1, maxDown = low / call.entryPrice - 1,
+        )
+    }
+
     /** [c] with the candle now forming added after it, known only by its first price: enough to fill an exit at that open. */
     private fun withForming(c: Candles, open: Double): Candles {
         val n = c.size

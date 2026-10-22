@@ -45,6 +45,12 @@ object Words {
         }
     }
 
+    /** An amount to type into Binance's order screen: "412 USDT". */
+    fun usdt(v: Double): String = String.format(Locale.US, "%,.0f USDT", v)
+
+    /** A coin quantity as Binance shows it, with no trailing zeros: "2.89", "0.00052", "1250". */
+    fun quantity(q: Double): String = java.math.BigDecimal(q.toString()).stripTrailingZeros().toPlainString()
+
     fun day(t: Long): String = day.format(Instant.ofEpochMilli(t))
 
     fun dayLong(t: Long): String = dayLong.format(Instant.ofEpochMilli(t))

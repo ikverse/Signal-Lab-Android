@@ -58,6 +58,21 @@ class BinanceClientTest {
     }
 
     @Test
+    fun readsEachPairsOrderRules() = runTest {
+        server.enqueue(ok("""{"symbols":[{"symbol":"SOLUSDT","status":"TRADING","baseAsset":"SOL","quoteAsset":"USDT","filters":[
+            {"filterType":"PRICE_FILTER","minPrice":"0.01000000","maxPrice":"10000.00000000","tickSize":"0.01000000"},
+            {"filterType":"LOT_SIZE","minQty":"0.00100000","maxQty":"90000.00000000","stepSize":"0.00100000"},
+            {"filterType":"NOTIONAL","minNotional":"5.00000000","applyMinToMarket":true}]}]}"""))
+        val s = client().spotSymbols().single()
+        assertEquals(0.001, s.stepSize)
+        assertEquals(5.0, s.minNotional)
+        val rule = com.ikverse.signallab.data.LotRule(s.stepSize, s.minNotional)
+        assertEquals(2.895, rule.quantity(412.0, 142.3), "412 USDT at 142.30 is 2.8952 SOL, rounded down to the step")
+        assertEquals(0.00052, com.ikverse.signallab.data.LotRule(0.00001, 5.0).quantity(50.0, 95_000.0))
+        assertTrue(com.ikverse.signallab.data.LotRule(Double.NaN, 5.0).quantity(50.0, 1.0).isNaN())
+    }
+
+    @Test
     fun parsesThePairListAndTheTickers() = runTest {
         server.enqueue(ok("""{"symbols":[{"symbol":"BTCUSDT","status":"TRADING","baseAsset":"BTC","quoteAsset":"USDT"},
             {"symbol":"OLDUSDT","status":"BREAK","baseAsset":"OLD","quoteAsset":"USDT"}]}"""))

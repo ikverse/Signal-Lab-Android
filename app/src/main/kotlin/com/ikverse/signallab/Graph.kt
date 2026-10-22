@@ -95,6 +95,7 @@ class Graph(context: Context, private val scope: CoroutineScope) {
     val runner = StrategyRunner(
         market, pairs, candles, DailyHistory(sync), ledger, AndroidCallAlerts(app), derivatives, strategies,
         preferences = { prefsStore.current() }, hourly = sync, customs = { catalog.running(it) }, pending = suggestions,
+        futures = derivativesStore,
     )
 
     // The analyst: the owner's key sealed on this phone, Claude through Anthropic's SDK, and the app's tools.

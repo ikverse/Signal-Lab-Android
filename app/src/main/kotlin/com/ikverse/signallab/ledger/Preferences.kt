@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.map
 data class Preferences(
     /** The paper account's starting size in USDT. */
     val accountSize: Double = 10_000.0,
+    /** The owner's own Binance money in USDT, which calls size their buy amounts against; null until set. */
+    val tradeMoney: Double? = null,
     /** Round-trip cost charged on BTC and ETH, as a fraction. */
     val costMajors: Double = EngineConfig.COST_MAJORS,
     /** Round-trip cost charged on every other coin, as a fraction. */
@@ -50,6 +52,7 @@ data class Preferences(
 
     companion object {
         const val ACCOUNT_SIZE = "account_size"
+        const val TRADE_MONEY = "trade_money"
         const val COST_MAJORS = "cost_majors"
         const val COST_OTHERS = "cost_others"
         const val NOTIFICATIONS = "alert_notifications"
@@ -73,6 +76,7 @@ data class Preferences(
             fun bool(key: String, default: Boolean) = m[key]?.let { it == "1" || it == "true" } ?: default
             return Preferences(
                 accountSize = m[ACCOUNT_SIZE]?.toDoubleOrNull()?.takeIf { it > 0 } ?: 10_000.0,
+                tradeMoney = m[TRADE_MONEY]?.toDoubleOrNull()?.takeIf { it > 0 },
                 costMajors = m[COST_MAJORS]?.toDoubleOrNull() ?: EngineConfig.COST_MAJORS,
                 costOthers = m[COST_OTHERS]?.toDoubleOrNull() ?: EngineConfig.COST_OTHERS,
                 notifications = bool(NOTIFICATIONS, true),

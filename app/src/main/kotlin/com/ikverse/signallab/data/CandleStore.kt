@@ -35,6 +35,16 @@ data class CoinRow(
     val trades24: Long = 0,
 )
 
+/** A pair's order rules: quantities move in steps of [step] coins, and an order must be worth at least [minNotional] USDT. NaN when not known. */
+data class LotRule(val step: Double, val minNotional: Double) {
+    /** [usdt] worth of the coin at [price], rounded down to the step; NaN when the step is not known. */
+    fun quantity(usdt: Double, price: Double): Double {
+        if (!(price > 0) || !(step > 0)) return Double.NaN
+        val steps = kotlin.math.floor(usdt / price / step + 1e-9)
+        return java.math.BigDecimal(steps).multiply(java.math.BigDecimal(step.toString())).stripTrailingZeros().toDouble()
+    }
+}
+
 /**
  * Market data the app can download again: candles, the pair list, and stretches Binance has no
  * candles for. It lives in its own file and is deliberately outside every backup, so a backup stays
@@ -79,6 +89,7 @@ class CandleStore(
                 PRIMARY KEY (symbol, tf, from_time)
             ) WITHOUT ROWID
         """.trimIndent())
+        createLotRules(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -91,6 +102,36 @@ class CandleStore(
         }
         // Version 4 (Signal Lab 2) adds each candle's turnover in USDT; candles stored before it read 0 and fall back to volume × close.
         if (oldVersion < 4) db.execSQL("ALTER TABLE candles ADD COLUMN quote_volume REAL NOT NULL DEFAULT 0")
+        if (oldVersion < 5) createLotRules(db)
+    }
+
+    /** Version 5 (Signal Lab 2.3): each pair's order rules, so a call can say an amount Binance accepts. */
+    private fun createLotRules(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS lot_rules (symbol TEXT PRIMARY KEY, step REAL, min_notional REAL)")
+    }
+
+    // --- order rules ---------------------------------------------------------------
+
+    /** Stores each pair's step size and minimum order, replacing what was stored. */
+    suspend fun saveLotRules(rules: Map<String, LotRule>) = access { db ->
+        db.beginTransaction()
+        try {
+            for ((symbol, r) in rules) {
+                db.execSQL("INSERT OR REPLACE INTO lot_rules (symbol, step, min_notional) VALUES (?,?,?)",
+                    arrayOf<Any?>(symbol, r.step.takeUnless { it.isNaN() }, r.minNotional.takeUnless { it.isNaN() }))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** A pair's order rules; null before the pair list has been refreshed by this version. */
+    suspend fun lotRule(symbol: String): LotRule? = access { db ->
+        db.rawQuery("SELECT step, min_notional FROM lot_rules WHERE symbol=?", arrayOf(symbol)).use { c ->
+            if (!c.moveToFirst()) null
+            else LotRule(if (c.isNull(0)) Double.NaN else c.getDouble(0), if (c.isNull(1)) Double.NaN else c.getDouble(1))
+        }
     }
 
     private suspend fun <T> access(block: (SQLiteDatabase) -> T): T =
@@ -432,7 +473,7 @@ class CandleStore(
     )
 
     companion object {
-        const val VERSION = 4
+        const val VERSION = 5
         private const val COIN_COLUMNS = "symbol, base, status, offered, stable, delisted, quote_volume, high24, low24, seen_at, listed_at, change24, trades24"
     }
 }

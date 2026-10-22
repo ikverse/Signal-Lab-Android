@@ -61,6 +61,12 @@ fun SettingsScreen(state: SettingsUi, actions: SettingsActions, modifier: Modifi
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag("settings"),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+        Group("Copying calls on Binance") {
+            RowsPanel(rows = listOf(
+                @Composable { NumberRow("Money I trade with, USDT", p.tradeMoney ?: 0.0, 0, "trade-money") { actions.set(Preferences.TRADE_MONEY, it.toString()) } },
+            ))
+            Text("Your own Binance balance. Each call then says how many USDT to buy, sized the same way as on paper. Signal Lab never trades for you.", style = Type.Caption)
+        }
         Group("Paper account") {
             RowsPanel(rows = listOf(
                 @Composable { NumberRow("Starting size, USDT", p.accountSize, 0, "account") { actions.set(Preferences.ACCOUNT_SIZE, it.toString()) } },

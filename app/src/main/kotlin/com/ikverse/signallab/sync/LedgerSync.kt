@@ -77,6 +77,7 @@ class LedgerSync(
                 .putOpt("stop", c.stop).putOpt("target", c.target).put("max_bars", c.maxBars).put("regime", c.regime)
                 .putOpt("size", c.sizeFraction).put("cost", c.cost).put("cost_assumed", c.costAssumed).putOpt("exit_mode", c.exitMode)
                 .put("scope", c.scope).put("source", c.source).put("archived", c.archived).put("status", c.status).put("opened_at", c.openedAt)
+                .putOpt("plain_size", c.plainSize).putOpt("veto", c.veto)
             exits[c.id]?.let { e ->
                 o.put("exit", JSONObject().put("exit_time", e.exitTime).put("exit_price", e.exitPrice).put("reason", e.reason)
                     .put("bars_held", e.barsHeld).put("gross", e.gross).put("net", e.net).putOpt("random_mean", e.randomMean)
@@ -194,7 +195,7 @@ class LedgerSync(
                 atr = c.dbl("atr"), stop = c.dbl("stop"), target = c.dbl("target"), maxBars = c.getInt("max_bars"), regime = c.getInt("regime"),
                 sizeFraction = c.dbl("size"), cost = c.getDouble("cost"), costAssumed = c.optBoolean("cost_assumed"), exitMode = c.str("exit_mode"),
                 scope = c.optString("scope"), source = c.getString("source"), archived = c.getBoolean("archived"), status = c.getString("status"),
-                openedAt = c.getLong("opened_at"),
+                openedAt = c.getLong("opened_at"), plainSize = c.dbl("plain_size"), veto = c.str("veto"),
             )
             r = r + addCall(row, c.optJSONObject("exit")?.let { e ->
                 ExitRow(callId = 0, exitTime = e.getLong("exit_time"), exitPrice = e.getDouble("exit_price"), reason = e.getString("reason"),
@@ -295,7 +296,7 @@ class LedgerSync(
         const val FORMAT = 2
 
         private val SYNCED_KEYS = setOf(
-            Preferences.ACCOUNT_SIZE, Preferences.COST_MAJORS, Preferences.COST_OTHERS, Preferences.DATA_HOST, Preferences.FUTURES,
+            Preferences.ACCOUNT_SIZE, Preferences.TRADE_MONEY, Preferences.COST_MAJORS, Preferences.COST_OTHERS, Preferences.DATA_HOST, Preferences.FUTURES,
             Preferences.ANALYST_MODEL, Preferences.ANALYST_CAP,
         )
         private val SYNCED_PREFIXES = listOf(Preferences.SWITCH_PREFIX, Preferences.CUSTOM_LIVE_PREFIX, AnalystNotes.SUGGESTION_PREFIX, AnalystNotes.CONTEXT_PREFIX)

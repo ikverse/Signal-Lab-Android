@@ -83,6 +83,22 @@ class ModelsTest {
     }
 
     @Test
+    fun aCallSaysWhatToBuyWithTheOwnersMoney() {
+        val row = CallRow(strategyId = "breakout50_1d", symbol = "SOLUSDT", tf = "1d", signalTime = 0, entryTime = 1, entryPrice = 142.3,
+            atr = 5.0, stop = 127.3, target = null, maxBars = 60, regime = 1, sizeFraction = 0.12, cost = 0.004, source = "v2",
+            archived = false, status = "live", openedAt = 0, plainSize = 0.14)
+        val lot = com.ikverse.signallab.data.LotRule(0.001, 5.0)
+        val ui = TodayModel.callUi(row, Breakout(), null, 10_000.0, tradeMoney = 3_000.0, lot = lot)
+        assertEquals(360.0, ui.tradeUsd)
+        assertEquals("Buy 360 USDT of SOL (2.529 SOL)", ui.buyLine)
+        assertEquals(null, TodayModel.callUi(row, Breakout(), null, 10_000.0).buyLine, "no trade money set, nothing said")
+        assertEquals("Buy 3 USDT of SOL: below Binance's smallest order for this coin.",
+            TodayModel.callUi(row, Breakout(), null, 10_000.0, tradeMoney = 30.0, lot = lot).buyLine)
+        val skipped = TodayModel.callUi(row.copy(sizeFraction = 0.0, veto = "leverage is overheated"), Breakout(), null, 10_000.0, tradeMoney = 3_000.0, lot = lot)
+        assertEquals("Skipped: leverage is overheated.", skipped.buyLine)
+    }
+
+    @Test
     fun aBreakoutSaysWhatItBrokeAndWhatEndsIt() {
         val c = Golden.panel(Timeframe.D1).getValue("SOLUSDT")
         val s = Breakout()

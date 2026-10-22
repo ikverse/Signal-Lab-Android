@@ -15,7 +15,16 @@ data class Kline(
     val quoteVolume: Double = 0.0,
 )
 
-data class SpotSymbol(val symbol: String, val base: String, val quote: String, val status: String)
+data class SpotSymbol(
+    val symbol: String,
+    val base: String,
+    val quote: String,
+    val status: String,
+    /** The smallest step an order's quantity moves in (LOT_SIZE); NaN when not known. */
+    val stepSize: Double = Double.NaN,
+    /** The smallest order Binance accepts, in the quote coin (NOTIONAL or MIN_NOTIONAL); NaN when not known. */
+    val minNotional: Double = Double.NaN,
+)
 
 /** A pair's last 24 hours. [open] is the price 24 hours ago and [trades] the number of trades since; both are 0 when the answer did not say. */
 data class Ticker24h(

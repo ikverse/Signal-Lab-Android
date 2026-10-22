@@ -44,6 +44,7 @@ object CallWords {
         val why = when (reason) {
             "stop" -> "safety stop hit"
             "signal" -> "the strategy's exit signal"
+            "notice" -> "the exchange will delist the coin"
             else -> "time limit reached"
         }
         return CallAlert(id, "Exit ${base(symbol)} · $strategy", "Leave at ${price(exitPrice)}: $why. Result ${pct(net)} after fees.")

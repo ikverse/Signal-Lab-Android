@@ -184,8 +184,12 @@ fun NewCallCard(c: CallUi, onClick: () -> Unit, modifier: Modifier = Modifier) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Figure("Enter at", Words.price(c.entry), Modifier.weight(1f), note = "next open")
             Figure("Safety stop", c.stop?.let(Words::price) ?: "none", Modifier.weight(1f), valueColor = Ink.Loss, note = c.stopFraction?.let(Words::pct))
-            Figure("Size", if (c.sizeFraction > 0) Words.usd(c.sizeUsd) else "tracked", Modifier.weight(1f),
-                note = if (c.sizeFraction > 0) "${Words.share(c.sizeFraction)} of account" else "account full")
+            Figure("Size", if (c.sizeFraction > 0) Words.usd(c.sizeUsd) else if (c.veto != null) "skipped" else "tracked", Modifier.weight(1f),
+                note = if (c.sizeFraction > 0) "${Words.share(c.sizeFraction)} of account" else if (c.veto != null) "see below" else "account full")
+        }
+        c.buyLine?.let {
+            Text(it, style = Type.Body.copy(color = if (c.veto != null || c.belowMinimum) Ink.Muted else Ink.Text, fontWeight = FontWeight.SemiBold),
+                modifier = Modifier.testTag("buy-line"))
         }
         Text("${c.strategyName} · ${if (c.hourly) "hourly" else "daily"} · ${c.exitShort}", style = Type.Small)
     }

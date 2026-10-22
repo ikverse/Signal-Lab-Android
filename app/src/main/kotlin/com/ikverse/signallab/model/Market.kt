@@ -110,6 +110,18 @@ data class FuturesContext(
         get() = (funding7d != null && funding7d > HOT_FUNDING_YEAR && quarterlyPremium != null && quarterlyPremium > HOT_PREMIUM_YEAR) ||
             (impliedVolChange7d != null && impliedVolChange7d > VOL_JUMP)
 
+    /**
+     * What the heat means for a new call: blocked when funding and the quarterly premium are both overheated, half size when
+     * implied volatility jumped, otherwise nothing.
+     */
+    val heat: com.ikverse.signallab.engine.eval.Heat
+        get() = when {
+            funding7d != null && funding7d > HOT_FUNDING_YEAR && quarterlyPremium != null && quarterlyPremium > HOT_PREMIUM_YEAR ->
+                com.ikverse.signallab.engine.eval.Heat.BLOCK
+            impliedVolChange7d != null && impliedVolChange7d > VOL_JUMP -> com.ikverse.signallab.engine.eval.Heat.HALF
+            else -> com.ikverse.signallab.engine.eval.Heat.NONE
+        }
+
     val sentence: String?
         get() {
             val parts = ArrayList<String>()

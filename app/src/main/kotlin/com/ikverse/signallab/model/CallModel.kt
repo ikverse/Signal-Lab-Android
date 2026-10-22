@@ -38,7 +38,8 @@ class CallModel(
         val s = StrategyCatalog.forCall(row, strategies().associateBy { it.id }) ?: return null
         val c = candles.window(row.symbol, Timeframe.D1)
         val p = preferences()
-        val ui = TodayModel.callUi(row, s, c, account, p.tierOf(s), p.suggestions.firstOrNull { it.callId == row.id }?.thesis)
+        val ui = TodayModel.callUi(row, s, c, account, p.tierOf(s), p.suggestions.firstOrNull { it.callId == row.id }?.thesis,
+            p.tradeMoney, p.tradeMoney?.let { candles.lotRule(row.symbol) })
         val exit = dao.exitOf(id)
         val ended = exit?.let { ClosedUi(ui, it.exitTime, it.exitPrice, it.reason, it.net, it.net * ui.sizeUsd) }
         val level = if (exit == null && c != null) StrategyTexts.exitLevel(s, c) else null
@@ -58,7 +59,15 @@ class CallModel(
                 ?: "${StrategyTexts.exitShort(s)}, or by ${Words.day(ui.lastDay)}"))
             row.stop?.let { add("Safety stop" to "${Words.price(it)} (${Words.pct(it / row.entryPrice - 1)})") }
             row.target?.let { add("Target" to "${Words.price(it)} (${Words.pct(it / row.entryPrice - 1)})") }
-            add("Size" to if (ui.sizeFraction > 0) "${Words.usd(ui.sizeUsd)} of a ${Words.usd(account)} paper account" else "tracked only: the account was full")
+            ui.buyLine?.let { add("On Binance" to it) }
+            add("Size" to when {
+                ui.veto != null -> "skipped: ${ui.veto}"
+                ui.sizeFraction > 0 -> "${Words.usd(ui.sizeUsd)} of a ${Words.usd(account)} paper account"
+                else -> "tracked only: the account was full"
+            })
+            if (row.plainSize != null && ui.veto == null && Math.abs(row.plainSize - ui.sizeFraction) > 0.005) {
+                add("Plain size" to "${Words.share(row.plainSize)} before the sizing engine")
+            }
             if (ui.sizeFraction > 0 && row.stop != null) add("Worst case at the stop" to Words.usd((row.stop / row.entryPrice - 1) * ui.sizeUsd, signed = true))
             add("Fees" to "${Words.pct(row.cost).removePrefix("+")} round trip")
         }

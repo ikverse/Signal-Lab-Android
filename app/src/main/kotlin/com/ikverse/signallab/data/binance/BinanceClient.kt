@@ -67,7 +67,18 @@ class BinanceClient(
             val arr = JSONObject(text).getJSONArray("symbols")
             List(arr.length()) {
                 val s = arr.getJSONObject(it)
-                SpotSymbol(s.getString("symbol"), s.getString("baseAsset"), s.getString("quoteAsset"), s.getString("status"))
+                var step = Double.NaN
+                var minNotional = Double.NaN
+                s.optJSONArray("filters")?.let { filters ->
+                    for (k in 0 until filters.length()) {
+                        val f = filters.getJSONObject(k)
+                        when (f.optString("filterType")) {
+                            "LOT_SIZE" -> step = f.optString("stepSize").toDoubleOrNull() ?: Double.NaN
+                            "NOTIONAL", "MIN_NOTIONAL" -> minNotional = f.optString("minNotional").toDoubleOrNull() ?: minNotional
+                        }
+                    }
+                }
+                SpotSymbol(s.getString("symbol"), s.getString("baseAsset"), s.getString("quoteAsset"), s.getString("status"), step, minNotional)
             }
         }
 

@@ -53,9 +53,27 @@ data class CallUi(
     val lastDay: Long,
     /** Its strategy reads hourly candles rather than daily ones. */
     val hourly: Boolean = false,
+    /** Why it was skipped, when a veto recorded it with no size. */
+    val veto: String? = null,
+    /** What to buy with the owner's own money, in USDT: the same share as on paper; null until "money I trade with" is set. */
+    val tradeUsd: Double? = null,
+    /** [tradeUsd] in coins at the entry, rounded down to Binance's step; null when the step is not known. */
+    val tradeQty: Double? = null,
+    /** [tradeUsd] is below the smallest order Binance takes for this coin. */
+    val belowMinimum: Boolean = false,
 ) {
     val base get() = Words.base(symbol)
     val stopFraction: Double? get() = stop?.let { it / entry - 1 }
+
+    /** "Buy 412 USDT of SOL (2.89 SOL)", or why there is nothing to buy; null when no trade money is set and nothing was skipped. */
+    val buyLine: String?
+        get() = when {
+            veto != null -> "Skipped: $veto."
+            tradeUsd == null -> null
+            sizeFraction <= 0 -> "Nothing to buy: the account already holds as many calls as it may."
+            belowMinimum -> "Buy ${Words.usdt(tradeUsd)} of $base: below Binance's smallest order for this coin."
+            else -> "Buy ${Words.usdt(tradeUsd)} of $base" + (tradeQty?.let { " (${Words.quantity(it)} $base)" } ?: "")
+        }
 }
 
 /** An open call, or one that has to be left now. */
@@ -77,6 +95,7 @@ data class ClosedUi(val call: CallUi, val exitTime: Long, val exitPrice: Double,
         get() = when (reason) {
             "stop" -> "safety stop"
             "signal" -> "exit signal"
+            "notice" -> "delisting notice"
             else -> "time limit"
         }
 }
@@ -187,7 +206,8 @@ class TodayModel(
         for (row in shown) {
             val s = StrategyCatalog.forCall(row, byId) ?: continue
             val c = window(row.symbol)
-            val ui = callUi(row, s, c, i.prefs.accountSize, i.prefs.tierOf(s), theses[row.id])
+            val ui = callUi(row, s, c, i.prefs.accountSize, i.prefs.tierOf(s), theses[row.id], i.prefs.tradeMoney,
+                i.prefs.tradeMoney?.let { candles.lotRule(row.symbol) })
             val exit = exitBy[row.id]
             if (exit != null) {
                 val item = ClosedUi(ui, exit.exitTime, exit.exitPrice, exit.reason, exit.net, exit.net * ui.sizeUsd)
@@ -244,10 +264,18 @@ class TodayModel(
             stop?.let { "stop ${Words.price(it)}" }, target?.let { "target ${Words.price(it)}" },
         ).let { if (it.isEmpty()) "Hold until its time limit." else "Hold. It leaves at its ${it.joinToString(" or ")}." }
 
-        fun callUi(row: CallRow, s: Strategy, c: Candles?, account: Double, tier: Tier = s.launchTier, note: String? = null): CallUi {
+        fun callUi(
+            row: CallRow, s: Strategy, c: Candles?, account: Double, tier: Tier = s.launchTier, note: String? = null,
+            tradeMoney: Double? = null, lot: com.ikverse.signallab.data.LotRule? = null,
+        ): CallUi {
             val i = c?.t?.indexOfFirst { it == row.signalTime } ?: -1
             val size = row.sizeFraction ?: 0.0
+            val tradeUsd = tradeMoney?.let { Math.floor(size * it) }
             return CallUi(
+                veto = row.veto,
+                tradeUsd = tradeUsd,
+                tradeQty = tradeUsd?.let { usd -> lot?.quantity(usd, row.entryPrice)?.takeUnless { it.isNaN() } },
+                belowMinimum = tradeUsd != null && size > 0 && lot != null && lot.minNotional > 0 && tradeUsd < lot.minNotional,
                 id = row.id, symbol = row.symbol, strategyId = s.id, strategyName = s.name, tier = tier,
                 signalTime = row.signalTime, entryTime = row.entryTime, entry = row.entryPrice, stop = row.stop,
                 sizeFraction = size, sizeUsd = size * account,

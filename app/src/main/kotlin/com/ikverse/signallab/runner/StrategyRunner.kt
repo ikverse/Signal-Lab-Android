@@ -5,7 +5,14 @@ import com.ikverse.signallab.data.CandleSync
 import com.ikverse.signallab.data.DataConfig
 import com.ikverse.signallab.data.UniverseRepository
 import com.ikverse.signallab.data.binance.MarketData
+import com.ikverse.signallab.data.futures.DerivativesStore
 import com.ikverse.signallab.data.futures.DerivativesSync
+import com.ikverse.signallab.data.futures.NoticeKind
+import com.ikverse.signallab.engine.eval.Exposure
+import com.ikverse.signallab.engine.eval.Heat
+import com.ikverse.signallab.engine.eval.Holding
+import com.ikverse.signallab.engine.eval.Risk
+import com.ikverse.signallab.model.FuturesContext
 import com.ikverse.signallab.data.history.DailyHistory
 import com.ikverse.signallab.data.universe.Universe
 import com.ikverse.signallab.data.universe.UniverseCoin
@@ -80,6 +87,8 @@ class StrategyRunner(
     private val customs: suspend (Preferences) -> List<Strategy> = { emptyList() },
     /** The analyst's calls the owner has recorded; without it none are opened. */
     private val pending: PendingCalls? = null,
+    /** Funding, basis, implied volatility and exchange notices, for the sizing engine and the vetoes; null leaves them out. */
+    private val futures: DerivativesStore? = null,
 ) {
     private val lock = Mutex()
     private val dao get() = ledger.dao()
@@ -91,7 +100,24 @@ class StrategyRunner(
     suspend fun run(): RunReport = lock.withLock { runLocked() }
 
     /** [sized]: open calls that hold part of the account; a call tracked with no size takes no room. */
-    private class Tally(var newCalls: Int = 0, var exits: Int = 0, var sized: Int = 0)
+    private class Tally(var newCalls: Int = 0, var exits: Int = 0, var sized: Int = 0, var risk: RiskDay? = null)
+
+    /**
+     * What the sizing engine and the vetoes know during one daily pass: the leverage heat, the coins with a delisting
+     * notice, Bitcoin's daily variance, the cap from the live record, and the open daily calls with how their coins move.
+     */
+    private class RiskDay(
+        val heat: Heat,
+        val delisted: Set<String>,
+        val btcVar: Double,
+        val kelly: Double?,
+        val book: MutableMap<Long, Holding>,
+        val btc: Candles,
+    ) {
+        private val exposures = HashMap<String, Exposure?>()
+
+        fun exposureOf(symbol: String, c: Candles): Exposure? = exposures.getOrPut(symbol) { Risk.exposure(c.close, btc.close) }
+    }
 
     private suspend fun runLocked(): RunReport {
         val prefs = preferences()
@@ -139,14 +165,21 @@ class StrategyRunner(
         for (sym in (universe.map { it.symbol } + open.map { it.symbol } + waiting.map { it.symbol }).distinct()) {
             candles.window(sym, Timeframe.D1)?.let { panel[sym] = it }
         }
+        // The futures context and notices first, so the calls of this close are sized and vetoed by them.
+        derivatives?.let { d -> syncDerivatives(d, universe.map { it.symbol }) }
+        tally.risk = riskDay(open, panel, btc, now)
         val daily = active.filter { it.timeframe == Timeframe.D1 && !it.retired }
         // A ranking compares the universe's coins at the same close, once for all of them.
         val ranked = daily.filter { it.crossSectional }.associate { s -> s.id to s.entriesAcross(panel.filterKeys { it in rankOf }) }
 
+        // The candle now forming must be the one right after the newest stored one, or its open is not the entry price.
+        fun formingOpenOf(symbol: String, c: Candles) = synced.forming[symbol]?.takeIf { it.openTime == c.t.last() + Timeframe.D1.ms }?.open
+        // Every exit first, so a call leaving at this open frees its room before the new calls are sized.
         for ((symbol, c) in panel) {
-            // The candle now forming must be the one right after the newest stored one, or its open is not the entry price.
-            val formingOpen = synced.forming[symbol]?.takeIf { it.openTime == c.t.last() + Timeframe.D1.ms }?.open
-            closeOpen(prefs, open.filter { it.symbol == symbol && it.tf == Timeframe.D1.label }, c, btc, formingOpen, now, tally)
+            closeOpen(prefs, open.filter { it.symbol == symbol && it.tf == Timeframe.D1.label }, c, btc, formingOpenOf(symbol, c), now, tally)
+        }
+        for ((symbol, c) in panel) {
+            val formingOpen = formingOpenOf(symbol, c)
             if (formingOpen != null) {
                 for (p in waiting.filter { it.symbol == symbol }) openPending(prefs, p, c, btc, formingOpen, now, tally)
             }
@@ -160,7 +193,6 @@ class StrategyRunner(
         }
 
         for (p in waiting.filter { it.symbol !in panel }) pending?.expired(p.id, "No daily history for ${p.symbol}.", now)
-        derivatives?.let { d -> syncDerivatives(d, universe.map { it.symbol }) }
         dao.putSetting(SettingRow(UNIVERSE, universe.joinToString(",") { it.symbol }, now))
         runCatching { retier(prefs, panel.filterKeys { it in rankOf }, btc, now) }
         return RunReport(universe.map { it.symbol }, 0, 0, synced.failures)
@@ -180,6 +212,24 @@ class StrategyRunner(
             runCatching { d.syncDvol(symbol.removeSuffix("USDT")) }
         }
         runCatching { d.syncNotices() }
+    }
+
+    /** The sizing engine's inputs for this daily pass (docs/strategy-research.md §7.1). */
+    private suspend fun riskDay(open: List<CallRow>, panel: Map<String, Candles>, btc: Candles, now: Long): RiskDay {
+        val context = runCatching { FuturesContext.read(futures, now) }.getOrNull()
+        val delisted = runCatching { futures?.notices(now - NOTICE_DAYS * DAY).orEmpty() }.getOrDefault(emptyList())
+            .filter { it.kind == NoticeKind.DELISTING }.map { it.coin }.toSet()
+        val exits = dao.allExits().associateBy { it.callId }
+        val liveNet = dao.allCalls().filter { c ->
+            c.source == "v2" && (c.sizeFraction ?: 0.0) > 0 && byId[c.strategyId]?.retired != true
+        }.mapNotNull { exits[it.id]?.net }.toDoubleArray()
+        val day = RiskDay(context?.heat ?: Heat.NONE, delisted, Risk.btcVariance(btc.close), Risk.kellyCap(liveNet), HashMap(), btc)
+        for (row in open) {
+            if (row.tf != Timeframe.D1.label || !row.holdsRoom()) continue
+            val c = panel[row.symbol] ?: continue
+            day.exposureOf(row.symbol, c)?.let { day.book[row.id] = Holding(row.sizeFraction!!, it) }
+        }
+        return day
     }
 
     private suspend fun hourlyPass(prefs: Preferences, open: List<CallRow>, now: Long, tally: Tally) {
@@ -204,7 +254,10 @@ class StrategyRunner(
     private suspend fun closeOpen(prefs: Preferences, calls: List<CallRow>, c: Candles, btc: Candles, formingOpen: Double?, now: Long, tally: Tally) {
         for (row in calls) {
             val s = StrategyCatalog.forCall(row, byId) ?: continue
-            val closed = Live.close(s, row.toNewCall(), c, btc, formingOpen) ?: continue
+            val noticed = c.tf == Timeframe.D1 && formingOpen != null && CallWords.base(row.symbol) in tally.risk?.delisted.orEmpty()
+            val closed = Live.close(s, row.toNewCall(), c, btc, formingOpen)
+                ?: (if (noticed) Live.closeOnNotice(s, row.toNewCall(), c, btc, formingOpen) else null)
+                ?: continue
             val inserted = dao.insertExit(ExitRow(
                 callId = row.id, exitTime = closed.exitTime, exitPrice = closed.exitPrice, reason = closed.reason.label,
                 barsHeld = closed.barsHeld, gross = closed.gross, net = closed.net,
@@ -214,6 +267,7 @@ class StrategyRunner(
             if (inserted == -1L) continue
             tally.exits++
             if (row.holdsRoom()) tally.sized--
+            tally.risk?.book?.remove(row.id)
             if (prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.exit(row.id, s.name, row.symbol, closed.reason.label, closed.exitPrice, closed.net))
         }
     }
@@ -226,17 +280,32 @@ class StrategyRunner(
         // Busy while a call is open, or when the last one leaves at the very open a new one would enter at.
         val busy = latest != null && (dao.exitOf(latest.id)?.let { it.exitTime >= entryTime } ?: true)
         val call = Live.signal(s, c, btc, formingOpen, busy, prefs.costFor(symbol), fired) ?: return
-        val size = if (tally.sized >= MAX_OPEN_CALLS) 0.0 else call.sizeFraction
+        // Daily calls go through the sizing engine and the vetoes; an hourly call keeps its plain size.
+        val risk = tally.risk.takeIf { s.timeframe == Timeframe.D1 }
+        val veto = when {
+            risk == null -> null
+            CallWords.base(symbol) in risk.delisted -> VETO_DELISTING
+            risk.heat == Heat.BLOCK -> Heat.BLOCK.words
+            else -> null
+        }
+        val exposure = risk?.exposureOf(symbol, c)
+        val engine = if (risk == null || veto != null) call.sizeFraction
+        else Risk.size(call.sizeFraction, if (s.trend) Risk.trendFactor(c, c.size - 1) else 1.0, risk.heat, exposure, risk.book.values.toList(), risk.btcVar, risk.kelly).size
+        val size = if (veto != null || tally.sized >= MAX_OPEN_CALLS) 0.0 else engine
         val id = dao.insertCall(CallRow(
             strategyId = call.strategyId, symbol = symbol, tf = s.timeframe.label, signalTime = call.signalTime,
             entryTime = call.entryTime, entryPrice = call.entryPrice, atr = call.atr, stop = call.stop, target = null,
             maxBars = call.maxBars, regime = call.regime, sizeFraction = size, cost = call.cost, source = "v2",
-            archived = false, status = "live", openedAt = now,
+            archived = false, status = "live", openedAt = now, plainSize = call.sizeFraction, veto = veto,
         ))
         if (id == -1L) return
         tally.newCalls++
-        if (size > 0) tally.sized++
-        if (prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size))
+        if (size > 0) {
+            tally.sized++
+            if (risk != null && exposure != null) risk.book[id] = Holding(size, exposure)
+        }
+        // A skipped call is recorded quietly, so the ledger can say whether skipping helped.
+        if (veto == null && prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size))
     }
 
     /**
@@ -308,6 +377,11 @@ class StrategyRunner(
 
         /** The perpetual's basis and the nearest quarterly contract's, whose annualised premium is the leverage gauge. */
         val BASIS_CONTRACTS = listOf("PERPETUAL", "CURRENT_QUARTER")
+
+        /** A delisting notice counts for this many days after it was published: past the halt, the coin is gone anyway. */
+        const val NOTICE_DAYS = 30L
+
+        const val VETO_DELISTING = "the exchange will delist the coin"
 
         /** Settings the runner leaves for the screens: when it last ran, and the coins it watched. */
         const val LAST_PASS = "last_pass_at"
