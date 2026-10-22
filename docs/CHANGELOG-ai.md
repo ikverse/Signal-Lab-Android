@@ -354,3 +354,37 @@ decided the same day that the app keeps paper money and never places orders: cal
   version 1 file from Room's exported schema and checks that its calls survive and the record stays append-only.
 - Tests: engine `RiskTest` (7); runner tests for a delisting notice and for overheated leverage; buy-line wording; order rules
   from `exchangeInfo`; the ledger migration.
+
+### Milestone 3 (2.4.0): Hated rally, Trend leaders, copies
+
+- **Hated rally** (`hatedrally_1d`, Testing, ranks 1 to 12): enters when the 30-day mean funding turns negative after a positive
+  30 days before it, or the 7-day mean is below −5% a year (annualised at three settlements a day); `firstOfRun`, so once per
+  stretch. Exit: close below the prior 20-day low, 60 days, stop 3 ATR. Funding is not candles, so it reads a `FundingBook`
+  the runner fills from `derivatives.db` before every daily pass (and once at app start). It reads only settlements at or
+  before each candle's close, which keeps the no-look-ahead rule; a test cuts history and checks it.
+- **Trend leaders** (`trendleaders_1d`, Watch, weekly on Monday, 7-day hold): the 28 CTREND indicators exactly as the paper
+  defines them (§III.B: RSI, stochRSI, stochK, stochD, CCI; SMAs 3 to 200 over close; MACD and its signal gap; dollar-volume
+  SMAs 3 to 200 over today's dollar volume; volume MACD and its gap; Chaikin money flow; Bollinger low, mid, high over close
+  and width). Combination as the paper's combined Fama–MacBeth: per indicator, weekly cross-sectional regressions of next-week
+  returns (less the week's average) on the indicator; each forecast uses the average intercept and slope of every past week
+  whose return is known (at least 26).
+- Decided without asking:
+  - The paper selects forecasts with an elastic net (α 0.5, λ by corrected AIC) on the last 12 weeks, then averages those with
+    a positive weight. Here a forecast is kept when it moved with the coins' returns over those 12 weeks (the paper's own
+    θ > 0 restriction without the shrinkage); if none qualifies, all are averaged. Simpler, no tuning, documented in the class.
+  - The paper ranks the 100 largest coins; the app's universe is the 40 busiest, so the top fifth is 8 coins.
+  - A coin still in the top fifth next Monday gets a new call rather than an extended one, so each week pays its fees: the
+    paper's weekly rebalancing pays turnover the same way.
+  - `Indicators.sma` uses a running total, so a series with leading gaps (stochK) would be gaps forever; stochD is computed
+    directly. Found when Trend leaders did not fire on the golden coins.
+  - The golden test candles have no funding, so the golden fixture installs a synthetic funding history (a slow wave with
+    noise) for its daily panel. Hated rally's line in the printed backtest table therefore means nothing.
+  - On the twelve golden coins: Trend leaders 1,021 calls, +1.49% net, −0.59% behind random entries per call (t = −1.01).
+- **Copies**: a `copies` table (Room version 3, auto-migration), not append-only because the owner may correct a price; the
+  newer `updated_at` wins between devices, and copies travel in sync keyed by the call's natural key. "I did not take it"
+  deletes the copy on this device; a device that synced it earlier may bring it back, since there is no tombstone (rare,
+  and the owner can remove it again). A copy's result uses the call's assumed round-trip cost. "My copies" in the Ledger
+  shows the average real result beside the paper result on the same calls and the average gap between the owner's buys and
+  the paper entries.
+- Notifications: new calls add "Buy N USDT (X% of your money)" when "Money I trade with" is set; exits are titled "Sell now".
+- Tests: engine 140, app 233, all passing.

@@ -25,12 +25,16 @@ object Golden {
                 rows.getOrPut(f[0]) { ArrayList() }.add(f)
             }
         }
-        rows.mapValues { (sym, r) ->
+        val panel = rows.mapValues { (sym, r) ->
             Candles(sym, tf, LongArray(r.size) { r[it][1].toLong() }, DoubleArray(r.size) { r[it][2].toDouble() },
                 DoubleArray(r.size) { r[it][3].toDouble() }, DoubleArray(r.size) { r[it][4].toDouble() },
                 DoubleArray(r.size) { r[it][5].toDouble() }, DoubleArray(r.size) { r[it][6].toDouble() },
                 LongArray(r.size) { r[it][7].toLong() })
         }
+        // The golden files hold no funding, so the daily panel brings a synthetic history for its coins: the strategies
+        // that read funding (Hated rally) then fire on the golden candles like the others, in every test that uses them.
+        if (tf == Timeframe.D1) com.ikverse.signallab.engine.strategy.Builtins.funding.update(Synth.fundingFor(panel))
+        panel
     }
 
     val expected: JSONObject by lazy {
@@ -116,6 +120,26 @@ object Synth {
 
     fun panel(coins: Int, n: Int, tf: Timeframe): Map<String, Candles> =
         (0 until coins).associate { i -> "C${i}USDT" to candles(n, tf, seed = i.toLong() + 1, symbol = "C${i}USDT") }
+
+    /**
+     * A funding history for [symbol] every 8 hours from [from] to [to]: a slow wave between about +20% and −8% a year with
+     * noise, so it turns negative for weeks at a time, as real funding sometimes does.
+     */
+    fun funding(symbol: String, from: Long, to: Long): com.ikverse.signallab.engine.strategy.FundingSeries {
+        val step = 8 * 3_600_000L
+        val n = ((to - from) / step).toInt() + 1
+        val seed = symbol.hashCode().toLong()
+        val time = LongArray(n) { from + it * step }
+        val rate = DoubleArray(n) { i ->
+            val wave = 0.00006 + 0.00011 * kotlin.math.sin(2 * Math.PI * i / (3 * 160.0) + seed % 7)
+            wave + 0.00002 * gaussian(seed, i.toLong() + 50_000)
+        }
+        return com.ikverse.signallab.engine.strategy.FundingSeries(time, rate)
+    }
+
+    /** A funding history for every coin of [panel], covering its candles. */
+    fun fundingFor(panel: Map<String, Candles>): Map<String, com.ikverse.signallab.engine.strategy.FundingSeries> =
+        panel.mapValues { (sym, c) -> funding(sym, c.t.first() - 60 * 86_400_000L, c.closeTime.last()) }
 }
 
 /** Candles cut at the first [k] bars, as a live run would have had them. */

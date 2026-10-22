@@ -38,6 +38,7 @@ import com.ikverse.signallab.model.Point
 import com.ikverse.signallab.model.StrategyLine
 import com.ikverse.signallab.view.common.Empty
 import com.ikverse.signallab.view.common.Num
+import com.ikverse.signallab.view.common.Overline
 import com.ikverse.signallab.view.common.Panel
 import com.ikverse.signallab.view.common.Pill
 import com.ikverse.signallab.view.common.QuietButton
@@ -76,6 +77,9 @@ fun LedgerScreen(
         } else {
             item { Section("By strategy") { Text("live calls · after fees", style = Type.Caption) } }
             item { RowsPanel(rows = state.strategies.map { line -> @Composable { StrategyLineRow(line, onStrategy) } }) }
+            if (state.copies.isNotEmpty()) {
+                item { CopiesPanel(state) }
+            }
         }
         if (state.coins.isNotEmpty()) {
             item { Section("By coin") }
@@ -192,5 +196,27 @@ private fun StrategyLineRow(line: StrategyLine, onStrategy: (String) -> Unit) {
             line.meanExcess?.let { Text("${Words.pct(it)} vs random", style = Type.Caption) }
         }
         Text(line.standing, style = Type.Small.copy(color = Ink.Body))
+    }
+}
+
+/** "My copies": the calls the owner took on Binance, their real result beside the paper one, and what the fills cost. */
+@Composable
+private fun CopiesPanel(s: LedgerUi) {
+    Panel(Modifier.testTag("my-copies")) {
+        Overline("My copies")
+        val sold = s.copiesSold.size
+        val summary = buildList {
+            add("${Words.count(s.copies.size, "call")} copied on Binance, $sold sold.")
+            s.copiesNet?.let { real -> add("Your average result ${Words.pct(real)} after fees" + (s.copiesPaperNet?.let { ", paper ${Words.pct(it)} on the same calls." } ?: ".")) }
+            s.copiesEntryGap?.let { add("Your buys sat ${com.ikverse.signallab.model.CopyUi.gapWords(it)} the paper entries on average.") }
+        }
+        for (line in summary) Text(line, style = Type.Body.copy(color = Ink.Text))
+        for (c in s.copies.take(12)) {
+            Row(Modifier.fillMaxWidth().testTag("copy-${c.callId}"), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${c.base} · ${c.strategyName}", style = Type.Small, modifier = Modifier.weight(1f))
+                Text(c.net?.let { "you ${Words.pct(it)}" } ?: "open", style = Type.Small.copy(color = Ink.Text))
+                Text(c.paperNet?.let { "paper ${Words.pct(it)}" } ?: "", style = Type.Small)
+            }
+        }
     }
 }

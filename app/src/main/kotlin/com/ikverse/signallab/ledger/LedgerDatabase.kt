@@ -18,12 +18,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         CallRow::class, ExitRow::class, StrategyRow::class, CustomStrategyRow::class, CustomStopRow::class,
-        ReportRow::class, PinRow::class, SettingRow::class, LegacyListRow::class, ImportLogRow::class,
+        ReportRow::class, PinRow::class, SettingRow::class, LegacyListRow::class, ImportLogRow::class, CopyRow::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
     // 1 → 2 (Signal Lab 2.3): calls gain plain_size and veto. Adding columns never rebuilds the table, so the triggers stay.
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    // 2 → 3 (Signal Lab 2.4): the owner's copies of calls, a new table.
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class LedgerDatabase : RoomDatabase() {
     abstract fun dao(): LedgerDao

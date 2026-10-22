@@ -17,7 +17,7 @@ class Breakout(
     val exitLookback: Int = 20,
     maxDays: Int = 60,
 ) : Strategy {
-    override val id = "breakout${lookback}_1d"
+    override val id = "breakout${lookback}_1d"
     override val trend = true
     override val name = "Breakout"
     override val timeframe = Timeframe.D1
@@ -46,7 +46,7 @@ class TrendTimer(
     val days: Int = 50,
     maxDays: Int = 200,
 ) : Strategy {
-    override val id = "trend${days}_1d"
+    override val id = "trend${days}_1d"
     override val trend = true
     override val name = "Trend timer"
     override val timeframe = Timeframe.D1
@@ -72,7 +72,7 @@ class Momentum(
     val weeks: Int = 2,
     val medianDays: Int = 60,
 ) : Strategy {
-    override val id = "mom${weeks}w_1d"
+    override val id = "mom${weeks}w_1d"
     override val trend = true
     override val name = "Momentum ${weeks}w"
     override val timeframe = Timeframe.D1
@@ -100,7 +100,7 @@ class Momentum(
 class NearHigh(
     val withinPct: Double = 0.01,
 ) : Strategy {
-    override val id = "nearhigh7_1d"
+    override val id = "nearhigh7_1d"
     override val trend = true
     override val name = "Near high"
     override val timeframe = Timeframe.D1
@@ -154,7 +154,7 @@ class Leaders(
     val weeks: Int = 3,
     val minCoins: Int = 8,
 ) : Strategy {
-    override val id = "leaders${weeks}w_1d"
+    override val id = "leaders${weeks}w_1d"
     override val trend = true
     override val name = "Leaders"
     override val timeframe = Timeframe.D1
@@ -240,7 +240,12 @@ class HourlyTrend(
 
 /** Every built-in strategy, in the order a person reads them. */
 object Builtins {
-    val all: List<Strategy> = listOf(Breakout(), TrendTimer(), Momentum(), Leaders(), NearHigh(), QuietDip(), HourlyTrend())
+    /** The funding history Hated rally reads; the app fills it before each pass. */
+    val funding = FundingBook()
+
+    val all: List<Strategy> = listOf(
+        Breakout(), TrendTimer(), Momentum(), Leaders(), NearHigh(), QuietDip(), HourlyTrend(), HatedRally(funding), TrendLeaders(),
+    )
 
     fun byId(id: String): Strategy? = all.firstOrNull { it.id == id }
 }

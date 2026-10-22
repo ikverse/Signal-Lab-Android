@@ -4,6 +4,8 @@ import com.ikverse.signallab.engine.Candles
 import com.ikverse.signallab.engine.Indicators
 import com.ikverse.signallab.engine.strategy.AnalystCall
 import com.ikverse.signallab.engine.strategy.Breakout
+import com.ikverse.signallab.engine.strategy.HatedRally
+import com.ikverse.signallab.engine.strategy.TrendLeaders
 import com.ikverse.signallab.engine.strategy.HourlyTrend
 import com.ikverse.signallab.engine.strategy.Leaders
 import com.ikverse.signallab.engine.strategy.Momentum
@@ -46,6 +48,8 @@ object StrategyTexts {
             "Among the strongest fifth of the watched coins over ${s.weeks} weeks (${Words.pct(r)}), at this week's ranking."
         }
         is HourlyTrend -> "An hourly close back above its ${s.hours}-hour average while the daily trend is rising."
+        is HatedRally -> "Futures traders have been paying to bet against it for weeks; such stretches came before strong months."
+        is TrendLeaders -> "Among the top fifth of the watched coins on 28 trend indicators combined, at this week's ranking."
         else -> if (s.id == AnalystCall.id) "The analyst suggested it and you recorded it." else "${s.name} fired on the close of ${Words.day(c.t[i])}."
     }
 
@@ -65,6 +69,8 @@ object StrategyTexts {
         is Breakout -> "exits on a close below its ${s.exitLookback}-day low"
         is TrendTimer -> "exits on a close below its ${s.days}-day average"
         is HourlyTrend -> "exits on an hourly close below its ${s.hours}-hour average, or after two days"
+        is HatedRally -> "exits on a close below its ${s.exitLookback}-day low, or after ${s.maxDays} days"
+        is TrendLeaders -> "exits after a week"
         is CustomStrategy -> if (s.definition.exit != null) "exits on its own rule, or after ${s.exit.maxBars} ${s.timeframe.unit()}" else "exits after ${s.exit.maxBars} ${s.timeframe.unit()}"
         else -> if (s.id == AnalystCall.id) "exits at its stop, its target or its time limit" else "exits after ${s.exit.maxBars} days"
     }
@@ -76,6 +82,7 @@ object StrategyTexts {
     fun exitLevel(s: Strategy, c: Candles): Double? = when (s) {
         is Breakout -> if (c.size >= s.exitLookback) (c.size - s.exitLookback until c.size).minOf { c.low[it] } else null
         is TrendTimer -> Indicators.sma(c.close, s.days).lastOrNull()?.takeUnless { it.isNaN() }
+        is HatedRally -> if (c.size >= s.exitLookback) (c.size - s.exitLookback until c.size).minOf { c.low[it] } else null
         else -> null
     }
 
@@ -105,6 +112,12 @@ object StrategyTexts {
             "There is no price stop, because a stop lowers what a bounce earns."
         is HourlyTrend -> "Requiring the daily trend to agree halved the trades of an hourly rule and doubled its quality. The only test " +
             "is before fees, and fees decide most hourly rules."
+        is HatedRally -> "When shorts have paid longs for a month, too many traders are betting on a fall. Every such stretch " +
+            "since 2018 was followed by strong months for Bitcoin, in two separate studies. But there were only seven to nine of them, " +
+            "the results are before fees and the method is unpublished, so it has to prove itself here before it makes calls."
+        is TrendLeaders -> "A 2025 study combined 28 trend indicators into one ranking and bought the top fifth each week. In the 100 " +
+            "largest coins it earned about 3% a week after costs from 2015 to 2022, but less in the later years and nothing is " +
+            "tested after 2022. It is the research version of Leaders; the ledger compares them on the same coins."
         is CustomStrategy -> s.note ?: ""
         else -> if (s.id == AnalystCall.id) "The analyst's own judgment: calls it suggested in conversation and you recorded. They are judged like " +
             "every strategy, against random entries on the same coin with the same stop, target and time limit." else ""
@@ -117,7 +130,9 @@ object StrategyTexts {
         is Leaders -> "Top fifth by ${s.weeks}-week gain · weekly · fading since 2022"
         is NearHigh -> "Big coins near their weekly high · one study"
         is QuietDip -> "A drop on low volume bounces · mid-size coins"
-        is HourlyTrend -> "Hourly entry when the daily trend is up · fee-fragile"
+        is HourlyTrend -> "Hourly entry when the daily trend is up · retired"
+        is HatedRally -> "Shorts paying longs for a month · BTC, ETH and the top 10"
+        is TrendLeaders -> "Top fifth on 28 trend indicators · weekly"
         is CustomStrategy -> "Custom rule · ${s.timeframe.label}"
         else -> if (s.id == AnalystCall.id) "Calls the analyst suggested and you recorded" else s.name
     }
@@ -128,7 +143,9 @@ object StrategyTexts {
         is Momentum -> "Supports, in large coins and rising markets"
         is Leaders -> "Supported before 2022, fading since"
         is NearHigh, is QuietDip -> "One study"
-        is HourlyTrend -> "One test, before fees"
+        is HourlyTrend -> "One test, before fees; failed live"
+        is HatedRally -> "Two studies, before fees, few episodes"
+        is TrendLeaders -> "One peer-reviewed study, to 2022"
         is CustomStrategy -> "None: defined after seeing a backtest, so only live calls count"
         else -> if (s.id == AnalystCall.id) "None: judged by its record alone" else "Not yet reviewed"
     }
@@ -158,6 +175,14 @@ object StrategyTexts {
         )
         is HourlyTrend -> listOf(
             Source("Quantpedia, 2025, a multi-timeframe trend strategy on Bitcoin", "https://quantpedia.com/how-to-design-a-simple-multi-timeframe-trend-strategy-on-bitcoin/"),
+        )
+        is HatedRally -> listOf(
+            Source("K33 Research via The Block, May 2026", "https://www.theblock.co/post/400182/bitcoin-longest-negative-funding-streak-this-decade-k33-flags-short-squeeze-risk"),
+            Source("VanEck via Bitcoin Magazine, April 2026", "https://bitcoinmagazine.com/news/vaneck-flags-dual-bullish-for-bitcoin"),
+        )
+        is TrendLeaders -> listOf(
+            Source("Fieberg, Liedtke, Poddig, Walker and Zaremba, 2025, Journal of Financial and Quantitative Analysis",
+                "https://www.cambridge.org/core/journals/journal-of-financial-and-quantitative-analysis/article/trend-factor-for-the-cross-section-of-cryptocurrency-returns/4C1509ACBA33D5DCAF0AC24379148178"),
         )
         else -> emptyList()
     }
@@ -194,6 +219,14 @@ object StrategyTexts {
             is HourlyTrend -> listOfNotNull(
                 "entry: hourly close crosses above EMA(${s.hours}) while the daily SMA(${s.days}) is rising",
                 "exit: hourly close < EMA(${s.hours}), or ${s.exit.maxBars} hours", stop, size,
+            )
+            is HatedRally -> listOfNotNull(
+                "entry: 30-day mean funding < 0 after a positive month before it, or 7-day mean funding < −5% a year; once per stretch; top 12 by volume",
+                "exit: close < lowest(low, ${s.exitLookback}, prior), or ${s.maxDays} days", stop, size,
+            )
+            is TrendLeaders -> listOfNotNull(
+                "entry: Monday's close, top 20% of the watched coins by the combined forecast of 28 trend indicators (CTREND), at least ${s.minCoins} coins",
+                "exit: after ${s.exit.maxBars} days", stop, size,
             )
             is CustomStrategy -> listOf("rule: " + s.definition.print(), size)
             else -> if (s.id == AnalystCall.id) listOf("entry: the next daily open after you record it", "exit: its own stop, target and time limit", size)

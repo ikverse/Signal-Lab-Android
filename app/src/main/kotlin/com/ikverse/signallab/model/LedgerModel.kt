@@ -52,10 +52,33 @@ data class LedgerUi(
     val coins: List<CoinLine> = emptyList(),
     val imported: Int = 0,
     val since: Long? = null,
+    /** The calls the owner copied on Binance, newest first, with their real and paper results. */
+    val copies: List<CopyLine> = emptyList(),
 ) {
+    /** The copies sold so far: their average real result after fees, and the paper calls' average, on the same calls. */
+    val copiesSold: List<CopyLine> get() = copies.filter { it.net != null }
+    val copiesNet: Double? get() = copiesSold.takeIf { it.isNotEmpty() }?.map { it.net!! }?.average()
+    val copiesPaperNet: Double? get() = copiesSold.mapNotNull { it.paperNet }.takeIf { it.isNotEmpty() }?.average()
+
+    /** How far the owner's buys sat from the paper entries, on average; positive is paying more. */
+    val copiesEntryGap: Double? get() = copies.takeIf { it.isNotEmpty() }?.map { it.entryGap }?.average()
+
     val change: Double get() = if (start > 0) value / start - 1 else 0.0
     val randomChange: Double get() = if (start > 0) randomValue / start - 1 else 0.0
 }
+
+/** One call the owner copied: its coin and strategy, what they paid against the paper entry, and both results once sold. */
+data class CopyLine(
+    val callId: Long,
+    val base: String,
+    val strategyName: String,
+    val boughtAt: Long,
+    val entryGap: Double,
+    /** The real result after the call's fees, once sold. */
+    val net: Double?,
+    /** The paper result, once the paper call ended. */
+    val paperNet: Double?,
+)
 
 /**
  * The paper account: every finished Signal Lab 2 call at its size, added up in the order they finished, beside the same
@@ -76,9 +99,26 @@ class LedgerModel(
         period.value = p
     }
 
-    val state: StateFlow<LedgerUi> = combine(dao.watchLiveCalls(), dao.watchLiveExits(), preferences, period, dao.watchImportedCalls()) { calls, exits, prefs, p, imported ->
-        build(calls, exits, prefs, p, imported)
-    }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), LedgerUi())
+    val state: StateFlow<LedgerUi> = combine(
+        combine(dao.watchLiveCalls(), dao.watchLiveExits(), preferences, period, dao.watchImportedCalls()) { calls, exits, prefs, p, imported ->
+            build(calls, exits, prefs, p, imported) to (calls to exits)
+        },
+        dao.watchCopies(),
+    ) { (ui, ce), copies -> ui.copy(copies = copyLines(ce.first, ce.second, copies)) }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), LedgerUi())
+
+    private fun copyLines(calls: List<CallRow>, exits: List<ExitRow>, copies: List<com.ikverse.signallab.ledger.CopyRow>): List<CopyLine> {
+        val callBy = calls.associateBy { it.id }
+        val exitBy = exits.associateBy { it.callId }
+        val names = strategies().associate { it.id to it.name }
+        return copies.mapNotNull { cp ->
+            val c = callBy[cp.callId] ?: return@mapNotNull null
+            CopyLine(
+                cp.callId, Words.base(c.symbol), names[c.strategyId] ?: c.strategyId, cp.boughtAt, cp.boughtPrice / c.entryPrice - 1,
+                cp.soldPrice?.let { it / cp.boughtPrice - 1 - c.cost }, exitBy[c.id]?.net,
+            )
+        }.sortedByDescending { it.boughtAt }
+    }
 
     /** The ledger as a spreadsheet: one row per finished call. */
     fun csv(calls: List<CallRow>, exits: List<ExitRow>, account: Double): String = buildString {

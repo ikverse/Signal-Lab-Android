@@ -34,9 +34,14 @@ object CallWords {
 
     fun base(symbol: String) = symbol.removeSuffix("USDT")
 
-    fun newCall(id: Long, strategy: String, symbol: String, entry: Double, stop: Double?, sizeFraction: Double): CallAlert {
+    /** A new call; with the owner's [tradeMoney] set, it says how many USDT to buy. */
+    fun newCall(id: Long, strategy: String, symbol: String, entry: Double, stop: Double?, sizeFraction: Double, tradeMoney: Double? = null): CallAlert {
         val stopPart = stop?.let { ", safety stop ${price(it)} (${pct(it / entry - 1)})" } ?: ""
-        val size = if (sizeFraction > 0) " Size ${Math.round(sizeFraction * 100)}% of the paper account." else " The paper account is full; tracked only."
+        val size = when {
+            sizeFraction <= 0 -> " The paper account is full; tracked only."
+            tradeMoney != null -> String.format(Locale.US, " Buy %,.0f USDT (%d%% of your money).", Math.floor(sizeFraction * tradeMoney), Math.round(sizeFraction * 100))
+            else -> " Size ${Math.round(sizeFraction * 100)}% of the paper account."
+        }
         return CallAlert(id, "${base(symbol)} long · $strategy", "Enter at ${price(entry)}$stopPart.$size")
     }
 
@@ -47,7 +52,7 @@ object CallWords {
             "notice" -> "the exchange will delist the coin"
             else -> "time limit reached"
         }
-        return CallAlert(id, "Exit ${base(symbol)} · $strategy", "Leave at ${price(exitPrice)}: $why. Result ${pct(net)} after fees.")
+        return CallAlert(id, "Sell now: ${base(symbol)} · $strategy", "Paper exit at ${price(exitPrice)}: $why. Result ${pct(net)} after fees.")
     }
 }
 
