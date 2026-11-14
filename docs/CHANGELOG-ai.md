@@ -431,3 +431,11 @@ Proposed and approved by the owner on 2026-11-14 ("approve"), after a whole-acco
   recording it was the owner's choice. Open calls keep the size they were given; switching a strategy on or off changes
   only later calls. The wording for a call with no size now reads "the account was full, or its strategy was not on".
 - Tests: engine 147, app 238, all passing.
+
+### 2026-11-14: the Binance link, and release 2.5.0 (approved)
+
+- Checked on the Fold7: the Binance app (`com.binance.dev`) declares no handler for www.binance.com, so the button fell back to
+  the browser; `https://app.binance.com/en/trade/...` opened the app on "This link does not work". The app's own
+  `bnc://app.binance.com/trade/trade?at=spot&symbol=<coin>usdt` opened the coin's Spot trade screen. The browser fallback
+  keeps the www.binance.com page. A line under the button says to paste the amount into Total (USDT).
+- Released as 2.5.0 (final, per the owner's no-pre-release rule), `v4` fast-forwarded into `main`.

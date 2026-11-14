@@ -104,6 +104,9 @@ fun CallScreen(
                 if (c.tradeUsd != null) "Copy ${Words.usdt(Math.floor(c.tradeUsd))} and open Binance" else "Open ${c.base} on Binance",
                 { onBinance(c) }, Modifier.fillMaxWidth().testTag("open-binance"),
             )
+            if (c.tradeUsd != null) {
+                Text("On Binance's Buy screen, paste the amount into Total (USDT).", style = Type.Small, modifier = Modifier.testTag("binance-hint"))
+            }
         }
 
         if (copyActions != null && c.veto == null) {

@@ -3,6 +3,18 @@
 Each release gets a section here; the release workflow (added with the updater) publishes it as the
 release notes.
 
+## 2.5.0 - 2026-11-14
+
+Signal Lab still trades on paper only and never places an order.
+
+- Each strategy's page shows "If you had copied every call": what 10,000 became from 2020 to 2026 on the 40 busiest Binance coins of each day, its worst fall, and each year, beside simply holding Bitcoin.
+- Trend timer, the one strategy that did better than holding Bitcoin for its risk, now makes calls on Today. Quiet dip and Trend leaders lost money in that test and make no new calls; their records stay.
+- The paper account never holds more than you have. A call that does not fit is made smaller, or tracked with no size.
+- Only strategies that are on hold part of the account. Strategies still being judged are tracked with no size, so they no longer shrink the calls you copy.
+- New in Settings: "One morning plan". One notification at the hour you choose lists what to sell and buy, instead of one for each call.
+- A call with a safety stop shows the Stop-Limit order to place on Binance right after you buy, so Binance sells for you if the price falls there.
+- "Copy … and open Binance" on an open call puts the amount on the clipboard and opens the coin's Spot trade screen in the Binance app; paste it into Total (USDT). Without the app it opens the coin's page on binance.com.
+
 ## 2.4.1 - 2026-10-22
 
 - The settings gear sits at the right of each tab's title instead of in an empty row of its own, and scrolls away with the title. On a wide screen it stays in the side rail.

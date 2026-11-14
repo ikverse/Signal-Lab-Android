@@ -184,8 +184,8 @@ private fun BackBar(onBack: () -> Unit) {
 }
 
 /**
- * Puts the amount to buy on the clipboard and opens the coin's spot page on Binance: in the Binance app when it is installed
- * and takes the link, otherwise in the browser. The owner still places the order; Signal Lab never does.
+ * Puts the amount to buy on the clipboard and opens the coin's spot trade screen in the Binance app, or its page on
+ * binance.com in the browser when the app is not installed. The owner still places the order; Signal Lab never does.
  */
 @Composable
 private fun rememberOpenBinance(): (com.ikverse.signallab.model.CallUi) -> Unit {
@@ -196,12 +196,12 @@ private fun rememberOpenBinance(): (com.ikverse.signallab.model.CallUi) -> Unit 
                 val clip = android.content.ClipData.newPlainText("Amount in USDT", Math.floor(usd).toLong().toString())
                 context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(clip)
             }
-            val page = android.net.Uri.parse("https://www.binance.com/en/trade/${call.base}_USDT?type=spot")
-            val view = android.content.Intent(android.content.Intent.ACTION_VIEW, page).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            fun view(link: String) = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             try {
-                context.startActivity(android.content.Intent(view).setPackage(BINANCE_APP))
+                context.startActivity(view(binanceAppLink(call.base)).setPackage(BINANCE_APP))
             } catch (_: android.content.ActivityNotFoundException) {
-                runCatching { context.startActivity(view) }
+                runCatching { context.startActivity(view("https://www.binance.com/en/trade/${call.base}_USDT?type=spot")) }
             }
         }
     }
@@ -209,6 +209,12 @@ private fun rememberOpenBinance(): (com.ikverse.signallab.model.CallUi) -> Unit 
 
 /** The Binance app's package on Android. */
 private const val BINANCE_APP = "com.binance.dev"
+
+/**
+ * The Binance app's own link to a coin's spot trade screen. The app ignores www.binance.com links and answers
+ * app.binance.com ones with "This link does not work"; this form opened the INJ/USDT trade screen on the Fold7 on 2026-11-14.
+ */
+internal fun binanceAppLink(base: String): String = "bnc://app.binance.com/trade/trade?at=spot&symbol=${base.lowercase(java.util.Locale.ROOT)}usdt"
 
 /** "I took it", "I sold" and "I did not take it" on a call's page, saved to the ledger. */
 @Composable
