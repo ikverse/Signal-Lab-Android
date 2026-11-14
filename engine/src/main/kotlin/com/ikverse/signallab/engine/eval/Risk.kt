@@ -108,6 +108,23 @@ object Risk {
         return (1 + (dist - 2) / 4).coerceIn(0.5, 1.5)
     }
 
+    /** The most of the account the open calls hold together: spot cannot hold more than it has. */
+    const val MAX_HELD = 1.0
+
+    /**
+     * [size] cut to the room left when the open calls already hold [held] of the account and together they may hold at most
+     * [maxHeld]. A call that fits keeps its size; one that does not shrinks to the room left, or to nothing when the room is
+     * under [MIN_SIZE].
+     */
+    fun fit(size: Double, held: Double, maxHeld: Double = MAX_HELD): Double {
+        if (held + size <= maxHeld) return size
+        val room = maxHeld - held
+        return if (room >= MIN_SIZE) room else 0.0
+    }
+
+    /** A call is not shrunk below this share of the account; it is skipped instead. */
+    const val MIN_SIZE = 0.01
+
     /**
      * Half the Kelly fraction implied by finished live calls' net results (mean over variance, per call), or null when there
      * are fewer than [KELLY_MIN_CALLS] or they do not have a positive mean. A losing record is the tiers' job to stop, not a

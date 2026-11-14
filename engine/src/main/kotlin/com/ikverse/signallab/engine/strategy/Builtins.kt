@@ -123,6 +123,9 @@ class NearHigh(
  * Quiet dip (docs/strategy-research.md §1.5): on coins ranked 10 to 80, enter after a daily fall of more than
  * [dropPct] on volume below its median of the prior 30 days; hold five days. A drop that few traded tends to bounce, so
  * the exit is a time stop with no price stop (a stop lowers the expected return of a bounce).
+ *
+ * Retired (docs/strategy-research.md §8): over 3,289 past calls from 2020 to 2026 it lost 0.62% a call after fees, sat 2.34%
+ * behind random entries (t = -3.54), and copied as one account it turned 10,000 into 3,046.
  */
 class QuietDip(
     val dropPct: Double = 0.05,
@@ -134,6 +137,7 @@ class QuietDip(
     override val bullOnly = false
     override val exit = ExitPlan(maxBars = 5)
     override val ranks = 10..80
+    override val retired = true
 
     override fun entries(c: Candles): BooleanArray {
         val r = Indicators.pctReturn(c.close, 1)

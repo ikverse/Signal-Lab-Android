@@ -56,6 +56,10 @@ Wrap every adb call in `timeout N`.
 - `analyst-host/` — the analyst host for the owner's PC (JDK only, no Android): runs the installed Claude Code headless for the
   phone, with Signal Lab's tools bridged back to the phone. Start it with `tools\start-analyst-host.cmd`. Its live test runs
   only with `SIGNAL_LAB_LIVE_CLAUDE=1`, because it uses the plan's usage.
+- `research/` — the whole-account test for the owner's PC (JVM, depends on `:engine`, not part of the app): every daily
+  strategy over years of Binance history, followed as one account (`docs/strategy-research.md` §8). Download history with
+  `python tools/download_history.py klines`, then `./gradlew :research:run`. Its results are copied by hand into
+  `engine/.../eval/AccountRecord.kt`, which the tiers and the evidence pages read.
 - `tools/` — one-off scripts, not part of the build.
 
 ## The engine's rules

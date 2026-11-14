@@ -388,3 +388,37 @@ decided the same day that the app keeps paper money and never places orders: cal
   the paper entries.
 - Notifications: new calls add "Buy N USDT (X% of your money)" when "Money I trade with" is set; exits are titled "Sell now".
 - Tests: engine 140, app 233, all passing.
+
+## Signal Lab 4 (branch `v4`)
+
+Proposed and approved by the owner on 2026-11-14 ("approve"), after a whole-account test of every daily strategy on
+2020 to 2026 history. Five parts; none installed, none pushed. Findings: `docs/strategy-research.md` §8.
+
+### 2026-11-14: the five parts
+
+- **Part 1, the test kept.** New module `research/` (JVM, depends on `:engine`, not part of the app) and
+  `tools/download_history.py`; history goes to `research/data/`, which is gitignored (about 60 MB). The account simulation is
+  `engine/eval/Account.kt`, so the tool and any later screen share one implementation.
+- **Part 3, never more than 100%.** `Risk.fit` cuts a new call to the room left; under 1% of the account it is skipped
+  (tracked with no size) instead of shrunk to an order Binance would refuse. The runner keeps the held share in its tally.
+- **Part 2, the whole account in the app.** Decided without asking:
+  - The phone cannot run the test (it has no history of delisted coins, and today's 40 coins alone would flatter every
+    strategy), so the results are constants in `AccountRecords`, copied from the tool's output. Rerun and replace them when a
+    strategy changes or a year passes.
+  - The tier rule sits after both Failing rules and after Proven, and needs the research to support the strategy. Trend
+    timer is the only built-in it lifts. Breakout and Momentum now depend on the phone's own backtest alone, as before.
+  - Quiet dip and Trend leaders are `retired`, like Hourly trend: open calls close by their rules, records stay.
+- **Part 5, the stop order.** A call's plan has a row "Stop order on Binance": a Stop-Limit sell at the safety stop with the
+  limit 0.5% under it. Prices are shown with the app's usual rounding, not Binance's tick size, which the app does not store.
+  Trend timer has no safety stop, so it has no such row; its exit is a daily close, which the morning plan carries.
+- **Part 4, the morning plan.** Off by default (Settings, Copying calls on Binance). When on, single alerts are held and the
+  first hourly pass at or after the chosen hour on the phone's clock posts one notification: sells, then buys with amounts
+  and stops. No new alarm: the pass already runs every hour. A day with nothing to do posts nothing. Tapping it opens the app.
+  Its state (`plan_day`, `plan_at`) is per device and not synced.
+- **"Copy amount and open Binance"** on an open call's page: the amount goes to the clipboard and
+  `https://www.binance.com/en/trade/<COIN>_USDT?type=spot` is handed to the Binance app (`com.binance.dev`) if it is
+  installed, otherwise to the browser. **Not checked on a phone**: whether Binance's app opens that link on the trade
+  screen has to be seen on the Fold7.
+- Found and not changed, for the owner to decide: calls of strategies that are *not* on Today still take room in the one
+  paper account, so they shrink the amounts of the calls the owner does copy.
+- Tests: engine 147, app 237, all passing.

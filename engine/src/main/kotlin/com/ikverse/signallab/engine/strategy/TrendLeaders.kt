@@ -118,6 +118,12 @@ class TrendLeaders(
     override val exit = ExitPlan(maxBars = 7)
     override val crossSectional = true
 
+    /**
+     * Retired (docs/strategy-research.md §8): copied as one account from 2020 to 2026 it turned 10,000 into 7,604 with a 59%
+     * fall, and lost money in 2022, 2025 and 2026; the paper's edge did not outlast its sample.
+     */
+    override val retired = true
+
     /** A ranking needs the other coins: one coin alone never fires. */
     override fun entries(c: Candles): BooleanArray = BooleanArray(c.size)
 

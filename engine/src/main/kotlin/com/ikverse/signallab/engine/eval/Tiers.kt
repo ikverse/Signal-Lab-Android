@@ -17,7 +17,10 @@ class TierVerdict(val tier: Tier, val reason: String)
  * - **Proven**: the research supports it, at least [MIN_BACKTEST] past calls ahead of random entries at double the fees with a
  *   deflated Sharpe ratio above [CONFIDENCE] (allowing for every strategy ever tried), and live calls not behind.
  * - **Promising**: the research supports it and at least [MIN_BACKTEST] past calls ahead with a probabilistic Sharpe ratio above
- *   [CONFIDENCE]; or at least [MIN_BACKTEST] live calls with one above [CONFIDENCE].
+ *   [CONFIDENCE]; or at least [MIN_BACKTEST] live calls with one above [CONFIDENCE]; or the research supports it and, copied
+ *   as one account in the whole-account test, it grew with a smaller worst fall than holding Bitcoin and more return for its
+ *   swings ([AccountRecord.steadierThan]), with live calls not behind. Random entries share a strategy's exits, so they cannot
+ *   see a rule whose worth is in its exits and its sizing; the account can (docs/strategy-research.md §8).
  * - Otherwise **Watch** when the research supports it, **Testing** when it does not.
  */
 object Tiers {
@@ -35,7 +38,11 @@ object Tiers {
      * [backtest] and [backtestDouble] are the per-call excess over random entries in the backtest at the person's fees and at
      * double them; [live] the same for finished live calls; [trials] every strategy ever tried.
      */
-    fun judge(s: Strategy, backtest: DoubleArray, backtestDouble: DoubleArray, live: DoubleArray, trials: Int): TierVerdict {
+    fun judge(
+        s: Strategy, backtest: DoubleArray, backtestDouble: DoubleArray, live: DoubleArray, trials: Int,
+        /** The strategy's result in the whole-account test; null when the test has not run it. */
+        account: AccountRecord? = AccountRecords.of(s.id),
+    ): TierVerdict {
         val research = researchSupports(s)
         val b = Moments.of(backtest)
         val b2 = Moments.of(backtestDouble)
@@ -55,6 +62,9 @@ object Tiers {
                 if (b2.n >= MIN_BACKTEST && b2.mean > 0) "$past, and still ahead at double the fees, but not yet confident enough after allowing for the $trials strategies tried."
                 else "$past, but not ahead at double the fees.",
             )
+        }
+        if (research && account != null && account.steadierThan(AccountRecords.BITCOIN) && !liveBehind) {
+            return TierVerdict(Tier.PROMISING, "Copied as one account since ${AccountRecords.FROM.take(4)} it grew, and fell less at its worst than holding Bitcoin.")
         }
         if (l.n >= MIN_BACKTEST && l.mean > 0 && Evidence.probabilisticSharpe(l) > CONFIDENCE) {
             return TierVerdict(Tier.PROMISING, "Ahead of random entries over ${l.n} live calls.")

@@ -10,3 +10,5 @@ captures/
 .externalNativeBuild/
 .cxx/
 __pycache__/
+# The downloaded history of the whole-account test (tools/download_history.py).
+research/data/

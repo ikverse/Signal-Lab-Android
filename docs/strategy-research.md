@@ -351,3 +351,68 @@ It makes no new calls from 2.2.0; its record stays in the ledger and it still co
 | Prediction markets as a lead | No Granger-predictive content for next-hour BTC | Aalborg thesis 2026 |
 | Standing funding carry | 2.0 to 3.0% a year net on BTC and ETH in 2026, below stablecoin yields | Binance funding, own pull |
 | Covered calls on BTC | −0.5% net over October 2021 to April 2026 | Anchorage, 37,000 backtests |
+
+## 8. The whole-account test (November 2026)
+
+On 2026-11-14 the owner asked whether following the app would have made money. The random baseline of §4 cannot answer
+that: it asks whether an entry beats a random entry *with the same exit*, so it measures entry timing alone. This test asks
+the owner's question instead. It lives in `research/` and runs on a PC (`gradlew :research:run`).
+
+### 8.1 Method
+
+- Binance spot daily candles for 663 USDT pairs, delisted ones included (LUNA, FTT and the rest are in it), 1 January 2019
+  to 13 November 2026; funding history for the 118 coins that were ever among the 12 busiest.
+- The universe is rebuilt for every day as the app builds it: the 40 busiest coins by 30-day turnover that had traded for
+  180 days. A ranking strategy ranks the coins watched at the start of each quarter.
+- Every daily built-in runs through `Backtest.run`, the same code as the phone, at the usual fees.
+- `Account.run` then follows the calls as one account of 10,000 from 1 January 2020: sized by the sizing engine (§7.1) from
+  the account at the last close, at most eight calls, never more than 100% of the account held, open calls valued at each
+  daily close. The leverage-heat veto and the live-record cap are left out: their inputs have no history.
+
+### 8.2 Results
+
+| Account | Ends at | A year | Worst fall | Sharpe |
+|---|---|---|---|---|
+| Trend timer | 66,982 | +31.9% | −30% | 1.08 |
+| Hated rally | 25,199 | +14.4% | −37% | 0.65 |
+| Near high | 19,373 | +10.1% | −35% | 0.59 |
+| Breakout | 16,150 | +7.2% | −52% | 0.38 |
+| Leaders | 15,721 | +6.8% | −40% | 0.40 |
+| Momentum 2w | 15,499 | +6.6% | −40% | 0.39 |
+| Trend leaders | 7,604 | −3.9% | −59% | 0.01 |
+| Quiet dip | 3,046 | −15.9% | −78% | −0.55 |
+| Every strategy in one account | 11,223 | +1.7% | −65% | 0.22 |
+| Every strategy, plain size, no 100% limit | 7,723 | −3.7% | −96% | 0.41 |
+| Just holding Bitcoin | 94,943 | +38.7% | −77% | 0.85 |
+
+Year by year, Trend timer: +87%, +65%, −22%, +85%, +44%, +6%, −1% (2020 to 2026). Bitcoin: +302%, +60%, −64%, +156%,
++121%, −6%, −22%.
+
+### 8.3 What it says
+
+- **One strategy held up, and it protects more than it earns.** Trend timer made less than holding Bitcoin with well under
+  half the fall. It is not one lucky setting: with 20, 30, 50, 75 and 100-day averages the account ended between 41,000 and
+  72,000 with Sharpe 0.94 to 1.08, and doubling the fees took about 0.1 off the Sharpe. At 150 and 200 days it fades
+  (Sharpe 0.5). Run `gradlew :research:run --args="timer"`.
+- **The sizing engine is most of it.** The same Trend timer calls at plain size, with the account allowed past 100%, ended
+  higher (225,000) but fell 66% on the way; every strategy together at plain size lost 96% at its worst.
+- **No strategy beats random entries with the same exits.** Breakout is 10.6% a call behind (t = −3.60), Quiet dip 2.3%
+  (t = −3.54), Trend timer +1.7% (t = 0.51). The money in a trend rule is in leaving losers early and letting winners run,
+  and random entries share that exit. The baseline stays, as the test of entries; the account is the test of the whole rule.
+- **2025 and 2026 were bad for every rule.** Each strategy lost per call. Trend timer's account was flat while Bitcoin fell.
+- **Quiet dip and Trend leaders lost money as accounts** and in most single years. Both are retired.
+
+### 8.4 What changed in the app
+
+- `Tiers.judge` gains a rule: a strategy the research supports whose account grew, fell less than Bitcoin's and had the
+  higher Sharpe (`AccountRecord.steadierThan`) is Promising, unless its live calls are behind. Today only Trend timer passes.
+- The results are carried in `AccountRecords` and shown on each strategy's evidence page beside Bitcoin.
+- The open calls together never hold more than the account (`Risk.fit`); before, eight calls of 20% could hold 160%.
+- Quiet dip and Trend leaders make no new calls.
+
+### 8.5 Limits
+
+A test on the past. 2020 and 2021 carry much of every gain. The universe is ranked by turnover, so a pumped coin can be
+among the ten busiest for a few weeks. Fills are at the daily open; a copy made hours later differs, which "My copies"
+measures. Eight strategies were tried here, and the one that passed was known beforehand to be the best supported (§1.1,
+§7.1), which is a reason to believe it and no proof.
