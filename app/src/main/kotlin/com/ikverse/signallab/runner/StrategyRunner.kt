@@ -69,7 +69,7 @@ class RunReport(
  * the same for hourly strategies on the universe's hourly candles.
  *
  * A call or exit is notified when its strategy is on (by hand, or by its tier) and notifications are wanted; every call is
- * recorded either way. Running it twice changes nothing the second time: every call and exit is keyed.
+ * recorded either way, but only a call of a strategy that is on holds part of the paper account. Running it twice changes nothing the second time: every call and exit is keyed.
  */
 class StrategyRunner(
     private val market: MarketData,
@@ -317,7 +317,9 @@ class StrategyRunner(
         val exposure = risk?.exposureOf(symbol, c)
         val engine = if (risk == null || veto != null) call.sizeFraction
         else Risk.size(call.sizeFraction, if (s.trend) Risk.trendFactor(c, c.size - 1) else 1.0, risk.heat, exposure, risk.book.values.toList(), risk.btcVar, risk.kelly).size
-        val size = if (veto != null || tally.sized >= MAX_OPEN_CALLS) 0.0 else Risk.fit(engine, tally.held)
+        // Only a strategy that is on holds part of the account: the account is what the owner copies, and a strategy still
+        // being judged must not shrink those calls. Its own calls are tracked with no size; their results still count.
+        val size = if (veto != null || !prefs.isOn(s) || tally.sized >= MAX_OPEN_CALLS) 0.0 else Risk.fit(engine, tally.held)
         val id = dao.insertCall(CallRow(
             strategyId = call.strategyId, symbol = symbol, tf = s.timeframe.label, signalTime = call.signalTime,
             entryTime = call.entryTime, entryPrice = call.entryPrice, atr = call.atr, stop = call.stop, target = null,

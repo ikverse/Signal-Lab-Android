@@ -99,7 +99,7 @@ class CallModel(
             add("Size" to when {
                 ui.veto != null -> "skipped: ${ui.veto}"
                 ui.sizeFraction > 0 -> "${Words.usd(ui.sizeUsd)} of a ${Words.usd(account)} paper account"
-                else -> "tracked only: the account was full"
+                else -> "tracked only: the account was full, or its strategy was not on"
             })
             if (row.plainSize != null && ui.veto == null && Math.abs(row.plainSize - ui.sizeFraction) > 0.005) {
                 add("Plain size" to "${Words.share(row.plainSize)} before the sizing engine")

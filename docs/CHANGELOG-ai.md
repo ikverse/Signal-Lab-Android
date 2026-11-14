@@ -419,6 +419,15 @@ Proposed and approved by the owner on 2026-11-14 ("approve"), after a whole-acco
   `https://www.binance.com/en/trade/<COIN>_USDT?type=spot` is handed to the Binance app (`com.binance.dev`) if it is
   installed, otherwise to the browser. **Not checked on a phone**: whether Binance's app opens that link on the trade
   screen has to be seen on the Fold7.
-- Found and not changed, for the owner to decide: calls of strategies that are *not* on Today still take room in the one
-  paper account, so they shrink the amounts of the calls the owner does copy.
-- Tests: engine 147, app 237, all passing.
+- Found, for the owner to decide: calls of strategies that are *not* on Today took room in the one paper account, so they
+  shrank the amounts of the calls the owner does copy.
+
+### 2026-11-14: only a strategy that is on holds part of the account (approved)
+
+- In `StrategyRunner.openCall`, a call of a strategy that is off (by its tier or by hand) is recorded with size 0 and its
+  plain size kept, with no veto: its result against random entries still feeds its tier, so it can still earn its place.
+  The paper account is now the account of what Today shows, which is what the owner copies.
+- Decided without asking: a call the owner recorded from the analyst keeps its room whatever the analyst's tier, since
+  recording it was the owner's choice. Open calls keep the size they were given; switching a strategy on or off changes
+  only later calls. The wording for a call with no size now reads "the account was full, or its strategy was not on".
+- Tests: engine 147, app 238, all passing.

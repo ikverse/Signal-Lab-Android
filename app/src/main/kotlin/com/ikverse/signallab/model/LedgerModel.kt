@@ -82,7 +82,7 @@ data class CopyLine(
 
 /**
  * The paper account: every finished Signal Lab 2 call at its size, added up in the order they finished, beside the same
- * calls valued at their random entries. A call recorded with no size (the account was full) counts in the strategy lines
+ * calls valued at their random entries. A call recorded with no size (the account was full, or its strategy was not on) counts in the strategy lines
  * but not in the account.
  */
 class LedgerModel(

@@ -310,6 +310,26 @@ class StrategyRunnerTest {
     }
 
     @Test
+    fun onlyAStrategyThatIsOnHoldsPartOfTheAccount() = runTest {
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val btc = panel.getValue("BTCUSDT")
+        val quiet = object : Strategy by everyDay {
+            override val id = "every_day_quiet"
+        }
+        val r = StrategyRunner(
+            market, UniverseRepository(market, store, clock = { market.now }), store, DailyHistory(CandleSync(market, store)), ledger, Collected(),
+            strategies = listOf(quiet, everyDay), preferences = { Preferences(switches = mapOf(quiet.id to false)) },
+        )
+        for (d in btc.size - 100 until btc.size - 97) marketAt(market, d).also { r.run() }
+        val calls = ledger.dao().allCalls()
+        val off = calls.filter { it.strategyId == quiet.id }
+        assertEquals(9, off.size, "the strategy that is off still records its calls")
+        assertTrue(off.all { it.sizeFraction == 0.0 && (it.plainSize ?: 0.0) > 0 && it.veto == null }, "a call of a strategy that is off took room")
+        assertTrue(calls.filter { it.strategyId == everyDay.id }.all { (it.sizeFraction ?: 0.0) > 0 }, "the strategy that is on lost its room")
+    }
+
+    @Test
     fun theOpenCallsTogetherNeverHoldMoreThanTheAccount() = runTest {
         val market = setUpMarket()
         val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)

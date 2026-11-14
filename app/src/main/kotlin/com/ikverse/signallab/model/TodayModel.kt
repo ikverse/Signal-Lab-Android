@@ -70,7 +70,7 @@ data class CallUi(
         get() = when {
             veto != null -> "Skipped: $veto."
             tradeUsd == null -> null
-            sizeFraction <= 0 -> "Nothing to buy: the account already holds as many calls as it may."
+            sizeFraction <= 0 -> "Nothing to buy: tracked only. The account was full, or its strategy was not on."
             belowMinimum -> "Buy ${Words.usdt(tradeUsd)} of $base: below Binance's smallest order for this coin."
             else -> "Buy ${Words.usdt(tradeUsd)} of $base" + (tradeQty?.let { " (${Words.quantity(it)} $base)" } ?: "")
         }
