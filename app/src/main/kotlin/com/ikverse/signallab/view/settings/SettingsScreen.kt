@@ -66,6 +66,13 @@ fun SettingsScreen(state: SettingsUi, actions: SettingsActions, modifier: Modifi
                 @Composable { NumberRow("Money I trade with, USDT", p.tradeMoney ?: 0.0, 0, "trade-money") { actions.set(Preferences.TRADE_MONEY, it.toString()) } },
             ))
             Text("Your own Binance balance. Each call then says how many USDT to buy, sized the same way as on paper. Signal Lab never trades for you.", style = Type.Caption)
+            val planRows = ArrayList<@Composable () -> Unit>()
+            planRows.add { SwitchRow("One morning plan", "One notification a day with what to sell and buy, instead of one for each call", p.planOn) { actions.setBool(Preferences.PLAN_ON, it) } }
+            if (p.planOn) {
+                planRows.add { NumberRow("Hour of the plan, 1 to 23, on this phone's clock", p.planHour.toDouble(), 0, "plan-hour") { actions.set(Preferences.PLAN_HOUR, it.toInt().coerceIn(1, 23).toString()) } }
+            }
+            RowsPanel(rows = planRows)
+            Text("Calls are made at the daily close, 00:00 UTC. With a morning plan they wait for your hour, so you act once, when you are awake.", style = Type.Caption)
         }
         Group("Paper account") {
             RowsPanel(rows = listOf(

@@ -77,6 +77,8 @@ data class EvidenceUi(
     val tierReason: String? = null,
     /** For a custom strategy, whether it is running; null for the others, which always run. */
     val running: Boolean? = null,
+    /** What copying every call did to one account in the whole-account test; null for a strategy the test has not run. */
+    val account: com.ikverse.signallab.engine.eval.AccountRecord? = com.ikverse.signallab.engine.eval.AccountRecords.of(id),
 ) {
     /** The verdict in a sentence, from the three columns. */
     val verdict: String

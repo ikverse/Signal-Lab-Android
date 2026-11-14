@@ -310,6 +310,64 @@ class StrategyRunnerTest {
     }
 
     @Test
+    fun theOpenCallsTogetherNeverHoldMoreThanTheAccount() = runTest {
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val btc = panel.getValue("BTCUSDT")
+        // Two open calls already hold 98% of the account. They are hourly, so this daily replay never closes them.
+        repeat(2) { k ->
+            ledger.dao().insertCall(CallRow(
+                strategyId = "parked", symbol = "BTCUSDT", tf = "1h", signalTime = k.toLong(), entryTime = k.toLong(), entryPrice = 1.0,
+                atr = null, stop = null, target = null, maxBars = 1, regime = -1, sizeFraction = 0.49, cost = 0.0, source = "v2",
+                archived = false, status = "live", openedAt = 0,
+            ))
+        }
+        val r = StrategyRunner(
+            market, UniverseRepository(market, store, clock = { market.now }), store, DailyHistory(CandleSync(market, store)), ledger, Collected(),
+            strategies = listOf(everyDay),
+        )
+        marketAt(market, btc.size - 100).also { r.run() }
+        val made = ledger.dao().allCalls().filter { it.strategyId == everyDay.id }
+        assertEquals(3, made.size)
+        // The first call shrinks to the 2% left; the others are tracked with no size.
+        assertEquals(listOf(0.0, 0.0, 0.02), made.map { Math.round((it.sizeFraction ?: 0.0) * 1e6) / 1e6 }.sorted())
+        assertTrue(made.all { (it.plainSize ?: 0.0) > 0.02 }, "the plain sizes were small enough to fit anyway")
+    }
+
+    @Test
+    fun withAMorningPlanCallsWaitForTheHourAndComeAsOneNotification() = runTest {
+        val market = setUpMarket()
+        val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)
+        val btc = panel.getValue("BTCUSDT")
+        val alerts = Collected()
+        val prefs = Preferences(switches = mapOf(everyDay.id to true), planOn = true, planHour = 8, tradeMoney = 1000.0)
+        val r = StrategyRunner(
+            market, UniverseRepository(market, store, clock = { market.now }), store, DailyHistory(CandleSync(market, store)), ledger, alerts,
+            strategies = listOf(everyDay), preferences = { prefs }, zone = { java.time.ZoneOffset.UTC },
+        )
+        val d = btc.size - 100
+        // The pass an hour after the daily close makes the calls and says nothing.
+        marketAt(market, d).also { r.run() }
+        assertEquals(3, ledger.dao().allCalls().size)
+        assertEquals(emptyList(), alerts.posted)
+        // The pass after 08:00 posts the plan, once.
+        market.now = btc.t[d + 1] + 8 * 3_600_000L + 90_000L
+        r.run()
+        r.run()
+        val plan = alerts.posted.single()
+        assertEquals("Today's plan: 3 to buy", plan.title)
+        assertTrue(plan.text.lines().all { it.startsWith("Buy ") && it.contains("USDT of ") }, plan.text)
+        assertTrue(!plan.opensCall)
+        // The next day: yesterday's calls leave and new ones enter, all in one plan.
+        marketAt(market, d + 1).also { r.run() }
+        assertEquals(1, alerts.posted.size)
+        market.now = btc.t[d + 2] + 8 * 3_600_000L + 90_000L
+        r.run()
+        assertEquals("Today's plan: 3 to sell, 3 to buy", alerts.posted.last().title)
+        assertEquals(2, alerts.posted.size)
+    }
+
+    @Test
     fun aDelistingNoticeSkipsTheCoinAndClosesWhatIsOpenOnIt() = runTest {
         val market = setUpMarket()
         val store = CandleStore(context, name = null, io = Dispatchers.Unconfined)

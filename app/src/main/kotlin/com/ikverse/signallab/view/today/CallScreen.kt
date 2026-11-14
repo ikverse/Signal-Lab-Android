@@ -46,6 +46,8 @@ fun CallScreen(
     onAsk: ((CallUi) -> Unit)? = null,
     /** The owner's copy on Binance: bought at a price, sold at a price, or not taken after all; null hides the section. */
     copyActions: CopyActions? = null,
+    /** Copies the amount to buy and opens the coin on Binance; null hides the button. */
+    onBinance: ((CallUi) -> Unit)? = null,
 ) {
     if (page == null) {
         Box(modifier.fillMaxSize().testTag("call-loading"))
@@ -95,6 +97,13 @@ fun CallScreen(
                     }
                 }
             })
+        }
+
+        if (onBinance != null && page.ended == null && c.veto == null && c.sizeFraction > 0) {
+            com.ikverse.signallab.view.common.PrimaryButton(
+                if (c.tradeUsd != null) "Copy ${Words.usdt(Math.floor(c.tradeUsd))} and open Binance" else "Open ${c.base} on Binance",
+                { onBinance(c) }, Modifier.fillMaxWidth().testTag("open-binance"),
+            )
         }
 
         if (copyActions != null && c.veto == null) {

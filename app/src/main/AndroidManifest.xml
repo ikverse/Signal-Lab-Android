@@ -16,6 +16,8 @@
     <!-- The analyst can hand a question to the Claude app; from Android 11 an app must name the apps it looks for. -->
     <queries>
         <package android:name="com.anthropic.claude" />
+        <!-- "Open on Binance" on a call's page hands the coin's page to the Binance app when it is installed. -->
+        <package android:name="com.binance.dev" />
     </queries>
 
     <application

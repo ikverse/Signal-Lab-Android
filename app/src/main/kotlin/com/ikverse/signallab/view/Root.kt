@@ -183,6 +183,33 @@ private fun BackBar(onBack: () -> Unit) {
     }
 }
 
+/**
+ * Puts the amount to buy on the clipboard and opens the coin's spot page on Binance: in the Binance app when it is installed
+ * and takes the link, otherwise in the browser. The owner still places the order; Signal Lab never does.
+ */
+@Composable
+private fun rememberOpenBinance(): (com.ikverse.signallab.model.CallUi) -> Unit {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return androidx.compose.runtime.remember(context) {
+        { call ->
+            call.tradeUsd?.let { usd ->
+                val clip = android.content.ClipData.newPlainText("Amount in USDT", Math.floor(usd).toLong().toString())
+                context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(clip)
+            }
+            val page = android.net.Uri.parse("https://www.binance.com/en/trade/${call.base}_USDT?type=spot")
+            val view = android.content.Intent(android.content.Intent.ACTION_VIEW, page).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(android.content.Intent(view).setPackage(BINANCE_APP))
+            } catch (_: android.content.ActivityNotFoundException) {
+                runCatching { context.startActivity(view) }
+            }
+        }
+    }
+}
+
+/** The Binance app's package on Android. */
+private const val BINANCE_APP = "com.binance.dev"
+
 /** "I took it", "I sold" and "I did not take it" on a call's page, saved to the ledger. */
 @Composable
 private fun rememberCopyActions(m: AppModels): com.ikverse.signallab.view.today.CopyActions {
@@ -229,7 +256,7 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
                         } else {
                             val copies by m.calls.copies.collectAsStateWithLifecycle(emptyList())
                             val page by produceState<CallPageUi?>(null, chosen, prefs.accountSize, state, copies) { value = m.calls.page(chosen, prefs.accountSize) }
-                            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav), copyActions = rememberCopyActions(m))
+                            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav), copyActions = rememberCopyActions(m), onBinance = rememberOpenBinance())
                         }
                     }
                 }
@@ -240,7 +267,7 @@ private fun Screens(m: AppModels, nav: androidx.navigation.NavHostController, tw
             val today by m.today.state.collectAsStateWithLifecycle()
             val copies by m.calls.copies.collectAsStateWithLifecycle(emptyList())
             val page by produceState<CallPageUi?>(null, id, prefs.accountSize, today, copies) { value = m.calls.page(id, prefs.accountSize) }
-            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav), copyActions = rememberCopyActions(m))
+            CallScreen(page, onEvidence = { nav.navigate(Routes.Evidence(it)) }, onAsk = ask(m, nav), copyActions = rememberCopyActions(m), onBinance = rememberOpenBinance())
         }
         composable<Routes.Ledger> {
             val state by m.ledger.state.collectAsStateWithLifecycle()

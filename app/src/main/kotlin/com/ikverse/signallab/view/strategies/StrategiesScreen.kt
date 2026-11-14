@@ -160,6 +160,7 @@ fun EvidenceScreen(e: EvidenceUi?, modifier: Modifier = Modifier, onRun: (Boolea
                     note = if (e.live.closed < 100) "${e.live.closed} finished" else "vs random")
             }
         }
+        e.account?.let { a -> AccountSection(a) }
         e.backtest?.let { b ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Tested on your coins", style = Type.Heading)
@@ -193,6 +194,25 @@ fun EvidenceScreen(e: EvidenceUi?, modifier: Modifier = Modifier, onRun: (Boolea
             Overline("The exact rule")
             for (line in e.rule) Num(line, color = Ink.Muted, size = 13)
         }
+    }
+}
+
+/** The whole-account test: what copying every call did to 10,000, beside simply holding Bitcoin. */
+@Composable
+private fun AccountSection(a: com.ikverse.signallab.engine.eval.AccountRecord) {
+    val records = com.ikverse.signallab.engine.eval.AccountRecords
+    val btc = records.BITCOIN
+    val btcByYear = btc.byYear.toMap()
+    Column(Modifier.testTag("account-test"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("If you had copied every call", style = Type.Heading)
+        Text("${Words.usd(records.START)} from ${records.FROM.take(4)} to ${records.TO.take(4)}, on the 40 busiest Binance coins of each day, sized as the app sizes calls, after fees. Holding Bitcoin is beside it.", style = Type.Small)
+        RowsPanel(rows = listOf<@Composable () -> Unit>(
+            @Composable { Fact("Ended at", { Num("${Words.usd(a.end)} · Bitcoin ${Words.usd(btc.end)}", size = 14) }) },
+            @Composable { Fact("Worst fall on the way", { Num("${Words.pct(a.worstFall, 0)} · Bitcoin ${Words.pct(btc.worstFall, 0)}", size = 14) }) },
+        ) + a.byYear.map { (year, r) ->
+            @Composable { Fact("$year", { Num("${Words.pct(r, 0)} · Bitcoin ${btcByYear[year]?.let { Words.pct(it, 0) } ?: "–"}", size = 14, color = if (r >= 0) Ink.Gain else Ink.Loss) }) }
+        })
+        Text("A test on the past, not a promise. It shows what the strategy's exits and sizes are worth together, which a comparison with random entries cannot.", style = Type.Small)
     }
 }
 

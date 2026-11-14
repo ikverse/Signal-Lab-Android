@@ -93,6 +93,7 @@ class CallModel(
             add("Exit when" to (level?.let { "a daily close is below ${Words.price(it)}, or by ${Words.day(ui.lastDay)}" }
                 ?: "${StrategyTexts.exitShort(s)}, or by ${Words.day(ui.lastDay)}"))
             row.stop?.let { add("Safety stop" to "${Words.price(it)} (${Words.pct(it / row.entryPrice - 1)})") }
+            if (exit == null && ui.veto == null) row.stop?.let { add("Stop order on Binance" to stopOrder(it, ui.base)) }
             row.target?.let { add("Target" to "${Words.price(it)} (${Words.pct(it / row.entryPrice - 1)})") }
             ui.buyLine?.let { add("On Binance" to it) }
             add("Size" to when {
@@ -133,7 +134,17 @@ class CallModel(
     /** The owner did not take it after all. */
     suspend fun forget(id: Long) = dao.removeCopy(id)
 
-    private companion object {
-        const val DAY = 86_400_000L
+    companion object {
+        private const val DAY = 86_400_000L
+
+        /** The limit of the stop order sits this far under its stop, so it still fills when the price is falling fast. */
+        const val STOP_LIMIT_GAP = 0.005
+
+        /**
+         * The order that makes the safety stop work without watching: placed on Binance right after buying, it sells when the
+         * price falls to the stop. The paper call leaves at the stop price, so without it a copy leaves later and lower.
+         */
+        fun stopOrder(stop: Double, base: String): String =
+            "After you buy, place a Stop-Limit sell for all your $base: stop ${Words.price(stop)}, limit ${Words.price(stop * (1 - STOP_LIMIT_GAP))}. Binance then sells for you if the price falls there."
     }
 }

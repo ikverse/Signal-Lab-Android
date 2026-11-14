@@ -129,10 +129,10 @@ object StrategyTexts {
         is Momentum -> "Strong ${s.weeks} weeks keeps going · rising market only"
         is Leaders -> "Top fifth by ${s.weeks}-week gain · weekly · fading since 2022"
         is NearHigh -> "Big coins near their weekly high · one study"
-        is QuietDip -> "A drop on low volume bounces · mid-size coins"
+        is QuietDip -> "A drop on low volume bounces · retired"
         is HourlyTrend -> "Hourly entry when the daily trend is up · retired"
         is HatedRally -> "Shorts paying longs for a month · BTC, ETH and the top 10"
-        is TrendLeaders -> "Top fifth on 28 trend indicators · weekly"
+        is TrendLeaders -> "Top fifth on 28 trend indicators · retired"
         is CustomStrategy -> "Custom rule · ${s.timeframe.label}"
         else -> if (s.id == AnalystCall.id) "Calls the analyst suggested and you recorded" else s.name
     }
@@ -142,10 +142,11 @@ object StrategyTexts {
         is TrendTimer -> "Supports, mostly as drawdown protection"
         is Momentum -> "Supports, in large coins and rising markets"
         is Leaders -> "Supported before 2022, fading since"
-        is NearHigh, is QuietDip -> "One study"
+        is NearHigh -> "One study"
+        is QuietDip -> "One study; lost money over 2020 to 2026"
         is HourlyTrend -> "One test, before fees; failed live"
         is HatedRally -> "Two studies, before fees, few episodes"
-        is TrendLeaders -> "One peer-reviewed study, to 2022"
+        is TrendLeaders -> "One study, to 2022; lost money since"
         is CustomStrategy -> "None: defined after seeing a backtest, so only live calls count"
         else -> if (s.id == AnalystCall.id) "None: judged by its record alone" else "Not yet reviewed"
     }

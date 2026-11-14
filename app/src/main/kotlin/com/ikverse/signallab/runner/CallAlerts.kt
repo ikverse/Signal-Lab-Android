@@ -14,7 +14,8 @@ import com.ikverse.signallab.R
 import java.util.Locale
 
 /** A new call or an exit, in the words a notification shows. */
-data class CallAlert(val id: Long, val title: String, val text: String)
+/** [opensCall]: whether tapping it opens the call with its [id]; the morning plan opens the app instead. */
+data class CallAlert(val id: Long, val title: String, val text: String, val opensCall: Boolean = true)
 
 /** Where the runner reports calls and exits. Android shows them as notifications; tests collect them. */
 interface CallAlerts {
@@ -23,7 +24,7 @@ interface CallAlerts {
 
 /** Words for calls and exits: what to do, with the numbers. Research, not advice: the app trades on paper only. */
 object CallWords {
-    private fun price(p: Double): String = when {
+    fun price(p: Double): String = when {
         p >= 1000 -> String.format(Locale.US, "%,.2f", p)
         p >= 1 -> String.format(Locale.US, "%.2f", p)
         p >= 0.01 -> String.format(Locale.US, "%.4f", p)
@@ -45,13 +46,16 @@ object CallWords {
         return CallAlert(id, "${base(symbol)} long · $strategy", "Enter at ${price(entry)}$stopPart.$size")
     }
 
+    /** Why a call left, from its exit's reason. */
+    fun why(reason: String): String = when (reason) {
+        "stop" -> "safety stop hit"
+        "signal" -> "the strategy's exit signal"
+        "notice" -> "the exchange will delist the coin"
+        else -> "time limit reached"
+    }
+
     fun exit(id: Long, strategy: String, symbol: String, reason: String, exitPrice: Double, net: Double): CallAlert {
-        val why = when (reason) {
-            "stop" -> "safety stop hit"
-            "signal" -> "the strategy's exit signal"
-            "notice" -> "the exchange will delist the coin"
-            else -> "time limit reached"
-        }
+        val why = why(reason)
         return CallAlert(id, "Sell now: ${base(symbol)} · $strategy", "Paper exit at ${price(exitPrice)}: $why. Result ${pct(net)} after fees.")
     }
 }
@@ -71,7 +75,7 @@ class AndroidCallAlerts(private val context: Context) : CallAlerts {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
             PendingIntent.getActivity(
-                context, alert.id.toInt(), it.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(EXTRA_CALL, alert.id),
+                context, alert.id.toInt(), it.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).apply { if (alert.opensCall) putExtra(EXTRA_CALL, alert.id) },
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         }

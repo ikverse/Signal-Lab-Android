@@ -17,6 +17,9 @@ data class Preferences(
     /** Round-trip cost charged on every other coin, as a fraction. */
     val costOthers: Double = EngineConfig.COST_OTHERS,
     val notifications: Boolean = true,
+    /** One morning plan at [planHour] on the phone's clock instead of an alert for each call and exit. */
+    val planOn: Boolean = false,
+    val planHour: Int = 8,
     /** Binance.US instead of Binance.com. */
     val binanceUs: Boolean = false,
     val futuresData: Boolean = true,
@@ -56,6 +59,8 @@ data class Preferences(
         const val COST_MAJORS = "cost_majors"
         const val COST_OTHERS = "cost_others"
         const val NOTIFICATIONS = "alert_notifications"
+        const val PLAN_ON = "plan_on"
+        const val PLAN_HOUR = "plan_hour"
         const val DATA_HOST = "data_host"
         const val FUTURES = "futures_data"
         const val SWITCH_PREFIX = "strategy_on."
@@ -80,6 +85,8 @@ data class Preferences(
                 costMajors = m[COST_MAJORS]?.toDoubleOrNull() ?: EngineConfig.COST_MAJORS,
                 costOthers = m[COST_OTHERS]?.toDoubleOrNull() ?: EngineConfig.COST_OTHERS,
                 notifications = bool(NOTIFICATIONS, true),
+                planOn = bool(PLAN_ON, false),
+                planHour = m[PLAN_HOUR]?.toDoubleOrNull()?.toInt()?.coerceIn(0, 23) ?: 8,
                 binanceUs = m[DATA_HOST] == HOST_US,
                 futuresData = bool(FUTURES, true),
                 switches = m.filterKeys { it.startsWith(SWITCH_PREFIX) }.map { (k, v) -> k.removePrefix(SWITCH_PREFIX) to (v == "1") }.toMap(),

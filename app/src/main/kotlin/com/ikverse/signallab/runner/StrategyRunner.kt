@@ -90,6 +90,8 @@ class StrategyRunner(
     private val pending: PendingCalls? = null,
     /** Funding, basis, implied volatility and exchange notices, for the sizing engine and the vetoes; null leaves them out. */
     private val futures: DerivativesStore? = null,
+    /** The phone's time zone, for the hour of the morning plan. */
+    private val zone: () -> java.time.ZoneId = java.time.ZoneId::systemDefault,
 ) {
     private val lock = Mutex()
     private val dao get() = ledger.dao()
@@ -100,8 +102,11 @@ class StrategyRunner(
 
     suspend fun run(): RunReport = lock.withLock { runLocked() }
 
-    /** [sized]: open calls that hold part of the account; a call tracked with no size takes no room. */
-    private class Tally(var newCalls: Int = 0, var exits: Int = 0, var sized: Int = 0, var risk: RiskDay? = null)
+    /**
+     * [sized]: open calls that hold part of the account; a call tracked with no size takes no room. [held]: the share of the
+     * account they hold together, which never passes [Risk.MAX_HELD]: spot cannot buy with money it does not have.
+     */
+    private class Tally(var newCalls: Int = 0, var exits: Int = 0, var sized: Int = 0, var held: Double = 0.0, var risk: RiskDay? = null)
 
     /**
      * What the sizing engine and the vetoes know during one daily pass: the leverage heat, the coins with a delisting
@@ -130,7 +135,7 @@ class StrategyRunner(
         for (s in strategies) dao.insertStrategy(StrategyRow(s.id, s.name, s.timeframe.label, "{}", now, retired = false, source = "v2"))
         for (s in custom) dao.insertStrategy(StrategyRow(s.id, s.name, s.timeframe.label, "{}", now, retired = false, source = "custom"))
         val open = dao.openCalls()
-        val tally = Tally(sized = open.count { it.holdsRoom() })
+        val tally = Tally(sized = open.count { it.holdsRoom() }, held = open.sumOf { it.sizeFraction ?: 0.0 })
         val lastDay = Math.floorDiv(now, DAY) * DAY - DAY
         var report = RunReport(storedUniverse(), 0, 0, emptyMap())
         if (dao.setting(DAILY_DONE)?.toLongOrNull() != lastDay) {
@@ -139,6 +144,7 @@ class StrategyRunner(
             dao.putSetting(SettingRow(DAILY_DONE, lastDay.toString(), now))
         }
         hourlyPass(prefs, open, now, tally)
+        runCatching { postPlanIfDue(prefs, now) }
         dao.putSetting(SettingRow(LAST_PASS, now.toString(), now))
         return RunReport(report.universe, tally.newCalls, tally.exits, report.failures)
     }
@@ -283,9 +289,12 @@ class StrategyRunner(
             ))
             if (inserted == -1L) continue
             tally.exits++
-            if (row.holdsRoom()) tally.sized--
+            if (row.holdsRoom()) {
+                tally.sized--
+                tally.held -= row.sizeFraction ?: 0.0
+            }
             tally.risk?.book?.remove(row.id)
-            if (prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.exit(row.id, s.name, row.symbol, closed.reason.label, closed.exitPrice, closed.net))
+            if (prefs.notifications && !prefs.planOn && prefs.isOn(s)) alerts.post(CallWords.exit(row.id, s.name, row.symbol, closed.reason.label, closed.exitPrice, closed.net))
         }
     }
 
@@ -308,7 +317,7 @@ class StrategyRunner(
         val exposure = risk?.exposureOf(symbol, c)
         val engine = if (risk == null || veto != null) call.sizeFraction
         else Risk.size(call.sizeFraction, if (s.trend) Risk.trendFactor(c, c.size - 1) else 1.0, risk.heat, exposure, risk.book.values.toList(), risk.btcVar, risk.kelly).size
-        val size = if (veto != null || tally.sized >= MAX_OPEN_CALLS) 0.0 else engine
+        val size = if (veto != null || tally.sized >= MAX_OPEN_CALLS) 0.0 else Risk.fit(engine, tally.held)
         val id = dao.insertCall(CallRow(
             strategyId = call.strategyId, symbol = symbol, tf = s.timeframe.label, signalTime = call.signalTime,
             entryTime = call.entryTime, entryPrice = call.entryPrice, atr = call.atr, stop = call.stop, target = null,
@@ -319,10 +328,11 @@ class StrategyRunner(
         tally.newCalls++
         if (size > 0) {
             tally.sized++
+            tally.held += size
             if (risk != null && exposure != null) risk.book[id] = Holding(size, exposure)
         }
         // A skipped call is recorded quietly, so the ledger can say whether skipping helped.
-        if (veto == null && prefs.notifications && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size, prefs.tradeMoney))
+        if (veto == null && prefs.notifications && !prefs.planOn && prefs.isOn(s)) alerts.post(CallWords.newCall(id, s.name, symbol, call.entryPrice, call.stop, size, prefs.tradeMoney))
     }
 
     /**
@@ -337,7 +347,7 @@ class StrategyRunner(
             return
         }
         dao.insertStrategy(StrategyRow(AnalystCall.id, AnalystCall.name, AnalystCall.timeframe.label, "{}", now, retired = false, source = "analyst"))
-        val size = if (tally.sized >= MAX_OPEN_CALLS) 0.0 else call.sizeFraction
+        val size = if (tally.sized >= MAX_OPEN_CALLS) 0.0 else Risk.fit(call.sizeFraction, tally.held)
         var id = dao.insertCall(CallRow(
             strategyId = AnalystCall.id, symbol = p.symbol, tf = Timeframe.D1.label, signalTime = call.signalTime,
             entryTime = call.entryTime, entryPrice = call.entryPrice, atr = call.atr, stop = call.stop, target = call.target,
@@ -348,10 +358,40 @@ class StrategyRunner(
             id = dao.callId(AnalystCall.id, p.symbol, call.signalTime, p.id) ?: return
         } else {
             tally.newCalls++
-            if (size > 0) tally.sized++
-            if (prefs.notifications && prefs.isOn(AnalystCall)) alerts.post(CallWords.newCall(id, AnalystCall.name, p.symbol, call.entryPrice, call.stop, size, prefs.tradeMoney))
+            if (size > 0) {
+                tally.sized++
+                tally.held += size
+            }
+            if (prefs.notifications && !prefs.planOn && prefs.isOn(AnalystCall)) alerts.post(CallWords.newCall(id, AnalystCall.name, p.symbol, call.entryPrice, call.stop, size, prefs.tradeMoney))
         }
         pending?.opened(p.id, id, now)
+    }
+
+    /**
+     * The morning plan (see [MorningPlan]): once a day, on the first pass at or after the owner's hour, one notification
+     * with every exit and every new call of the strategies that are on since the last plan. A day with nothing to do posts
+     * nothing.
+     */
+    private suspend fun postPlanIfDue(prefs: Preferences, now: Long) {
+        if (!prefs.notifications || !prefs.planOn) return
+        val day = MorningPlan.dueDay(now, zone(), prefs.planHour, dao.setting(MorningPlan.LAST_DAY)?.toLongOrNull()) ?: return
+        val since = dao.setting(MorningPlan.LAST_AT)?.toLongOrNull() ?: (now - DAY)
+        val calls = dao.allCalls().filter { it.source == "v2" }.associateBy { it.id }
+        val exits = dao.allExits()
+        fun strategyOf(row: CallRow) = StrategyCatalog.forCall(row, byId)?.takeIf { prefs.isOn(it) }
+        val sells = exits.filter { it.closedAt > since }.mapNotNull { exit ->
+            val row = calls[exit.callId] ?: return@mapNotNull null
+            val s = strategyOf(row) ?: return@mapNotNull null
+            MorningPlan.Sell(CallWords.base(row.symbol), s.name, CallWords.why(exit.reason))
+        }
+        val closed = exits.map { it.callId }.toSet()
+        val buys = calls.values.filter { it.openedAt > since && it.veto == null && (it.sizeFraction ?: 0.0) > 0 && it.id !in closed }.mapNotNull { row ->
+            val s = strategyOf(row) ?: return@mapNotNull null
+            MorningPlan.Buy(CallWords.base(row.symbol), s.name, prefs.tradeMoney?.let { it * (row.sizeFraction ?: 0.0) }, row.stop?.let(CallWords::price))
+        }
+        MorningPlan.words(sells, buys)?.let(alerts::post)
+        dao.putSetting(SettingRow(MorningPlan.LAST_DAY, day.toString(), now))
+        dao.putSetting(SettingRow(MorningPlan.LAST_AT, now.toString(), now))
     }
 
     /** Every strategy's tier, recomputed from its backtest on the universe and its live calls (docs/strategy-research.md §4). */
